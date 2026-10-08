@@ -231,3 +231,7 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 .lettore #app input:disabled, .lettore #app select:disabled, .lettore #app textarea:disabled { opacity: 1; color: var(--text); cursor: default; }
 .tab-edit tr.escluso td { opacity: .45; }
 .tab-edit tr.escluso td:first-child { opacity: 1; }
+/* inventario: materie prime a zero nascoste (le quantità scritte restano) */
+.senza-zero tr.zero, .senza-zero .scheda.tutti-zero { display: none; }
+label.spunta { display: flex; flex-direction: row; align-items: center; gap: 6px; min-height: 44px; }
+label.spunta input { width: auto; min-height: auto; }

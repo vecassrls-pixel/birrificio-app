@@ -343,12 +343,18 @@ export async function vistaBolla(id) {
 }
 
 // ---------- inventario ----------
+// "Nascondi le materie prime a zero": scelta ricordata su questo dispositivo
+const NASCONDI_ZERO = 'inventario-nascondi-zero';
+const leggiPref = () => { try { return localStorage.getItem(NASCONDI_ZERO) === '1'; } catch { return false; } };
+const scriviPref = v => { try { localStorage.setItem(NASCONDI_ZERO, v ? '1' : '0'); } catch { /* niente storage: vale solo ora */ } };
+const aZero = x => Math.abs(x) < 1e-9;
 export async function vistaInventario() {
   const { html } = u;
   const dati = await datiMagazzino();
   const g = giacenze(dati);
   const data = { v: u.oggiISO() };
   const contati = new Map();
+  const nascondi = leggiPref();
   const extre = new Map(); // lotto e scadenza facoltativi per articolo
   const extra = id => { if (!extre.has(id)) extre.set(id, {}); return extre.get(id); };
   u.$app.innerHTML = html`
@@ -356,22 +362,33 @@ export async function vistaInventario() {
     <div class="scheda">
       <h1 style="margin-top:0">Inventario</h1>
       <p class="totale">Scrivi la quantità contata solo per gli articoli che hai controllato: da quella data la giacenza riparte da lì, poi si aggiungono le bolle e si tolgono cotte e DH. Gli articoli lasciati vuoti non cambiano.</p>
-      <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
+      <div class="barra" style="margin:0;align-items:flex-end">
+        <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
+        <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondi ? 'checked' : ''}> Nascondi le materie prime a 0</label>
+      </div>
     </div>
+    <div id="elenco-inv" class="${nascondi ? 'senza-zero' : ''}">
     ${!dati.articoli.length ? html`<p class="vuoto">Nessun articolo. <a href="#/materie-prime">Crea prima gli articoli</a>.</p>` : ''}
     ${Object.entries(CATEGORIE).map(([cat, titolo]) => {
       const rr = dati.articoli.filter(a => a.categoria === cat);
       if (!rr.length) return '';
-      return html`<div class="scheda"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit">
+      const tuttiZero = rr.every(a => aZero(g.get(a.id).giacenza));
+      return html`<div class="scheda ${tuttiZero ? 'tutti-zero' : ''}"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit">
         <thead><tr><th>Articolo</th><th class="n">Calcolato oggi</th><th style="width:130px">Contato</th><th style="width:50px"></th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th></tr></thead>
-        <tbody>${rr.map(a => html`<tr>
+        <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}">
           <td>${a.nome}</td><td class="n">${fmt(g.get(a.id).giacenza, a.unita)}</td>
           <td><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale">${a.unita}</td>
           <td><input data-lotto="${a.id}"></td><td><input data-scad="${a.id}" type="date"></td>
         </tr>`)}</tbody></table></div></div>`;
     })}
+    </div>
     ${dati.articoli.length ? html`<div class="barra"><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
   u.$app.oninput = e => {
+    if (e.target.id === 'nascondi-zero') {
+      scriviPref(e.target.checked);
+      document.getElementById('elenco-inv').classList.toggle('senza-zero', e.target.checked);
+      return;
+    }
     if (e.target.id === 'data-inv') data.v = e.target.value;
     const id = e.target.dataset.inv;
     if (id) { if (e.target.value === '') contati.delete(id); else contati.set(id, Number(e.target.value)); }
