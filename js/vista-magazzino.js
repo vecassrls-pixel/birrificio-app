@@ -34,8 +34,10 @@ export async function vistaMagazzino() {
   const dati = await datiMagazzino();
   const g = giacenze(dati);
   const q = chiaveNome(filtri.q);
+  const nascondiZero = leggiPref();
   const righe = [...g.values()].filter(x => (!filtri.categoria || x.articolo.categoria === filtri.categoria)
-    && (!q || chiaveNome(x.articolo.nome).includes(q) || (x.articolo.alias || []).some(a => chiaveNome(a).includes(q))));
+    && (!q || chiaveNome(x.articolo.nome).includes(q) || (x.articolo.alias || []).some(a => chiaveNome(a).includes(q)))
+    && !(nascondiZero && aZero(x.giacenza) && aZero(x.impegnato)));
   const sotto = [...g.values()].filter(x => x.sottoScorta || x.disponibile < 0);
   const scadenze = [...g.values()].filter(x => x.statoScadenza);
   const scollegati = daCollegare(dati.cotte, dati.articoli, inizioControllo(dati.inventari)).slice(0, 40);
@@ -63,6 +65,7 @@ export async function vistaMagazzino() {
       <input id="q" type="search" placeholder="Cerca articolo…" value="${filtri.q}" style="flex:2;min-width:180px">
       <select id="cat" style="flex:1;min-width:140px"><option value="">Tutte le categorie</option>
         ${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === filtri.categoria ? 'selected' : ''}>${v}</option>`)}</select>
+      <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondiZero ? 'checked' : ''}> Nascondi le materie prime a 0</label>
     </div>` : ''}
     ${Object.entries(CATEGORIE).map(([cat, titolo]) => {
       const rr = righe.filter(x => x.articolo.categoria === cat);
@@ -101,6 +104,7 @@ export async function vistaMagazzino() {
   const $ = s => document.getElementById(s);
   $('q')?.addEventListener('input', e => { filtri.q = e.target.value; vistaMagazzino().then(() => { const el = $('q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }); });
   $('cat')?.addEventListener('change', e => { filtri.categoria = e.target.value; vistaMagazzino(); });
+  $('nascondi-zero')?.addEventListener('change', e => { scriviPref(e.target.checked); vistaMagazzino(); });
   $('nuovo-art').onclick = () => dialogArticolo({});
   $('da-ricette')?.addEventListener('click', async () => {
     const proposti = articoliDaRicette(dati.cotte, dati.articoli, u.addGiorni(u.oggiISO(), -365));
