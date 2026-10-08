@@ -8,6 +8,14 @@ export const FASI_DEFAULT = [
 ];
 export const DURATA_DEFAULT = FASI_DEFAULT.reduce((t, f) => t + f.giorni, 0); // 34
 
+// Additivi sempre presenti in una cotta nuova (aggiunti solo se mancano)
+export const ADDITIVI_DEFAULT = [{ nome: 'Antifoam', qta: 50, unita: 'g' }];
+const chiaveAdditivo = n => String(n || '').toLowerCase().replace(/[^a-z]/g, '');
+export const conAdditiviDefault = (sali = []) => [
+  ...sali,
+  ...ADDITIVI_DEFAULT.filter(d => !sali.some(x => chiaveAdditivo(x?.nome) === chiaveAdditivo(d.nome))).map(d => ({ ...d })),
+];
+
 // Fase di ogni giorno in fermentatore, per i colori del planning.
 // 1. note di fase nel registro (Fermentazione / DH / Maturazione): valgono fino alla nota successiva;
 // 2. altrimenti le temperature: maturazione dal primo giorno a <= 8 °C, DH nei 4 giorni prima;
@@ -42,6 +50,37 @@ export function fasiCotta(c, durate) {
     if (ultimo && ultimo.fase === f) ultimo.a = d; else out.push({ fase: f, da: d, a: d });
   }
   return out;
+}
+
+// Cotte doppie/triple: stessa birra nello stesso FV a <= 2 giorni di distanza.
+// Ogni cotta tiene i suoi dati del giorno di cotta (OG, pH mash, acqua, ingredienti);
+// registro di fermentazione, fine in FV e travaso sono del fermentatore e quindi comuni;
+// il confezionamento si salva solo sulla prima cotta del gruppo.
+export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso'];
+
+export function gruppoCotta(c, cotte) {
+  if (!c.fv || !c.data) return [c];
+  const altre = cotte.filter(x => x.id !== c.id && !x.eliminato && x.fv === c.fv && x.data
+    && nomeBirra(x.birra) === nomeBirra(c.birra) && Math.abs(diffGiorni(x.data, c.data)) <= 2);
+  return [c, ...altre].sort((a, b) => a.data.localeCompare(b.data) || (a.numero || 0) - (b.numero || 0));
+}
+
+// Lotto del gruppo, come nel Brewing Schedule: 51 e 52 -> "51/52"
+export const lottoGruppo = g => (g.length > 1 ? g.map(c => c.numero).join('/') : g[0]?.lotto || '');
+
+// Registro comune: unione per data; vale la prima cotta, le altre completano i valori mancanti
+export function registroComune(gruppo) {
+  const perData = new Map();
+  const senzaData = [];
+  for (const c of gruppo) {
+    for (const e of c.fermentazione || []) {
+      if (!e.data) { senzaData.push({ ...e }); continue; }
+      const x = perData.get(e.data);
+      if (!x) { perData.set(e.data, { ...e }); continue; }
+      for (const [k, v] of Object.entries(e)) if ((x[k] === undefined || x[k] === null || x[k] === '') && v !== null && v !== '') x[k] = v;
+    }
+  }
+  return [...[...perData.values()].sort((a, b) => a.data.localeCompare(b.data)), ...(gruppo.length > 1 ? [] : senzaData)];
 }
 
 // Righe del registro di fermentazione con le fasi di default (temperature da scrivere)
@@ -224,7 +263,7 @@ export function copiaDa(src, { data, numero, anno, fv }) {
     birra: src.birra,
     numero, anno, lotto: lottoDi(numero, anno), data, fv: fv || src.fv,
     og: src.og ?? null, fg: null, phMash: null, litri: src.litri ?? null,
-    sali: clone.sali || [], malti: clone.malti || [], luppoli: clone.luppoli || [], lievito: clone.lievito || [],
+    sali: conAdditiviDefault(clone.sali || []), malti: clone.malti || [], luppoli: clone.luppoli || [], lievito: clone.lievito || [],
     acquaMash: { tempMash: src.acquaMash?.tempMash ?? null, litri: src.acquaMash?.litri ?? null, tempAcqua: src.acquaMash?.tempAcqua ?? null },
     acquaSparge: { temp: src.acquaSparge?.temp ?? null, litri: src.acquaSparge?.litri ?? null },
     fermentazione: profilo,
