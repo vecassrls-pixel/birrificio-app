@@ -507,6 +507,7 @@ async function vistaCotta(id) {
           ${campo('acquaMash.tempMash', 'T° mash')}
           ${campo('acquaMash.ph15', 'pH a 15 min')}
           ${campo('acquaSparge.temp', 'T° sparge')}
+          ${campo('whirlpoolMin', 'Durata whirlpool (min)')}
         </div>
         <h3>Serbatoio acqua calda (tacche in cm)</h3>
         <div class="griglia">

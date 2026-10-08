@@ -134,6 +134,9 @@ export function unisci(esistente, b, letture = []) {
   const w = b.recipe?.data || {};
   c.acquaMash = { ...c.acquaMash };
   c.acquaSparge = { ...c.acquaSparge };
+  // durata del whirlpool: il tempo più lungo dei luppoli in whirlpool/aroma della ricetta
+  const wp = (b.recipe?.hops || []).filter(h => h.use === 'Aroma' || h.use === 'Whirlpool').map(h => num(h.time)).filter(t => t > 0);
+  if (c.whirlpoolMin == null && wp.length) c.whirlpoolMin = Math.max(...wp);
   if (c.acquaMash.litri == null && num(w.mashWaterAmount) !== null) c.acquaMash.litri = Math.round(num(w.mashWaterAmount));
   if (c.acquaSparge.litri == null && num(w.spargeWaterAmount) !== null) c.acquaSparge.litri = Math.round(num(w.spargeWaterAmount));
   const step = b.recipe?.mash?.steps?.[0];
