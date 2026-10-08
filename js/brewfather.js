@@ -8,7 +8,7 @@
 // lievito, sali/additivi), OG/FG/litri/pH misurati, letture del densimetro.
 // Cosa resta dell'app: FV, fine in FV, tacche, confezionamento, note, letture scritte a mano.
 
-import { addGiorni, toISO } from './dominio.js';
+import { addGiorni, conAdditiviDefault, toISO } from './dominio.js';
 
 export const PROXY_DEFAULT = '/.netlify/functions/brewfather';
 const STATI_ATTIVI = ['Planning', 'Brewing', 'Fermenting', 'Conditioning'];
@@ -78,7 +78,7 @@ export function ricettaDaBatch(b) {
       ...(h.use === 'Dry Hop' && num(h.day) !== null ? { giorno: num(h.day) } : {}),
     })),
     lievito: (r.yeasts || []).map(y => ({ nome: [y.name, y.productId].filter(Boolean).join(' '), qta: num(y.amount), unita: unita(y.unit) })),
-    sali: (r.miscs || []).map(m => ({ nome: m.name, qta: num(m.amount), unita: unita(m.unit) })),
+    sali: conAdditiviDefault((r.miscs || []).map(m => ({ nome: m.name, qta: num(m.amount), unita: unita(m.unit) }))),
   };
 }
 
