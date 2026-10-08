@@ -282,6 +282,7 @@ export function copiaDa(src, { data, numero, anno, fv }) {
     sali: conAdditiviDefault(clone.sali || []), malti: clone.malti || [], luppoli: clone.luppoli || [], lievito: clone.lievito || [],
     acquaMash: { tempMash: src.acquaMash?.tempMash ?? null, litri: src.acquaMash?.litri ?? null, tempAcqua: src.acquaMash?.tempAcqua ?? null },
     acquaSparge: { temp: src.acquaSparge?.temp ?? null, litri: src.acquaSparge?.litri ?? null },
+    acquaDip: { litri: src.acquaDip?.litri ?? null },
     fermentazione: profilo,
     confezionato: [],
     note: src.note || '',

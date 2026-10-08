@@ -100,7 +100,7 @@ export function scarichiCotte(cotte, articoli) {
 }
 
 // Giacenze di tutti gli articoli a una data. Ritorna Map id → riepilogo con i movimenti.
-export function giacenze({ articoli, bolle, inventari, cotte }, oggi = oggiISO()) {
+export function giacenze({ articoli, bolle, inventari, cotte, scarichi = [] }, oggi = oggiISO()) {
   const res = new Map(articoli.map(a => [a.id, {
     articolo: a, inventario: null, giacenza: 0, impegnato: 0, movimenti: [], nonConvertibili: 0,
   }]));
@@ -130,18 +130,26 @@ export function giacenze({ articoli, bolle, inventari, cotte }, oggi = oggiISO()
   for (const b of bolle) {
     for (const r of b.righe || []) {
       const g = res.get(r.articoloId);
-      if (g && b.data) muovi(g, b.data, r.qta, r.unita || g.articolo.unita, { tipo: 'carico', rif: `Bolla ${b.numero || ''} ${b.fornitore || ''}`.trim(), id: b.id, lotto: r.lotto || '', scadenza: r.scadenza || '' });
+      if (g && b.data) muovi(g, b.data, r.qta, r.unita || g.articolo.unita, { tipo: 'carico', rif: `Bolla ${b.numero || ''} ${b.fornitore || ''}`.trim(), id: b.id, lotto: r.lotto || '', scadenza: r.scadenza || '', chi: [b.fornitore, b.numero && `DDT ${b.numero}`].filter(Boolean).join(' · ') });
     }
   }
   for (const s of scarichiCotte(cotte, articoli)) {
     const g = s.articolo && res.get(s.articolo.id);
-    if (g) muovi(g, s.data, s.qta, s.unita || g.articolo.unita, { tipo: 'scarico', rif: `${s.cotta.birra || ''} ${s.cotta.lotto || ''}`.trim(), id: s.cotta.id, nome: s.nome });
+    if (g) muovi(g, s.data, s.qta, s.unita || g.articolo.unita, { tipo: 'scarico', rif: `${s.cotta.birra || ''} ${s.cotta.lotto || ''}`.trim(), id: s.cotta.id, nome: s.nome, chi: destinoCotta(s) });
+  }
+  // scarichi manuali (vendita, reso, scarto): se è indicato il lotto esce da quello
+  for (const sc of scarichi) {
+    for (const r of sc.righe || []) {
+      const g = res.get(r.articoloId);
+      const chi = [MOTIVI_SCARICO[sc.motivo] || 'Scarico', sc.destinatario].filter(Boolean).join(' · ');
+      if (g && sc.data) muovi(g, sc.data, r.qta, r.unita || g.articolo.unita, { tipo: 'scarico', manuale: true, rif: chi, id: sc.id, lottoScelto: r.lotto || '', chi });
+    }
   }
   for (const g of res.values()) {
     g.movimenti.sort((x, y) => y.data.localeCompare(x.data));
     g.disponibile = g.giacenza - g.impegnato;
     g.sottoScorta = g.articolo.scortaMin > 0 && g.disponibile < g.articolo.scortaMin;
-    g.lotti = lottiResidui(g);
+    g.lotti = simulaLotti(g);
     const scad = g.lotti.map(l => l.scadenza).filter(Boolean).sort();
     g.scadenza = scad[0] || null;
     g.statoScadenza = statoScadenza(g.scadenza, oggi);
@@ -155,22 +163,36 @@ export function statoScadenza(scadenza, oggi = oggiISO()) {
   return scadenza <= addGiorni(oggi, GIORNI_IN_SCADENZA) ? 'vicino' : null;
 }
 
-// Lotti ancora in magazzino: la giacenza viene attribuita ai carichi più recenti
-// (inventario compreso), la parte senza carico corrispondente resta "senza lotto".
-function lottiResidui(g) {
-  let resto = Math.max(0, g.giacenza);
-  const entrate = g.movimenti.filter(m => !m.futuro && (m.tipo === 'carico' || m.tipo === 'inventario'))
-    .sort((x, y) => y.data.localeCompare(x.data) || (x.tipo === 'carico' ? -1 : 1));
-  const lotti = [];
-  for (const m of entrate) {
-    if (resto <= 0) break;
-    const q = Math.min(resto, m.qta);
-    resto -= q;
-    lotti.push({ lotto: m.lotto || '', scadenza: m.scadenza || '', data: m.data, qta: q, rif: m.rif, id: m.id, tipo: m.tipo });
+// Lotti: si scorrono i movimenti in ordine di data; ogni scarico prende dal lotto entrato
+// da più tempo (o da quello indicato nello scarico manuale) e passa al successivo se finisce.
+// Ogni scarico riceve m.lotti = [{ lotto, scadenza, qta }]; ritorna i lotti rimasti.
+function simulaLotti(g) {
+  const coda = [];
+  let debito = 0; // scaricato più di quanto c'era: lo copre il carico successivo
+  const mov = g.movimenti.filter(m => !m.futuro)
+    .sort((x, y) => x.data.localeCompare(y.data) || ORDINE_MOV[x.tipo] - ORDINE_MOV[y.tipo]);
+  for (const m of mov) {
+    if (m.tipo !== 'scarico') {
+      if (m.tipo === 'inventario') { coda.length = 0; debito = 0; }
+      const copre = Math.min(debito, m.qta);
+      debito -= copre;
+      coda.push({ lotto: m.lotto || '', scadenza: m.scadenza || '', data: m.data, qta: m.qta - copre, rif: m.rif, id: m.id, tipo: m.tipo });
+      continue;
+    }
+    m.lotti = [];
+    let resto = -m.qta;
+    const preso = l => { const q = Math.min(resto, l.qta); l.qta -= q; resto -= q; m.lotti.push({ lotto: l.lotto, scadenza: l.scadenza, qta: q }); };
+    const scelto = m.lottoScelto && coda.find(l => l.qta > 1e-9 && l.lotto.toLowerCase() === m.lottoScelto.toLowerCase());
+    if (scelto) preso(scelto);
+    for (const l of coda) { if (resto <= 1e-9) break; if (l.qta > 1e-9) preso(l); }
+    if (resto > 1e-9) { m.lotti.push({ lotto: m.lottoScelto || '', scadenza: '', qta: resto }); debito += resto; } // più di quanto risulta in magazzino
   }
-  if (resto > 0) lotti.push({ lotto: '', scadenza: '', data: '', qta: resto, rif: 'Senza carico registrato' });
-  return lotti;
+  return coda.filter(l => l.qta > 1e-9).reverse(); // i più recenti per primi
 }
+const ORDINE_MOV = { inventario: 0, carico: 1, scarico: 2 };
+
+export const MOTIVI_SCARICO = { vendita: 'Vendita', reso: 'Reso al fornitore', scarto: 'Scarto / rottura', altro: 'Altro' };
+const destinoCotta = s => `${s.sezione === 'acido' ? 'Correzione pH' : s.data !== s.cotta.data || /\b(dh|dry ?hop)\b/i.test(s.nome) ? 'Dry hop' : 'Cotta'} ${s.cotta.lotto || ''} ${s.cotta.birra || ''}`.replace(/\s+/g, ' ').trim();
 
 // Ingredienti delle cotte (da una data in poi) che non corrispondono a nessun articolo
 export function daCollegare(cotte, articoli, da) {
@@ -201,52 +223,21 @@ export function articoliDaRicette(cotte, articoli, da) {
   }));
 }
 
-// Registro HACCP S6 carico/scarico: righe C (bolle) e S (cotte, DH, acido) in ordine di data.
-// Il lotto degli scarichi è stimato consumando prima i lotti caricati da più tempo;
-// uno scarico che svuota un lotto e prosegue sul successivo diventa due righe.
-export function registroS6({ articoli, bolle, inventari, cotte }, da, a) {
+// Registro HACCP S6 carico/scarico: righe C (bolle) e S (cotte, DH, acido, scarichi manuali)
+// in ordine di data, con gli stessi lotti delle giacenze: uno scarico che svuota un lotto
+// e prosegue sul successivo diventa due righe.
+export function registroS6(dati, da, a) {
   const oggi = oggiISO();
   const fino = a && a < oggi ? a : oggi;
-  const ultimoInv = new Map();
-  for (const inv of [...inventari].filter(i => i.data && i.data <= fino).sort((x, y) => x.data.localeCompare(y.data))) {
-    for (const r of inv.righe || []) if (r.qta !== null && r.qta !== '' && r.qta !== undefined) ultimoInv.set(r.articoloId, { data: inv.data, qta: Number(r.qta), lotto: r.lotto || '', scadenza: r.scadenza || '' });
-  }
-  const perArt = new Map(articoli.map(x => [x.id, { art: x, ev: [] }]));
-  for (const b of bolle) {
-    for (const r of b.righe || []) {
-      const p = perArt.get(r.articoloId);
-      const q = p && converti(r.qta, r.unita || p.art.unita, p.art.unita);
-      if (q > 0 && b.data && b.data <= fino) p.ev.push({ cs: 'C', data: b.data, qta: q, lotto: r.lotto || '', scadenza: r.scadenza || '', chi: [b.fornitore, b.numero && `DDT ${b.numero}`].filter(Boolean).join(' · ') });
-    }
-  }
-  for (const s of scarichiCotte(cotte, articoli)) {
-    const p = s.articolo && perArt.get(s.articolo.id);
-    const q = p && converti(s.qta, s.unita || p.art.unita, p.art.unita);
-    if (q > 0 && s.data <= fino) p.ev.push({ cs: 'S', data: s.data, qta: q, chi: `${s.sezione === 'acido' ? 'Correzione pH' : s.data !== s.cotta.data || /\b(dh|dry ?hop)\b/i.test(s.nome) ? 'Dry hop' : 'Cotta'} ${s.cotta.lotto || ''} ${s.cotta.birra || ''}`.replace(/\s+/g, ' ').trim() });
-  }
   const righe = [];
-  for (const { art, ev } of perArt.values()) {
-    const inv = ultimoInv.get(art.id);
-    const coda = inv ? [{ lotto: inv.lotto, scadenza: inv.scadenza, qta: inv.qta }] : [];
-    ev.filter(e => (inv ? e.data > inv.data : e.cs === 'C' || !art.creato || e.data >= art.creato))
-      .sort((x, y) => x.data.localeCompare(y.data) || (x.cs === 'C' ? -1 : 1))
-      .forEach(e => {
-        const base = { data: e.data, prodotto: art.nome, unita: art.unita, categoria: art.categoria, chi: e.chi };
-        if (e.cs === 'C') {
-          coda.push({ lotto: e.lotto, scadenza: e.scadenza, qta: e.qta });
-          righe.push({ ...base, cs: 'C', lotto: e.lotto, scadenza: e.scadenza, qta: e.qta });
-          return;
-        }
-        let resto = e.qta;
-        while (resto > 1e-9) {
-          while (coda.length && coda[0].qta <= 1e-9) coda.shift();
-          const l = coda[0];
-          const q = l ? Math.min(resto, l.qta) : resto;
-          if (l) l.qta -= q;
-          righe.push({ ...base, cs: 'S', lotto: l?.lotto || '', scadenza: l?.scadenza || '', qta: q });
-          resto -= q;
-        }
-      });
+  for (const g of giacenze(dati, fino).values()) {
+    const art = g.articolo;
+    const base = { prodotto: art.nome, unita: art.unita, categoria: art.categoria };
+    for (const m of g.movimenti) {
+      if (m.futuro) continue;
+      if (m.tipo === 'carico') righe.push({ ...base, cs: 'C', data: m.data, lotto: m.lotto, scadenza: m.scadenza, qta: m.qta, chi: m.chi });
+      if (m.tipo === 'scarico') for (const l of m.lotti || []) righe.push({ ...base, cs: 'S', data: m.data, lotto: l.lotto, scadenza: l.scadenza, qta: l.qta, chi: m.chi });
+    }
   }
   return righe.filter(r => (!da || r.data >= da) && (!a || r.data <= a))
     .sort((x, y) => x.data.localeCompare(y.data) || x.cs.localeCompare(y.cs) || x.prodotto.localeCompare(y.prodotto, 'it'));

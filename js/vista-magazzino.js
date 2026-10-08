@@ -2,7 +2,7 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe } from './bolla-pdf.js';
 
@@ -12,9 +12,9 @@ export function init(strumenti) { u = strumenti; }
 const filtri = { q: '', categoria: '' };
 
 async function datiMagazzino() {
-  const [articoli, bolle, inventari] = await Promise.all([u.db.tutti('articolo'), u.db.tutti('bolla'), u.db.tutti('inventario')]);
+  const [articoli, bolle, inventari, scarichi] = await Promise.all(['articolo', 'bolla', 'inventario', 'scarico'].map(t => u.db.tutti(t)));
   articoli.sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
-  return { articoli, bolle, inventari, cotte: u.stato.cotte };
+  return { articoli, bolle, inventari, scarichi, cotte: u.stato.cotte };
 }
 // data di scadenza colorata: rossa se passata, arancione entro GIORNI_IN_SCADENZA giorni
 function scad(data) {
@@ -22,6 +22,8 @@ function scad(data) {
   const st = statoScadenza(data, u.oggiISO());
   return u.html`<span class="scad ${st || ''}" title="${st === 'scaduto' ? 'Scaduto' : st === 'vicino' ? `Scade entro ${GIORNI_IN_SCADENZA} giorni` : ''}">${u.dataIT(data)}</span>`;
 }
+// lotti da cui è uscito uno scarico (solo quelli con un nome)
+const lottiUsati = m => ((m.lotti || []).some(l => l.lotto) ? ` · lotto ${m.lotti.map(l => l.lotto || '—').join(' + ')}` : '');
 const fmt = (n, unita) => `${u.numIT(n, unita === 'kg' || unita === 'L' ? 1 : 0)} ${unita}`;
 // da quando cercare ingredienti non collegati: primo inventario, altrimenti 3 mesi fa
 const inizioControllo = inventari => [...inventari].map(i => i.data).filter(Boolean).sort()[0] || u.addGiorni(u.oggiISO(), -90);
@@ -51,6 +53,7 @@ export async function vistaMagazzino() {
       <a class="btn" href="#/registro-s6">Registro S6</a>
       <a class="btn" href="#/inventario">Inventario</a>
       <button id="nuovo-art">+ Articolo</button>
+      <a class="btn" href="#/scarico/nuovo">− Scarico manuale</a>
       <a class="btn primario" href="#/bolla/nuova">+ Bolla di carico</a>
     </div>
     ${!dati.articoli.length ? html`<div class="scheda"><h2>Per iniziare</h2>
@@ -90,6 +93,10 @@ export async function vistaMagazzino() {
         <span class="lotto">${u.dataIT(b.data)}</span><span class="birra">${b.fornitore || 'Fornitore ?'}${b.numero ? ` · n° ${b.numero}` : ''}</span>
         <span class="totale" style="margin:0">${(b.righe || []).length} righe</span></a>`)}</div>` : html`<p class="totale">Nessuna bolla caricata.</p>`}
     </div>
+    ${dati.scarichi.length ? html`<div class="scheda"><h2>Ultimi scarichi manuali</h2><div class="lista">
+      ${[...dati.scarichi].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 8).map(x => html`<a class="riga-cotta" href="#/scarico/${encodeURIComponent(x.id)}">
+        <span class="lotto">${u.dataIT(x.data)}</span><span class="birra">${MOTIVI_SCARICO[x.motivo] || 'Scarico'}${x.destinatario ? ` · ${x.destinatario}` : ''}</span>
+        <span class="totale" style="margin:0">${(x.righe || []).length} righe</span></a>`)}</div></div>` : ''}
   `;
   const $ = s => document.getElementById(s);
   $('q')?.addEventListener('input', e => { filtri.q = e.target.value; vistaMagazzino().then(() => { const el = $('q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }); });
@@ -119,7 +126,8 @@ export async function vistaMagazzino() {
 }
 
 // ---------- dialogo nuovo articolo ----------
-function dialogArticolo(pre) {
+// vai = false: resta dove si è (es. scheda cotta) e restituisce l'articolo creato
+function dialogArticolo(pre, vai = true) {
   const { html } = u;
   const d = document.createElement('dialog');
   d.innerHTML = html`<form method="dialog" id="f-art">
@@ -134,19 +142,29 @@ function dialogArticolo(pre) {
       <button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">Crea</button></div>
   </form>`.s;
   document.body.appendChild(d);
-  d.addEventListener('close', async () => {
+  const fatto = new Promise(ok => d.addEventListener('close', async () => {
     d.remove();
-    if (d.returnValue !== 'ok') return;
+    if (d.returnValue !== 'ok') return ok(null);
     const fd = new FormData(d.querySelector('form'));
     const nome = String(fd.get('nome') || '').trim();
-    if (!nome) return;
+    if (!nome) return ok(null);
     const rec = await u.db.salva({
       tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: fd.get('categoria'), unita: fd.get('unita'),
       scortaMin: Number(fd.get('scortaMin')) || 0, alias: pre.alias || [], creato: u.oggiISO(),
     });
-    location.hash = `#/materia/${encodeURIComponent(rec.id)}`;
-  });
+    if (vai) location.hash = `#/materia/${encodeURIComponent(rec.id)}`;
+    ok(rec);
+  }));
   d.showModal();
+  return fatto;
+}
+export const nuovoArticolo = pre => dialogArticolo(pre, false);
+
+// articoli del magazzino per scegliere gli ingredienti di una ricetta, anche quelli a zero
+export async function articoliRicetta() {
+  const d = await datiMagazzino();
+  const g = giacenze(d, u.oggiISO());
+  return d.articoli.map(a => ({ ...a, giacenza: g.get(a.id)?.giacenza ?? 0 }));
 }
 
 // ---------- scheda articolo ----------
@@ -195,7 +213,8 @@ export async function vistaArticolo(id) {
           <td>${u.dataIT(m.data)}</td>
           <td>${m.tipo === 'inventario' ? html`<b>Inventario</b>${m.lotto ? ` · lotto ${m.lotto}` : ''}${m.scadenza ? ` · scad. ${u.dataIT(m.scadenza)}` : ''}` : m.tipo === 'carico'
             ? html`<a href="#/bolla/${encodeURIComponent(m.id)}">${m.rif}</a>${m.lotto ? ` · lotto ${m.lotto}` : ''}${m.scadenza ? ` · scad. ${u.dataIT(m.scadenza)}` : ''}`
-            : html`<a href="#/cotta/${encodeURIComponent(m.id)}">${m.rif}</a> <span class="totale">${m.nome}${m.futuro ? ' · da fare' : ''}</span>`}</td>
+            : m.manuale ? html`<a href="#/scarico/${encodeURIComponent(m.id)}">${m.rif}</a>${lottiUsati(m)}`
+            : html`<a href="#/cotta/${encodeURIComponent(m.id)}">${m.rif}</a> <span class="totale">${m.nome}${m.futuro ? ' · da fare' : ''}</span>${lottiUsati(m)}`}</td>
           <td class="n">${m.tipo === 'inventario' ? '= ' : m.qta > 0 ? '+' : ''}${fmt(m.qta, a.unita)}</td>
         </tr>`)}</tbody></table></div>` : html`<p class="totale">Nessun movimento: fai l'inventario o carica una bolla.</p>`}
     </div>`;
@@ -448,5 +467,96 @@ export async function vistaRegistroS6() {
     document.title = `S6 carico scarico ${s6.da} ${s6.a}`;
     addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
     window.print();
+  };
+}
+
+// ---------- scarico manuale (vendita, reso, scarto) ----------
+export async function vistaScarico(id) {
+  const { html } = u;
+  const dati = await datiMagazzino();
+  const esistente = id === 'nuovo' ? null : dati.scarichi.find(x => x.id === id);
+  if (id !== 'nuovo' && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Scarico non trovato. <a href="#/materie-prime">Torna alle materie prime</a></p>`; return; }
+  const sc = esistente ? JSON.parse(JSON.stringify(esistente))
+    : { tipo: 'scarico', data: u.oggiISO(), motivo: 'vendita', destinatario: '', note: '', righe: [{ articoloId: '', qta: null, unita: '', lotto: '' }] };
+  // le giacenze senza questo scarico, per proporre i lotti disponibili
+  const g = giacenze({ ...dati, scarichi: dati.scarichi.filter(x => x.id !== sc.id) });
+  const perNome = n => dati.articoli.find(a => a.nome.toLowerCase() === String(n || '').trim().toLowerCase());
+  for (const r of sc.righe) r.nome ??= dati.articoli.find(a => a.id === r.articoloId)?.nome || '';
+  const destinatari = [...new Set(dati.scarichi.map(x => x.destinatario).filter(Boolean))].sort();
+
+  function disegna() {
+    u.$app.innerHTML = html`
+      <div class="barra"><a href="#/materie-prime" class="btn">← Materie prime</a><span class="spazio"></span>
+        ${esistente ? html`<button class="pericolo" id="elimina">Elimina scarico</button>` : ''}</div>
+      <div class="scheda">
+        <h1 style="margin-top:0">${esistente ? 'Scarico manuale' : 'Nuovo scarico manuale'}</h1>
+        <p class="totale">Per la materia prima che esce dal magazzino senza andare in una cotta: vendita, reso al fornitore, scarto. Se non scegli il lotto esce quello caricato da più tempo.</p>
+        <div class="griglia">
+          <label>Data <input type="date" data-s="data" value="${sc.data || ''}"></label>
+          <label>Motivo <select data-s="motivo">${Object.entries(MOTIVI_SCARICO).map(([k, v]) => html`<option value="${k}" ${k === sc.motivo ? 'selected' : ''}>${v}</option>`)}</select></label>
+          <label style="grid-column:span 2">Destinatario / cliente <input data-s="destinatario" list="dl-dest" value="${sc.destinatario || ''}"></label>
+          <label style="grid-column:1/-1">Note (n° fattura, DDT…) <input data-s="note" value="${sc.note || ''}"></label>
+        </div>
+        <datalist id="dl-dest">${destinatari.map(x => html`<option value="${x}">`)}</datalist>
+        <datalist id="dl-art">${dati.articoli.map(a => html`<option value="${a.nome}">`)}</datalist>
+      </div>
+      <div class="scheda"><h2>Righe</h2>
+        <div class="scroll-x"><table class="tab-edit">
+          <thead><tr><th>Articolo</th><th class="n">Disponibile</th><th style="width:100px">Quantità</th><th style="width:80px">Unità</th><th style="width:200px">Lotto</th><th></th></tr></thead>
+          <tbody>${sc.righe.map((r, i) => {
+            const art = perNome(r.nome);
+            const gg = art && g.get(art.id);
+            return html`<tr>
+              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px"></td>
+              <td class="n totale">${gg ? fmt(gg.giacenza, art.unita) : ''}</td>
+              <td><input data-r="${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
+              <td><select data-r="${i}.unita">${UNITA.map(x => html`<option ${x === (r.unita || art?.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></td>
+              <td><select data-r="${i}.lotto"><option value="">Il più vecchio (automatico)</option>
+                ${(gg?.lotti || []).filter(l => l.lotto).reverse().map(l => html`<option value="${l.lotto}" ${l.lotto === r.lotto ? 'selected' : ''}>${l.lotto} · ${fmt(l.qta, art.unita)}${l.scadenza ? ` · scad. ${u.dataIT(l.scadenza)}` : ''}</option>`)}
+                ${r.lotto && !(gg?.lotti || []).some(l => l.lotto === r.lotto) ? html`<option value="${r.lotto}" selected>${r.lotto}</option>` : ''}</select></td>
+              <td class="az"><button class="piccolo" data-del="${i}" title="Rimuovi">✕</button></td>
+            </tr>`;
+          })}</tbody>
+        </table></div>
+        <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><span class="spazio"></span>
+          <button class="primario" id="salva">Salva scarico</button></div>
+      </div>`;
+  }
+  disegna();
+  u.$app.oninput = u.$app.onchange = e => {
+    const t = e.target;
+    if (t.dataset.s) sc[t.dataset.s] = t.value;
+    if (t.dataset.r) {
+      const [i, k] = t.dataset.r.split('.');
+      sc.righe[i][k] = t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
+      if (k === 'nome' && e.type === 'change') {
+        const art = perNome(t.value);
+        sc.righe[i].unita = art?.unita || sc.righe[i].unita;
+        sc.righe[i].lotto = '';
+        disegna();
+      }
+    }
+  };
+  u.$app.onclick = async e => {
+    const t = e.target;
+    if (t.id === 'riga') { sc.righe.push({ nome: '', qta: null, unita: '', lotto: '' }); disegna(); }
+    else if (t.dataset.del !== undefined) { sc.righe.splice(Number(t.dataset.del), 1); disegna(); }
+    else if (t.id === 'elimina') {
+      if (!(await u.chiedi('Eliminare questo scarico? Le quantità tornano in giacenza.', 'Elimina'))) return;
+      await u.db.elimina(esistente.id);
+      location.hash = '#/materie-prime';
+    } else if (t.id === 'salva') {
+      const righe = sc.righe.filter(r => String(r.nome || '').trim() && Number(r.qta) > 0);
+      const ignoti = righe.filter(r => !perNome(r.nome));
+      if (ignoti.length) return u.toast(`Articolo non trovato: ${ignoti.map(r => r.nome).join(', ')}`);
+      if (!sc.data || !righe.length) return u.toast('Servono la data e almeno una riga con articolo e quantità');
+      const out = righe.map(r => {
+        const art = perNome(r.nome);
+        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: r.lotto || '' };
+      });
+      await u.db.salva({ ...sc, id: sc.id || u.db.nuovoId('scarico'), righe: out });
+      u.toast('Scarico salvato');
+      location.hash = '#/materie-prime';
+    }
   };
 }

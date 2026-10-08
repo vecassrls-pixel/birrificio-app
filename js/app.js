@@ -4,7 +4,8 @@ import * as bf from './brewfather.js';
 import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
 import * as magazzino from './vista-magazzino.js';
-import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
+import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
+import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
   CAMPI_COMUNI, SIMBOLI, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
@@ -121,6 +122,7 @@ const routes = [
   [/^#\/materia\/(.+)$/, id => magazzino.vistaArticolo(id)],
   [/^#\/bolla\/(.+)$/, id => magazzino.vistaBolla(id)],
   [/^#\/inventario$/, () => magazzino.vistaInventario()],
+  [/^#\/scarico\/(.+)$/, id => magazzino.vistaScarico(id)],
   [/^#\/registro-s6$/, () => magazzino.vistaRegistroS6()],
   [/^#\/impostazioni$/, vistaImpostazioni],
 ];
@@ -131,7 +133,7 @@ async function render() {
   if (pulizia) { pulizia(); pulizia = null; }
   $app.oninput = $app.onchange = $app.onclick = null;
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro|scarico)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -304,6 +306,9 @@ async function vistaCotta(id) {
   for (const k of ['sali', 'malti', 'luppoli', 'lievito', 'acido', 'fermentazione', 'confezionato']) c[k] = c[k] || [];
   c.acquaMash = c.acquaMash || {};
   c.acquaSparge = c.acquaSparge || {};
+  c.acquaDip = c.acquaDip || {};
+  // ingredienti scelti dalle voci del magazzino (anche a zero)
+  let articoli = await magazzino.articoliRicetta();
   // cotte non ancora fatte: antifoam già pronto negli additivi (lo storico non si tocca)
   if (c.data && c.data >= oggiISO()) c.sali = conAdditiviDefault(c.sali);
 
@@ -355,15 +360,50 @@ async function vistaCotta(id) {
     return html`<label>${etichetta}<input data-path="${path}" type="${tipo}" ${tipo === 'number' ? raw('step="any" inputmode="decimal"') : ''} value="${v ?? ''}" ${raw(extra)}></label>`;
   }
 
+  // Tacche del serbatoio calcolate dalla tacca iniziale e dai litri della ricetta:
+  // mash, poi sparge, poi l'eventuale dip hopping, ognuna parte da dove finisce la precedente.
+  // Senza tacca iniziale restano le tacche già salvate (cotte vecchie, scritte a mano).
+  const FASI_HLT = [['acquaMash', 'mash'], ['acquaSparge', 'sparge'], ['acquaDip', 'dip hopping']];
+  function ricalcolaTacche() {
+    const vuoto = v => v === null || v === undefined || v === '';
+    if (vuoto(c.acquaMash.taccaInizio)) return [];
+    const avvisi = [];
+    let t = c.acquaMash.taccaInizio;
+    for (const [k, nome] of FASI_HLT) {
+      const f = c[k];
+      const litri = Number(f.litri) || 0;
+      if (t === null || !litri) { f.taccaFine = null; continue; }
+      if (litriATacca(t) < litri) { avvisi.push(`${nome}: ${numIT(litri, 0)} L non bastano nel serbatoio (a ${numIT(t)} cm ci sono ${numIT(litriATacca(t), 0)} L)`); f.taccaFine = null; t = null; continue; }
+      f.taccaFine = taccaFinale(t, litri);
+      t = f.taccaFine;
+    }
+    return avvisi;
+  }
+  function mostraTacche() {
+    const avvisi = ricalcolaTacche();
+    for (const [k] of FASI_HLT) {
+      const el = document.getElementById(`tacca-${k}`);
+      if (el) el.value = c[k].taccaFine == null ? '' : numIT(c[k].taccaFine);
+    }
+    const el = document.getElementById('hlt-avvisi');
+    if (el) el.textContent = avvisi.join(' · ');
+  }
+  const taccaCalcolata = (k, etichetta) => html`<label>${etichetta}<input id="tacca-${k}" class="calcolato" readonly tabindex="-1" value="${c[k].taccaFine == null ? '' : numIT(c[k].taccaFine)}" placeholder="—"></label>`;
+
+  const CAT_SEZIONE = { malti: ['malto', 'zucchero'], luppoli: ['luppolo'], lievito: ['lievito'], sali: ['sale', 'coadiuvante', 'aggiunta', 'spezia'] };
+  const fmtGiac = a => `${CATEGORIE[a.categoria] || ''} · in magazzino ${numIT(a.giacenza, a.unita === 'kg' || a.unita === 'L' ? 1 : 0)} ${a.unita}`;
   function tabIngredienti(k, titolo, unitaDef) {
     const righe = c[k];
     const extra = k === 'luppoli';
+    // prima le voci della categoria della sezione, poi le altre
+    const voci = [...articoli].sort((a, b) => (CAT_SEZIONE[k].includes(b.categoria) - CAT_SEZIONE[k].includes(a.categoria)) || a.nome.localeCompare(b.nome, 'it'));
     return html`<div class="scheda">
       <h2>${titolo}</h2>
       <div class="scroll-x"><table class="tab-edit">
         <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:80px">Minuti</th><th style="width:110px">Uso</th>` : ''}<th></th></tr></thead>
         <tbody>${righe.map((r, i) => html`<tr>
-          <td><input data-path="${k}.${i}.nome" value="${r.nome || ''}" style="min-width:140px"></td>
+          <td><input data-path="${k}.${i}.nome" value="${r.nome || ''}" list="dl-art-${k}" placeholder="scegli dal magazzino" style="min-width:140px">
+            ${r.nome && !trovaArticolo(articoli, r.nome) ? html`<button class="piccolo nuovo-art" data-crea="${k}.${i}" title="Non è nel magazzino">+ Nuovo in magazzino</button>` : ''}</td>
           <td><input data-path="${k}.${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
           <td><select data-path="${k}.${i}.unita">${['kg', 'g', 'L', 'ml', ''].map(u => html`<option value="${u}" ${u === (r.unita ?? '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>
           ${extra ? html`<td><input data-path="${k}.${i}.minuti" type="number" step="any" value="${r.minuti ?? ''}"></td>
@@ -371,6 +411,7 @@ async function vistaCotta(id) {
           <td class="az"><button class="piccolo" data-del="${k}.${i}" title="Rimuovi">✕</button></td>
         </tr>`)}</tbody>
       </table></div>
+      <datalist id="dl-art-${k}">${voci.map(a => html`<option value="${a.nome}" label="${fmtGiac(a)}"></option>`)}</datalist>
       <button class="piccolo" data-add="${k}" data-unita="${unitaDef}">+ Aggiungi</button>
       ${totaleIngr(righe)}
     </div>`;
@@ -468,22 +509,19 @@ async function vistaCotta(id) {
         <h3>Serbatoio acqua calda (tacche in cm)</h3>
         <div class="griglia">
           ${campo('acquaMash.taccaInizio', 'Tacca iniziale')}
-          ${campo('acquaMash.taccaFine', 'Tacca dopo mash')}
-          ${campo('acquaMash.litri', 'Litri mash')}
-          ${campo('acquaSparge.taccaFine', 'Tacca dopo sparge')}
-          ${campo('acquaSparge.litri', 'Litri sparge')}
         </div>
-        ${(() => {
-          const m = prelievo(c.acquaMash.taccaInizio, c.acquaMash.taccaFine);
-          const sp = prelievo(c.acquaMash.taccaFine, c.acquaSparge.taccaFine);
-          const righe = [];
-          if (m !== null) righe.push(`Mash da tabella: ${numIT(m, 0)} L (${numIT(c.acquaMash.taccaInizio)} → ${numIT(c.acquaMash.taccaFine)} cm)`);
-          if (sp !== null) righe.push(`Sparge da tabella: ${numIT(sp, 0)} L (${numIT(c.acquaMash.taccaFine)} → ${numIT(c.acquaSparge.taccaFine)} cm)`);
-          return righe.length ? html`<p class="totale">${righe.join(' · ')}</p>` : '';
-        })()}
+        <div class="griglia">
+          ${campo('acquaMash.litri', 'Litri mash')}
+          ${taccaCalcolata('acquaMash', 'Tacca dopo mash')}
+          ${campo('acquaSparge.litri', 'Litri sparge')}
+          ${taccaCalcolata('acquaSparge', 'Tacca dopo sparge')}
+          ${campo('acquaDip.litri', 'Litri dip hopping')}
+          ${taccaCalcolata('acquaDip', 'Tacca dopo dip')}
+        </div>
+        <p class="calc-out" id="hlt-avvisi"></p>
         <div class="calc-hlt">
           <b>Calcolatore</b> (mash, sparge, dip hopping): parto da tacca
-          <input id="hlt-da" type="number" step="any" inputmode="decimal" value="${c.acquaSparge.taccaFine ?? c.acquaMash.taccaFine ?? c.acquaMash.taccaInizio ?? ''}">
+          <input id="hlt-da" type="number" step="any" inputmode="decimal" value="${c.acquaDip.taccaFine ?? c.acquaSparge.taccaFine ?? c.acquaMash.taccaFine ?? c.acquaMash.taccaInizio ?? ''}">
           e prelevo <input id="hlt-litri" type="number" step="any" inputmode="decimal" placeholder="litri"> L
           <span id="hlt-out" class="calc-out"></span>
         </div>
@@ -571,8 +609,9 @@ async function vistaCotta(id) {
     `;
   }
 
+  ricalcolaTacche();
   disegna();
-
+  mostraTacche();
   $app.oninput = e => {
     const p = e.target.dataset.path;
     if (e.target.id === 'hlt-da' || e.target.id === 'hlt-litri') return calcolaHlt();
@@ -581,13 +620,7 @@ async function vistaCotta(id) {
     if (e.target.type === 'number') v = v === '' ? null : Number(v);
     if (e.target.type === 'date' && v === '') v = null;
     set(c, p, v);
-    // le tacche del serbatoio aggiornano i litri prelevati
-    if (/^acqua(Mash|Sparge)\.tacca/.test(p)) {
-      const m = prelievo(c.acquaMash.taccaInizio, c.acquaMash.taccaFine);
-      const sp = prelievo(c.acquaMash.taccaFine, c.acquaSparge.taccaFine);
-      if (m !== null && m >= 0) { c.acquaMash.litri = m; const el = $app.querySelector('[data-path="acquaMash.litri"]'); if (el) el.value = m; }
-      if (sp !== null && sp >= 0) { c.acquaSparge.litri = sp; const el = $app.querySelector('[data-path="acquaSparge.litri"]'); if (el) el.value = sp; }
-    }
+    if (/^acqua(Mash|Sparge|Dip)\.(litri|taccaInizio)$/.test(p)) mostraTacche();
     salvaPresto();
   };
   function calcolaHlt() {
@@ -602,8 +635,14 @@ async function vistaCotta(id) {
   $app.onchange = e => {
     const p = e.target.dataset.path;
     // ridisegna quando cambiano valori che influenzano KPI e stato
-    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|acqua(Mash|Sparge)\.tacca|fermentazione\.\d+\.(data|densita|temp))/.test(p)) {
-      const y = scrollY; disegna(); scrollTo(0, y);
+    // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
+    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|fermentazione\.\d+\.(data|densita|temp))/.test(p)) {
+      setTimeout(() => {
+        const a = document.activeElement;
+        const chiave = a && $app.contains(a) ? (a.dataset.path ? `[data-path="${a.dataset.path}"]` : a.id ? `#${a.id}` : null) : null;
+        const y = scrollY; disegna(); scrollTo(0, y);
+        if (chiave) $app.querySelector(chiave)?.focus({ preventScroll: true });
+      });
     }
   };
   $app.onclick = async e => {
@@ -625,6 +664,17 @@ async function vistaCotta(id) {
       }
       salvaPresto();
       const y = scrollY; disegna(); scrollTo(0, y);
+      if (SEZIONI_INGR.some(([s2]) => s2 === k)) $app.querySelector(`[data-path="${k}.${c[k].length - 1}.nome"]`)?.focus({ preventScroll: true });
+    } else if (t.dataset.crea) {
+      const [k, i] = t.dataset.crea.split('.');
+      const r = c[k][Number(i)];
+      const rec = await magazzino.nuovoArticolo({ nome: r.nome, categoria: categoriaDa(k, r.nome), unita: r.unita === 'g' && k !== 'malti' ? 'g' : unitaDa(k) });
+      if (!rec) return;
+      r.nome = rec.nome;
+      articoli = await magazzino.articoliRicetta();
+      salvaPresto();
+      const y = scrollY; disegna(); scrollTo(0, y);
+      toast(`${rec.nome} aggiunto al magazzino`);
     } else if (t.dataset.del) {
       const [k, i] = t.dataset.del.split('.');
       c[k].splice(Number(i), 1);
@@ -1207,7 +1257,7 @@ window.addEventListener('unhandledrejection', e => { if (/sola lettura/i.test(e.
   db.onCambio(async () => {
     await carica();
     // non ridisegnare la scheda mentre si sta scrivendo
-    if (!/^#\/(cotta|bolla|inventario)/.test(location.hash)) render();
+    if (!/^#\/(cotta|bolla|inventario|scarico)/.test(location.hash)) render();
   });
   window.addEventListener('online', () => aggiornaRete());
   window.addEventListener('offline', () => aggiornaRete());
