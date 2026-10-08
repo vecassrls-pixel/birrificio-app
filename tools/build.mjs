@@ -10,7 +10,7 @@ if (!url || !chiave) {
 }
 rmSync('dist', { recursive: true, force: true });
 mkdirSync('dist');
-for (const f of ['index.html', 'styles.css', 'manifest.webmanifest', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'js']) {
+for (const f of ['index.html', 'styles.css', 'manifest.webmanifest', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'img', 'js']) {
   cpSync(f, `dist/${f}`, { recursive: true });
 }
 writeFileSync('dist/js/config.js', `export const CONFIG = ${JSON.stringify({ supabaseUrl: url, supabaseAnonKey: chiave }, null, 2)};\n`);
