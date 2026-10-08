@@ -5,7 +5,7 @@ import * as auth from './auth.js';
 import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
-  CAMPI_COMUNI, conAdditiviDefault, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
+  CAMPI_COMUNI, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
 } from './dominio.js';
 
 const $app = document.getElementById('app');
@@ -287,7 +287,7 @@ async function vistaCotta(id) {
   const capo = g0[0];
   if (g0.length > 1) {
     c.fermentazione = registroComune(g0);
-    for (const k of ['fine', 'travaso']) if (c[k] == null) { const da = g0.find(x => x[k] != null); if (da) c[k] = JSON.parse(JSON.stringify(da[k])); }
+    for (const k of ['fine', 'travaso', 'fg']) if (c[k] == null) { const da = g0.find(x => x[k] != null); if (da) c[k] = JSON.parse(JSON.stringify(da[k])); }
     if (capo.id !== c.id) c.confezionato = JSON.parse(JSON.stringify(capo.confezionato || []));
   }
 
@@ -356,11 +356,12 @@ async function vistaCotta(id) {
 
   function disegna() {
     const s = statoCotta(c, stato.durate);
-    const a = abv(c.og, c.fg);
     const fine = c.data ? fineCotta(c, stato.durate) : null;
     const giorniTank = c.data && fine ? diffGiorni(c.data, fine) + 1 : null;
     const giornoOggi = c.data ? diffGiorni(c.data, oggiISO()) + 1 : null;
     const g = gruppo();
+    const ogLotto = g.length > 1 ? ogMedia(g.map(x => (x.id === c.id ? c : x))) : c.og;
+    const a = abv(ogLotto, c.fg);
     const litriConf = litriConfezionati(c);
     const litriGruppo = g.length > 1 ? g.reduce((t, x) => t + (Number(x.id === c.id ? c.litri : x.litri) || 0), 0) : c.litri;
     const ultimaLettura = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
@@ -375,15 +376,16 @@ async function vistaCotta(id) {
       <div class="scheda">
         <div class="barra" style="margin:0">
           <div><h1>${c.birra || 'Nuova cotta'} <span style="color:var(--muted);font-weight:400">· lotto ${c.lotto || '—'}</span></h1>
-          ${g.length > 1 ? html`<p class="totale" style="margin:2px 0">Cotta ${g.length === 2 ? 'doppia' : g.length === 3 ? 'tripla' : 'multipla'} <b>${lottoGruppo(g)}</b> in ${c.fv}: ${g.filter(x => x.id !== c.id).map((x, i) => html`${i ? ', ' : ''}<a href="#/cotta/${encodeURIComponent(x.id)}">${x.lotto}</a>`)}. Registro di fermentazione, fine in FV, travaso e confezionamento sono comuni; OG, pH e dati del giorno di cotta restano di ogni cotta.</p>` : ''}
+          ${g.length > 1 ? html`<p class="totale" style="margin:2px 0">Cotta ${g.length === 2 ? 'doppia' : g.length === 3 ? 'tripla' : 'multipla'} <b>${lottoGruppo(g)}</b> in ${c.fv}: ${g.filter(x => x.id !== c.id).map((x, i) => html`${i ? ', ' : ''}<a href="#/cotta/${encodeURIComponent(x.id)}">${x.lotto}</a>`)}. Registro di fermentazione, FG, fine in FV, travaso e confezionamento sono comuni; OG, pH e dati del giorno di cotta restano di ogni cotta. Il grado alcolico usa la media degli OG.</p>` : ''}
           <span class="chip ${s}">${STATI[s]}</span>
           ${s === 'tank' && giornoOggi > 0 ? html` <span class="totale">giorno ${giornoOggi} di ${giorniTank}</span>` : ''}
           ${c.origine ? html` <span class="totale">· ricetta da lotto ${c.origine}</span>` : ''}</div>
         </div>
         <div class="kpi">
           <div><b>${numIT(c.og)}</b>OG °P</div>
+          ${g.length > 1 ? html`<div><b>${numIT(ogLotto)}</b>OG media ${lottoGruppo(g)}</div>` : ''}
           <div><b>${numIT(c.fg ?? ultimaLettura?.densita)}</b>${c.fg ? 'FG °P' : 'ultima densità'}</div>
-          <div><b>${a ? numIT(a, 1) + '%' : '—'}</b>ABV stimato</div>
+          <div><b>${a ? numIT(a, 1) + '%' : '—'}</b>ABV stimato${g.length > 1 ? ' lotto' : ''}</div>
           <div><b>${numIT(c.litri, 0)}</b>litri cotta</div>
           <div><b>${litriConf ? numIT(litriConf, 0) : '—'}</b>litri confezionati</div>
         </div>
