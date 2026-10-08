@@ -229,3 +229,5 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 /* profilo in sola lettura: niente pulsanti di modifica, campi non modificabili */
 .lettore .solo-editori, .lettore #app button:disabled, .lettore #app a[href="#/bolla/nuova"], .lettore #app a[href="#/inventario"] { display: none !important; }
 .lettore #app input:disabled, .lettore #app select:disabled, .lettore #app textarea:disabled { opacity: 1; color: var(--text); cursor: default; }
+.tab-edit tr.escluso td { opacity: .45; }
+.tab-edit tr.escluso td:first-child { opacity: 1; }

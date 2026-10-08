@@ -4,6 +4,7 @@
 import {
   CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6,
 } from './magazzino.js';
+import { estraiTesto, leggiDdt, proponiRighe } from './bolla-pdf.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -227,6 +228,26 @@ export async function vistaBolla(id) {
   const perId = new Map(dati.articoli.map(a => [a.id, a]));
   for (const r of b.righe) if (r.articoloId && !r.nome) r.nome = perId.get(r.articoloId)?.nome || '';
   const fornitori = [...new Set(dati.bolle.map(x => x.fornitore).filter(Boolean))].sort();
+  let pdfStato = '';
+  const daPdf = () => b.righe.some(r => r.descrizione);
+
+  async function leggiPdf(file) {
+    pdfStato = 'Leggo il PDF…';
+    disegna();
+    try {
+      const ddt = leggiDdt(await estraiTesto(file));
+      if (!ddt.righe.length) throw new Error('Non ho trovato righe articolo: il PDF è una scansione o ha un formato che non conosco. Inserisci le righe a mano.');
+      b.data = ddt.data || b.data;
+      b.numero = ddt.numero || b.numero;
+      b.fornitore = ddt.fornitore || b.fornitore;
+      b.righe = proponiRighe(ddt, dati.articoli);
+      const n = b.righe.filter(r => r.includi).length;
+      pdfStato = `${file.name}: ${n} righe da caricare, ${b.righe.length - n} escluse (spese, imballi…).`;
+    } catch (ex) {
+      pdfStato = ex.message;
+    }
+    disegna();
+  }
 
   function disegna() {
     u.$app.innerHTML = html`
@@ -234,6 +255,10 @@ export async function vistaBolla(id) {
         ${esistente ? html`<button class="pericolo" id="elimina">Elimina bolla</button>` : ''}</div>
       <div class="scheda">
         <h1 style="margin-top:0">${esistente ? 'Bolla di carico' : 'Nuova bolla di carico'}</h1>
+        ${esistente ? '' : html`<div class="barra">
+          <label class="btn primario">📄 Leggi il PDF della bolla<input type="file" id="pdf" accept="application/pdf,.pdf" hidden></label>
+          <span class="totale" id="pdf-stato" style="margin:0">${pdfStato}</span>
+        </div>`}
         <div class="griglia">
           <label>Data <input type="date" data-b="data" value="${b.data || ''}"></label>
           <label style="grid-column:span 2">Fornitore <input data-b="fornitore" list="dl-forn" value="${b.fornitore || ''}"></label>
@@ -243,12 +268,14 @@ export async function vistaBolla(id) {
         <datalist id="dl-art">${dati.articoli.map(a => html`<option value="${a.nome}">`)}</datalist>
       </div>
       <div class="scheda"><h2>Righe</h2>
+        ${daPdf() ? html`<p class="totale">Controlla le righe lette dal PDF: togli la spunta a quello che non va in magazzino e correggi il nome se l'articolo esiste già con un altro nome (la descrizione del fornitore viene ricordata per le prossime bolle).</p>` : ''}
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th>Articolo</th><th style="width:130px">Categoria (se nuovo)</th><th style="width:100px">Quantità</th><th style="width:80px">Unità</th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th><th></th></tr></thead>
+          <thead><tr>${daPdf() ? html`<th title="Carica in magazzino">✓</th>` : ''}<th>Articolo</th><th style="width:130px">Categoria (se nuovo)</th><th style="width:100px">Quantità</th><th style="width:80px">Unità</th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th><th></th></tr></thead>
           <tbody>${b.righe.map((r, i) => {
             const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
-            return html`<tr>
-              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px"></td>
+            return html`<tr class="${r.includi === false ? 'escluso' : ''}">
+              ${daPdf() ? html`<td><input type="checkbox" data-r="${i}.includi" ${r.includi === false ? '' : 'checked'} style="width:auto;min-height:auto"></td>` : ''}
+              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px">${r.descrizione ? html`<div class="totale" style="margin:2px 0 0">${r.descrizione}${art || r.includi === false ? '' : ' · articolo nuovo'}</div>` : ''}</td>
               <td>${art ? html`<span class="totale">${CATEGORIE[art.categoria]}</span>` : html`<select data-r="${i}.categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (r.categoria || 'malto') ? 'selected' : ''}>${v}</option>`)}</select>`}</td>
               <td><input data-r="${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
               <td><select data-r="${i}.unita">${UNITA.map(x => html`<option ${x === (r.unita || art?.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></td>
@@ -265,10 +292,12 @@ export async function vistaBolla(id) {
   disegna();
   u.$app.oninput = u.$app.onchange = e => {
     const t = e.target;
+    if (t.id === 'pdf' && e.type === 'change' && t.files[0]) return leggiPdf(t.files[0]);
     if (t.dataset.b) b[t.dataset.b] = t.value;
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
-      b.righe[i][k] = t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
+      b.righe[i][k] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
+      if (k === 'includi' && e.type === 'change') disegna();
       // nome scelto: mostra categoria e unità dell'articolo esistente
       if (k === 'nome' && e.type === 'change') {
         const art = dati.articoli.find(a => a.nome.toLowerCase() === t.value.trim().toLowerCase());
@@ -286,9 +315,11 @@ export async function vistaBolla(id) {
       await u.db.elimina(esistente.id);
       location.hash = '#/materie-prime';
     } else if (t.id === 'salva') {
-      const righe = b.righe.filter(r => String(r.nome || '').trim() && Number(r.qta) > 0);
+      const righe = b.righe.filter(r => r.includi !== false && String(r.nome || '').trim() && Number(r.qta) > 0);
       if (!b.data || !righe.length) return u.toast('Servono la data e almeno una riga con articolo e quantità');
-      const nuovi = [];
+      const doppia = !esistente && b.numero && dati.bolle.find(x => x.numero === b.numero && (x.fornitore || '') === (b.fornitore || ''));
+      if (doppia && !(await u.chiedi(`La bolla n° ${b.numero} ${b.fornitore || ''} è già stata caricata il ${u.dataIT(doppia.data)}. Caricarla di nuovo?`, 'Carica lo stesso'))) return;
+      const nuovi = [], aggiornati = new Map();
       const out = righe.map(r => {
         const nome = String(r.nome).trim();
         let art = dati.articoli.find(a => a.nome.toLowerCase() === nome.toLowerCase()) || nuovi.find(a => a.nome.toLowerCase() === nome.toLowerCase());
@@ -296,9 +327,14 @@ export async function vistaBolla(id) {
           art = { tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: r.categoria || 'malto', unita: r.unita || 'kg', scortaMin: 0, alias: [], creato: [b.data, u.oggiISO()].sort()[0] };
           nuovi.push(art);
         }
-        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '' };
+        // la descrizione del fornitore diventa un alias: la prossima bolla trova l'articolo da sola
+        if (r.descrizione && !(art.alias || []).includes(r.descrizione)) {
+          art.alias = [...(art.alias || []), r.descrizione];
+          if (!nuovi.includes(art)) aggiornati.set(art.id, art);
+        }
+        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', ...(r.descrizione ? { descrizione: r.descrizione } : {}) };
       });
-      if (nuovi.length) await u.db.salvaMolti(nuovi);
+      if (nuovi.length || aggiornati.size) await u.db.salvaMolti([...nuovi, ...aggiornati.values()].map(({ aggiornato: _a, ...a }) => a));
       await u.db.salva({ ...b, id: b.id || u.db.nuovoId('bolla'), righe: out });
       u.toast(`Bolla salvata${nuovi.length ? ` · ${nuovi.length} articoli nuovi` : ''}`);
       location.hash = '#/materie-prime';
