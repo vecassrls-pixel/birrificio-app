@@ -2,7 +2,7 @@
 // raggruppati per settimana, mese o anno. Si contano solo le cotte già fatte (data fino a oggi).
 // Gli ingredienti con nomi diversi ma collegati allo stesso articolo del magazzino (nome o alias) si sommano.
 
-import { categoriaDa, chiaveNome, converti, trovaArticolo } from './magazzino.js';
+import { categoriaDa, chiaveNome, converti, lievitoRecuperato, trovaArticolo } from './magazzino.js';
 
 let u; // { $app, html, db, stato, dataIT, numIT, oggiISO }
 export function init(strumenti) { u = strumenti; }
@@ -53,7 +53,7 @@ export function movimentiStatistiche(cotte, articoli, oggi) {
     }
     for (const sez of SEZIONI) {
       for (const r of c[sez] || []) {
-        if (!r.nome || !(Number(r.qta) > 0)) continue;
+        if (!r.nome || !(Number(r.qta) > 0) || lievitoRecuperato(sez, r)) continue; // il recuperato non è un consumo
         const art = trovaArticolo(articoli, r.nome);
         const cat = art?.categoria || categoriaDa(sez, r.nome);
         if (!GRUPPI_INGR.some(([k]) => k === cat)) continue;

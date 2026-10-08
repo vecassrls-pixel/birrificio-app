@@ -398,12 +398,13 @@ async function vistaCotta(id) {
   function tabIngredienti(k, titolo, unitaDef) {
     const righe = c[k];
     const extra = k === 'luppoli';
+    const lievito = k === 'lievito';
     // prima le voci della categoria della sezione, poi le altre
     const voci = [...articoli].sort((a, b) => (CAT_SEZIONE[k].includes(b.categoria) - CAT_SEZIONE[k].includes(a.categoria)) || a.nome.localeCompare(b.nome, 'it'));
     return html`<div class="scheda">
       <h2>${titolo}</h2>
       <div class="scroll-x"><table class="tab-edit">
-        <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:90px">Min. / giorno</th><th style="width:110px">Uso</th>` : ''}<th></th></tr></thead>
+        <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:90px">Min. / giorno</th><th style="width:110px">Uso</th>` : ''}${lievito ? html`<th style="width:110px" title="Lievito recuperato da un'altra birra: non si scala dal magazzino">Recuperato</th>` : ''}<th></th></tr></thead>
         <tbody>${righe.map((r, i) => html`<tr>
           <td><input data-path="${k}.${i}.nome" value="${r.nome || ''}" list="dl-art-${k}" placeholder="scegli dal magazzino" style="min-width:140px">
             ${r.nome && !trovaArticolo(articoli, r.nome) ? html`<button class="piccolo nuovo-art" data-crea="${k}.${i}" title="Non è nel magazzino">+ Nuovo in magazzino</button>` : ''}</td>
@@ -413,6 +414,7 @@ async function vistaCotta(id) {
             ? html`<input data-path="${k}.${i}.giorno" type="number" min="1" step="1" inputmode="numeric" placeholder="giorno" title="Giorno del dry hop (1 = giorno di cotta)" value="${r.giorno ?? ''}">${c.data && r.giorno > 0 ? html`<span class="totale" style="display:block;font-size:.75rem">${dataIT(addGiorni(c.data, r.giorno - 1))}</span>` : ''}`
             : html`<input data-path="${k}.${i}.minuti" type="number" step="any" placeholder="min" value="${r.minuti ?? ''}">`}</td>
           <td><select data-path="${k}.${i}.uso">${['', 'mash hop', 'first wort', 'bollitura', 'whirlpool', 'dip hop', 'dry hop'].map(u => html`<option value="${u}" ${u === (r.uso || '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>` : ''}
+          ${lievito ? html`<td><label class="spunta" style="min-height:34px"><input type="checkbox" data-path="${k}.${i}.recuperato" ${r.recuperato ? 'checked' : ''}> da altra birra</label></td>` : ''}
           <td class="az"><button class="piccolo" data-del="${k}.${i}" title="Rimuovi">✕</button></td>
         </tr>`)}</tbody>
       </table></div>

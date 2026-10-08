@@ -86,6 +86,10 @@ export function dataUscita(c, sezione, r) {
   return c.data;
 }
 
+// Lievito recuperato da un'altra cotta: spunta nella scheda (o "recuperato" nel nome, schede vecchie).
+// Non esce dal magazzino.
+export const lievitoRecuperato = (sezione, r) => sezione === 'lievito' && (!!r.recuperato || /recuperat|recupero/i.test(r.nome || ''));
+
 // Tutti gli scarichi delle cotte: [{ articolo|null, nome, sezione, qta, unita, data, cotta }]
 export function scarichiCotte(cotte, articoli) {
   const out = [];
@@ -93,7 +97,7 @@ export function scarichiCotte(cotte, articoli) {
     if (!c.data || c.eliminato) continue;
     for (const sez of SEZIONI) {
       for (const r of c[sez] || []) {
-        if (!r.nome || !(Number(r.qta) > 0)) continue;
+        if (!r.nome || !(Number(r.qta) > 0) || lievitoRecuperato(sez, r)) continue;
         // nelle schede l'acido lattico è scritto in "g" ma sono ml
         const unita = /acido/i.test(r.nome) && r.unita === 'g' ? 'ml' : r.unita || '';
         out.push({ articolo: trovaArticolo(articoli, r.nome), nome: r.nome, sezione: /acido/i.test(r.nome) ? 'acido' : sez, qta: Number(r.qta), unita, data: dataUscita(c, sez, r), cotta: c });
