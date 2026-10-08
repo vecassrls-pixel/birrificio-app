@@ -1,0 +1,15 @@
+[build]
+  command = "node tools/build.mjs"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# niente cache sul service worker e sulla configurazione, così gli aggiornamenti arrivano subito
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "same-origin"

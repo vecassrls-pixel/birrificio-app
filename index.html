@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Produzione Birrificio</title>
+  <meta name="description" content="Schede cotta e planning dei fermentatori, funziona anche offline.">
+  <meta name="theme-color" content="#1c1917">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/cotte">🍺 Produzione</a>
+    <nav>
+      <a href="#/cotte" data-tab="cotte">Cotte</a>
+      <a href="#/planning" data-tab="planning">Planning</a>
+      <a href="#/impostazioni" data-tab="impostazioni">Impostazioni</a>
+    </nav>
+    <span id="rete" class="rete" title="Stato connessione e sincronizzazione"></span>
+  </header>
+  <main id="app"><p class="vuoto">Caricamento…</p></main>
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
