@@ -193,6 +193,7 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 .calc-hlt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 10px; background: var(--surface-2); border-radius: 8px; font-size: .9rem; }
 .calc-hlt input { width: 90px; min-height: 34px; }
 .calc-out { font-weight: 600; color: var(--accent); }
+input.calcolato { background: transparent; border-style: dashed; font-weight: 600; color: var(--accent); }
 .accesso { max-width: 400px; margin: 8vh auto 0; }
 .errore { color: var(--warn); min-height: 1.2em; margin: 8px 0 0; }
 [hidden] { display: none !important; }
@@ -227,7 +228,12 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 @media print { .s6 { padding: 0; } .s6-testa img { height: 44px; } .tab-s6 { font-size: 10px; } .tab-s6 th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
 /* profilo in sola lettura: niente pulsanti di modifica, campi non modificabili */
-.lettore .solo-editori, .lettore #app button:disabled, .lettore #app a[href="#/bolla/nuova"], .lettore #app a[href="#/inventario"] { display: none !important; }
+.lettore .solo-editori, .lettore #app button:disabled, .lettore #app a[href="#/bolla/nuova"], .lettore #app a[href="#/inventario"], .lettore #app a[href="#/scarico/nuovo"] { display: none !important; }
 .lettore #app input:disabled, .lettore #app select:disabled, .lettore #app textarea:disabled { opacity: 1; color: var(--text); cursor: default; }
 .tab-edit tr.escluso td { opacity: .45; }
 .tab-edit tr.escluso td:first-child { opacity: 1; }
+/* inventario: materie prime a zero nascoste (le quantità scritte restano) */
+.senza-zero tr.zero, .senza-zero .scheda.tutti-zero { display: none; }
+label.spunta { display: flex; flex-direction: row; align-items: center; gap: 6px; min-height: 44px; }
+label.spunta input { width: auto; min-height: auto; }
+.tab-edit .nuovo-art { display: block; margin-top: 2px; font-size: .75rem; }
