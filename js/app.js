@@ -407,7 +407,7 @@ async function vistaCotta(id) {
           <td><input data-path="${k}.${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
           <td><select data-path="${k}.${i}.unita">${['kg', 'g', 'L', 'ml', ''].map(u => html`<option value="${u}" ${u === (r.unita ?? '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>
           ${extra ? html`<td><input data-path="${k}.${i}.minuti" type="number" step="any" value="${r.minuti ?? ''}"></td>
-          <td><select data-path="${k}.${i}.uso">${['', 'bollitura', 'whirlpool', 'dry hop'].map(u => html`<option value="${u}" ${u === (r.uso || '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>` : ''}
+          <td><select data-path="${k}.${i}.uso">${['', 'mash hop', 'first wort', 'bollitura', 'whirlpool', 'dry hop'].map(u => html`<option value="${u}" ${u === (r.uso || '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>` : ''}
           <td class="az"><button class="piccolo" data-del="${k}.${i}" title="Rimuovi">✕</button></td>
         </tr>`)}</tbody>
       </table></div>

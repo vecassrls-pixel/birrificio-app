@@ -64,7 +64,7 @@ export async function scaricaLetture(proxy, batchId) {
 }
 
 // ---------- conversione ----------
-const USO_LUPPOLO = { Boil: 'bollitura', 'Dry Hop': 'dry hop', Aroma: 'whirlpool', Whirlpool: 'whirlpool', 'First Wort': 'bollitura', Mash: '' };
+const USO_LUPPOLO = { Boil: 'bollitura', 'Dry Hop': 'dry hop', Aroma: 'whirlpool', Whirlpool: 'whirlpool', 'First Wort': 'first wort', Mash: 'mash hop' };
 
 export function ricettaDaBatch(b) {
   const r = b.recipe || {};
