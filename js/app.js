@@ -4,6 +4,7 @@ import * as bf from './brewfather.js';
 import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
 import * as magazzino from './vista-magazzino.js';
+import * as statistiche from './vista-statistiche.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
 import {
@@ -50,6 +51,7 @@ function chiedi(msg, ok = 'Conferma') {
 // ---------- dati in memoria ----------
 const stato = { cotte: [], fv: [], durate: new Map() };
 magazzino.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
+statistiche.init({ $app, html, db, stato, dataIT, numIT, oggiISO });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
@@ -124,6 +126,7 @@ const routes = [
   [/^#\/inventario$/, () => magazzino.vistaInventario()],
   [/^#\/scarico\/(.+)$/, id => magazzino.vistaScarico(id)],
   [/^#\/registro-s6$/, () => magazzino.vistaRegistroS6()],
+  [/^#\/statistiche$/, () => statistiche.vistaStatistiche()],
   [/^#\/impostazioni$/, vistaImpostazioni],
 ];
 let pulizia = null;
@@ -1230,7 +1233,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '#q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '#st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

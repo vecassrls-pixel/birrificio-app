@@ -237,3 +237,10 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 label.spunta { display: flex; flex-direction: row; align-items: center; gap: 6px; min-height: 44px; }
 label.spunta input { width: auto; min-height: auto; }
 .tab-edit .nuovo-art { display: block; margin-top: 2px; font-size: .75rem; }
+/* statistiche */
+label.in-linea { display: flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+label.in-linea select { width: auto; }
+.tab-stat tr[data-periodo] { cursor: pointer; }
+.tab-stat tr[data-periodo]:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tab-stat tr.scelto td { background: color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 600; }
+.barra-stat { display: block; height: 10px; border-radius: 3px; background: var(--accent); min-width: 2px; }
