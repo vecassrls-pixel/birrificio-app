@@ -393,6 +393,16 @@ async function vistaCotta(id) {
   }
   const taccaCalcolata = (k, etichetta) => html`<label>${etichetta}<input id="tacca-${k}" class="calcolato" readonly tabindex="-1" value="${c[k].taccaFine == null ? '' : numIT(c[k].taccaFine)}" placeholder="—"></label>`;
 
+  // Registro di fermentazione: di default solo la prima riga, l'ultima, oggi, le righe aggiunte a mano
+  // e quelle in cui cambia qualcosa (temperatura) o c'è una misura (°P, pH, psi, nota, spurgo, bubbling).
+  let fermTutte = false;
+  function rigaFermUtile(i) {
+    const e = c.fermentazione[i], prima = c.fermentazione[i - 1];
+    const pieno = v => v !== null && v !== undefined && v !== '';
+    return i === 0 || i === c.fermentazione.length - 1 || e.manuale || e.data === oggiISO()
+      || pieno(e.densita) || pieno(e.ph) || pieno(e.psi) || !!e.nota || e.spurgo || e.bubbling
+      || Number(e.temp ?? NaN) !== Number(prima?.temp ?? NaN) && (pieno(e.temp) || pieno(prima?.temp));
+  }
   const CAT_SEZIONE = { malti: ['malto', 'zucchero'], luppoli: ['luppolo'], lievito: ['lievito'], sali: ['sale', 'coadiuvante', 'aggiunta', 'spezia'] };
   const fmtGiac = a => `${CATEGORIE[a.categoria] || ''} · in magazzino ${numIT(a.giacenza, a.unita === 'kg' || a.unita === 'L' ? 1 : 0)} ${a.unita}`;
   function tabIngredienti(k, titolo, unitaDef) {
@@ -565,7 +575,7 @@ async function vistaCotta(id) {
         <h2>Fermentazione</h2>
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
-          <tbody>${c.fermentazione.map((e, i) => html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
+          <tbody>${c.fermentazione.map((e, i) => (!fermTutte && !rigaFermUtile(i) ? '' : html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
             <td class="num">${c.data && e.data ? diffGiorni(c.data, e.data) + 1 : e.giorno || ''}</td>
             <td><input data-path="fermentazione.${i}.data" type="date" value="${e.data || ''}"></td>
             <td><input data-path="fermentazione.${i}.temp" type="number" step="any" inputmode="decimal" value="${e.temp ?? ''}" style="min-width:60px"></td>
@@ -576,11 +586,12 @@ async function vistaCotta(id) {
             <td><input type="checkbox" data-path="fermentazione.${i}.bubbling" ${e.bubbling ? 'checked' : ''} title="Bubbling" style="width:auto;min-height:auto"></td>
             <td><input data-path="fermentazione.${i}.nota" value="${e.nota || ''}" style="min-width:120px"></td>
             <td class="az"><button class="piccolo" data-del="fermentazione.${i}" title="Rimuovi">✕</button></td>
-          </tr>`)}</tbody>
+          </tr>`))}</tbody>
         </table></div>
         <div class="barra" style="margin-top:8px">
           <button class="piccolo primario" id="lettura-oggi">+ Lettura di oggi</button>
           <button class="piccolo" data-add="fermentazione">+ Riga</button>
+          ${(() => { const n = c.fermentazione.filter((_, i) => !rigaFermUtile(i)).length; return n ? html`<span class="spazio"></span><button class="piccolo" id="ferm-tutte">${fermTutte ? 'Mostra solo i cambiamenti' : `Mostra tutti i giorni (${n} uguali nascosti)`}</button>` : ''; })()}
         </div>
       </div>
 
@@ -668,7 +679,7 @@ async function vistaCotta(id) {
       const k = t.dataset.add;
       if (k === 'fermentazione') {
         const last = c.fermentazione[c.fermentazione.length - 1];
-        c.fermentazione.push({ data: last?.data ? addGiorni(last.data, 1) : c.data || oggiISO(), temp: last?.temp ?? null });
+        c.fermentazione.push({ data: last?.data ? addGiorni(last.data, 1) : c.data || oggiISO(), temp: last?.temp ?? null, manuale: true });
       } else if (k === 'acido') {
         const fase = t.dataset.preset;
         c.acido.push({ fase, data: fase === 'ammostamento' || fase === 'dip hopping' ? c.data || oggiISO() : oggiISO(), ml: null, phPrima: null, phDopo: null, nota: '' });
@@ -696,12 +707,15 @@ async function vistaCotta(id) {
       c[k].splice(Number(i), 1);
       salvaPresto();
       const y = scrollY; disegna(); scrollTo(0, y);
+    } else if (t.id === 'ferm-tutte') {
+      fermTutte = !fermTutte;
+      const y = scrollY; disegna(); scrollTo(0, y);
     } else if (t.id === 'lettura-oggi') {
       const oggi = oggiISO();
       let e2 = c.fermentazione.find(x => x.data === oggi);
       if (!e2) {
         const prec = [...c.fermentazione].filter(x => x.data < oggi).pop();
-        e2 = { data: oggi, temp: prec?.temp ?? null };
+        e2 = { data: oggi, temp: prec?.temp ?? null, manuale: true };
         c.fermentazione.push(e2);
         c.fermentazione.sort((a, b) => (a.data || '').localeCompare(b.data || ''));
       }
@@ -1236,7 +1250,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '#st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '#ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;
