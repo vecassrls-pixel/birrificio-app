@@ -786,6 +786,7 @@ function vistaPlanning() {
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
+      <span><span class="g-eta" style="position:static;padding:0 4px">12</span> = giorni dalla cotta, sul giorno di oggi</span>
     </div>
     ${conf.length ? html`<div class="scheda avviso"><h2>⚠ ${conf.length} conflitt${conf.length === 1 ? 'o' : 'i'}</h2>
       ${conf.map(x => html`<div>${x.fv}: <a href="#/cotta/${encodeURIComponent(x.a.id)}">${x.a.birra} ${x.a.lotto}</a> (fino al ${dataIT(x.fineA)}) e <a href="#/cotta/${encodeURIComponent(x.b.id)}">${x.b.birra} ${x.b.lotto}</a> (dal ${dataIT(x.inizioB)})</div>`)}
@@ -818,7 +819,9 @@ function vistaPlanning() {
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
               title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)}">
-              <b>${c0.birra}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span></a>`;
+              <b>${c0.birra}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span>
+              ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
+                ? html`<span class="g-eta" style="left:${diffGiorni(plan.inizio, oggi) * W - left - 1}px;width:${W}px" title="Cotta del ${dataIT(c0.data)}: ${diffGiorni(c0.data, oggi)} giorni fa">${diffGiorni(c0.data, oggi)}</span>` : ''}</a>`;
           })}
         </div></div>`)}
     </div></div>

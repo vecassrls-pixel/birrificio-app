@@ -153,6 +153,7 @@ label > input, label > select, label > textarea { margin-top: 3px; }
 .g-bar { background: var(--f-fermentazione); }
 .g-bar.pianificata { border: 2px dashed rgb(28 25 23 / .55); }
 .g-bar.confezionata, .g-bar.chiusa { opacity: .5; }
+.g-eta { position: absolute; bottom: 2px; text-align: center; font-size: .7rem; font-weight: 800; line-height: 1.3; color: #fff; background: #1c1917; border-radius: 4px; pointer-events: none; }
 .g-bar.conflitto { outline: 3px solid var(--warn); outline-offset: 1px; }
 .legenda { display: flex; flex-wrap: wrap; gap: 10px; font-size: .8rem; color: var(--muted); margin: 8px 0; }
 .avviso { border-left: 4px solid var(--warn); }
