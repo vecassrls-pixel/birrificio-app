@@ -2,7 +2,7 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, unisciArticoli,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe } from './bolla-pdf.js';
 
@@ -203,6 +203,12 @@ export async function vistaArticolo(id) {
       </div>
       <div class="barra" style="margin-top:12px;margin-bottom:0"><span class="spazio"></span><button class="primario">Salva</button></div>
     </form>
+    ${dati.articoli.length > 1 ? html`<div class="scheda solo-editori"><h2>Unisci un doppione</h2>
+      <p class="totale">Se lo stesso prodotto è stato creato due volte con nomi diversi: scegli il doppione, le sue bolle, inventari e scarichi passano a <b>${a.nome}</b>, il suo nome diventa un alias e il doppione viene eliminato.</p>
+      <div class="barra" style="margin:0"><select id="doppione" style="flex:1;min-width:200px"><option value="">Scegli il doppione…</option>
+        ${[...dati.articoli].filter(x => x.id !== a.id).sort((x, y) => (y.categoria === a.categoria) - (x.categoria === a.categoria) || x.nome.localeCompare(y.nome, 'it'))
+          .map(x => html`<option value="${x.id}">${x.nome} (${CATEGORIE[x.categoria] || ''}, ${x.unita})</option>`)}</select>
+        <button id="unisci">Unisci in ${a.nome}</button></div></div>` : ''}
     ${g.lotti.some(l => l.lotto || l.scadenza) ? u.html`<div class="scheda"><h2>Lotti in magazzino</h2>
       <p class="totale">Stima: si assume che le cotte usino prima la merce caricata da più tempo.</p>
       <div class="scroll-x"><table class="tab-mag">
@@ -232,6 +238,18 @@ export async function vistaArticolo(id) {
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
     });
     u.toast('Articolo salvato');
+    vistaArticolo(id);
+  };
+  const $unisci = document.getElementById('unisci');
+  if ($unisci) $unisci.onclick = async () => {
+    const togli = dati.articoli.find(x => x.id === document.getElementById('doppione').value);
+    if (!togli) return u.toast('Scegli prima il doppione');
+    if (!(await u.chiedi(`Unire ${togli.nome} in ${a.nome}? ${togli.nome} viene eliminato e tutti i suoi movimenti passano a ${a.nome}.`, 'Unisci'))) return;
+    const r = unisciArticoli(a, togli, dati);
+    if (r.errore) return u.toast(r.errore);
+    await u.db.salvaMolti(r.modificati.map(({ aggiornato: _a, ...x }) => x)); // ora nuova: vince nella sincronizzazione
+    await u.db.elimina(togli.id);
+    u.toast(`${togli.nome} unito in ${a.nome}`);
     vistaArticolo(id);
   };
   document.getElementById('elimina').onclick = async () => {
