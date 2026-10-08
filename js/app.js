@@ -176,7 +176,7 @@ function vistaCotte() {
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta" href="#/cotta/${encodeURIComponent(c.id)}">
           <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<br><small class="totale">${lotti.get(c.id)}</small>` : ''}</span>
-          <span class="birra">${c.birra || 'Senza nome'}${s === 'pianificata' && c.materiePrime ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
+          <span class="birra">${c.birra || 'Senza nome'}${c.materiePrime && ['pianificata', 'tank'].includes(s) ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
           <span class="chip ${s}">${STATI[s]}</span>
           <span class="dett">${dataIT(c.data)}${c.stile ? ` · ${c.stile}` : ''} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
         </a>`) : html`<p class="vuoto">Nessuna cotta trovata.</p>`}
@@ -719,7 +719,7 @@ function esportaPlanning() {
       if (scritti.has(chiave)) continue;
       scritti.add(chiave);
       const inizio = p.da < da ? da : p.da;
-      const mp = statoCotta(c, stato.durate) === 'pianificata' && g.every(x => x.materiePrime);
+      const mp = ['pianificata', 'tank'].includes(statoCotta(c, stato.durate)) && g.some(x => x.materiePrime);
       const pronti = simboliPronti({ ...c, lievitoOk: g.every(x => x.lievitoOk), etichetteOk: g.every(x => x.etichetteOk) });
       riga[diffGiorni(da, inizio) + 1] = { v: `${p.travaso ? '↳ ' : ''}${lottoGruppo(g) || c.lotto || ''} ${c.birra || ''}${pronti}`.trim(), grassetto: true, sfondo: mp ? COLORI_XLSX.mp : riga[diffGiorni(da, inizio) + 1]?.sfondo };
     }
@@ -854,7 +854,7 @@ function vistaPlanning() {
             const left = Math.max(0, diffGiorni(plan.inizio, b.da)) * W;
             const right = (Math.min(plan.giorni - 1, diffGiorni(plan.inizio, b.a)) + 1) * W;
             const lotti = (b.travaso ? '↳ ' : '') + (b.cotte.length > 1 ? b.cotte.map(c => c.numero).join('/') : c0.lotto || '');
-            const mp = s === 'pianificata' && b.cotte.every(c => c.materiePrime);
+            const mp = ['pianificata', 'tank'].includes(s) && b.cotte.some(c => c.materiePrime);
             const conflitto = b.cotte.some(c => inConflitto.has(c.id));
             // sfondo a fasi: arancione fermentazione, viola DH, celeste maturazione
             const da = b.da < plan.inizio ? plan.inizio : b.da, a = b.a > fineVista ? fineVista : b.a;
