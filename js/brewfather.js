@@ -70,6 +70,7 @@ export function ricettaDaBatch(b) {
   const r = b.recipe || {};
   const unita = u => ({ g: 'g', kg: 'kg', ml: 'ml', l: 'L', pkg: '' }[(u || '').toLowerCase()] ?? (u || ''));
   return {
+    ...(r.style?.name ? { stile: r.style.name } : {}),
     malti: (r.fermentables || []).map(f => ({ nome: f.name, qta: num(f.amount), unita: 'kg' })),
     luppoli: (r.hops || []).map(h => ({
       nome: h.name, qta: num(h.amount), unita: 'g',
@@ -188,7 +189,7 @@ export function cottaCorrispondente(cotte, b) {
 // Restano quelli dell'app: FV, tacche, confezionamento, note, profilo/letture già scritti.
 export function uniscaManuale(pianificata, daBf) {
   const c = JSON.parse(JSON.stringify(pianificata));
-  for (const k of ['birra', 'numero', 'anno', 'lotto', 'malti', 'luppoli', 'lievito', 'sali', 'og', 'fg', 'litri', 'phMash', 'brewfather']) {
+  for (const k of ['birra', 'stile', 'numero', 'anno', 'lotto', 'malti', 'luppoli', 'lievito', 'sali', 'og', 'fg', 'litri', 'phMash', 'brewfather']) {
     if (daBf[k] !== undefined && daBf[k] !== null) c[k] = daBf[k];
   }
   if (daBf.data && c.data && daBf.data !== c.data) {

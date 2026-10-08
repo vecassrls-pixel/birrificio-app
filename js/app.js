@@ -52,6 +52,14 @@ async function carica() {
   stato.durate = durateTipiche(stato.cotte);
 }
 const birreNote = () => [...new Set(stato.cotte.map(c => nomeBirra(c.birra)).filter(Boolean))].sort();
+// Stile: quello già usato per la stessa birra, e la lista per i suggerimenti
+const STILI_COMUNI = ['American IPA', 'Double IPA', 'New England IPA', 'American Pale Ale', 'Session IPA', 'Pilsner', 'Helles', 'Lager',
+  'Blanche', 'Weizen', 'Saison', 'Belgian Blonde', 'Belgian Dubbel', 'Belgian Tripel', 'Belgian Strong Dark Ale', 'Stout', 'Imperial Stout',
+  'Porter', 'Red Ale', 'Amber Ale', 'Bitter', 'Sour', 'Barley Wine'];
+const stileDi = birra => stato.cotte
+  .filter(c => c.stile && nomeBirra(c.birra) === nomeBirra(birra))
+  .sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0]?.stile || '';
+const stiliNoti = () => [...new Set([...stato.cotte.map(c => c.stile).filter(Boolean), ...STILI_COMUNI])].sort((a, b) => a.localeCompare(b));
 const ultimaCottaDi = birra => stato.cotte
   .filter(c => nomeBirra(c.birra) === nomeBirra(birra) && (c.malti || []).length)
   .sort((a, b) => b.data.localeCompare(a.data))[0];
@@ -165,7 +173,7 @@ function vistaCotte() {
           <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<br><small class="totale">${lotti.get(c.id)}</small>` : ''}</span>
           <span class="birra">${c.birra || 'Senza nome'}${s === 'pianificata' && c.materiePrime ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}</span>
           <span class="chip ${s}">${STATI[s]}</span>
-          <span class="dett">${dataIT(c.data)} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
+          <span class="dett">${dataIT(c.data)}${c.stile ? ` · ${c.stile}` : ''} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
         </a>`) : html`<p class="vuoto">Nessuna cotta trovata.</p>`}
     </div>
     ${lista.length > filtri.limite ? html`<p style="text-align:center"><button id="altre">Mostra altre (${lista.length - filtri.limite})</button></p>` : ''}
@@ -254,6 +262,7 @@ function dialogNuovaCotta(pre = {}) {
     if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
     if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
     if (fd.get('materiePrime')) base.materiePrime = true;
+    if (!base.stile && stileDi(birra)) base.stile = stileDi(birra);
     const rec = await db.salva({ ...base, birra, id: db.nuovoId('cotta') });
     location.hash = `#/cotta/${encodeURIComponent(rec.id)}`;
   });
@@ -395,6 +404,7 @@ async function vistaCotta(id) {
         <h2>Dati cotta</h2>
         <div class="griglia">
           <label style="grid-column:span 2">Birra <input data-path="birra" list="dl-birre2" value="${c.birra || ''}"></label>
+          <label style="grid-column:span 2">Stile <input data-path="stile" list="dl-stili" value="${c.stile || ''}" placeholder="${stileDi(c.birra) || 'es. American IPA'}"></label>
           ${campo('numero', 'Lotto n°')}
           ${campo('anno', 'Anno')}
           ${campo('data', 'Data cotta', 'date')}
@@ -408,6 +418,7 @@ async function vistaCotta(id) {
           ${campo('phMash', 'pH')}
         </div>
         <label style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''} style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
+        <datalist id="dl-stili">${stiliNoti().map(x => html`<option value="${x}">`)}</datalist>
         <datalist id="dl-birre2">${birreNote().map(b => html`<option value="${b}">`)}</datalist>
         ${(() => {
           if (c.brewfather) return html`<p class="totale">Collegata a Brewfather${c.brewfather.stato ? ` (stato: ${c.brewfather.stato})` : ''}.</p>`;
