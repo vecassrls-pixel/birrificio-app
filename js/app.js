@@ -739,6 +739,14 @@ function esportaPlanning() {
   setTimeout(() => URL.revokeObjectURL(link.href), 5000);
 }
 
+// anni con cotte, più quello prossimo per pianificare
+function anniPlanning() {
+  const anni = stato.cotte.map(c => Number((c.data || '').slice(0, 4))).filter(Boolean);
+  const ora = Number(oggiISO().slice(0, 4));
+  const da = Math.min(ora, ...anni), a = Math.max(ora + 1, ...anni);
+  return Array.from({ length: a - da + 1 }, (_, i) => a - i);
+}
+
 function vistaPlanning() {
   if (!plan.inizio) plan.inizio = addGiorni(oggiISO(), -21);
   const fineVista = addGiorni(plan.inizio, plan.giorni - 1);
@@ -788,6 +796,10 @@ function vistaPlanning() {
     <div class="barra">
       <h1 style="margin:0">Planning fermentatori</h1>
       <span class="spazio"></span>
+      <select id="anno" title="Vedi tutto un anno" style="width:auto">
+        <option value="">Anno…</option>
+        ${anniPlanning().map(y => html`<option value="${y}" ${plan.giorni > 300 && plan.inizio === `${y}-01-01` ? 'selected' : ''}>${y}</option>`)}
+      </select>
       <button id="prec">◀</button><button id="oggi">Oggi</button><button id="succ">▶</button>
       <button id="esporta">Esporta Excel</button>
       <button class="primario" id="pianifica">+ Pianifica cotta</button>
@@ -848,7 +860,14 @@ function vistaPlanning() {
   `;
   document.getElementById('prec').onclick = () => { plan.inizio = addGiorni(plan.inizio, -28); vistaPlanning(); };
   document.getElementById('succ').onclick = () => { plan.inizio = addGiorni(plan.inizio, 28); vistaPlanning(); };
-  document.getElementById('oggi').onclick = () => { plan.inizio = addGiorni(oggiISO(), -21); vistaPlanning(); scrollOggi(); };
+  document.getElementById('oggi').onclick = () => { plan.inizio = addGiorni(oggiISO(), -21); plan.giorni = 84; vistaPlanning(); scrollOggi(); };
+  document.getElementById('anno').onchange = e => {
+    const y = Number(e.target.value);
+    if (!y) return;
+    plan.inizio = `${y}-01-01`;
+    plan.giorni = diffGiorni(`${y}-01-01`, `${y + 1}-01-01`);
+    vistaPlanning();
+  };
   document.getElementById('pianifica').onclick = () => dialogNuovaCotta({ titolo: 'Pianifica cotta', data: addGiorni(oggiISO(), 7) });
   document.getElementById('esporta').onclick = esportaPlanning;
   scrollOggi();
