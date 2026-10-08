@@ -10,7 +10,8 @@ import sys
 src, dst = sys.argv[1], sys.argv[2]
 cotte = json.load(open(src))["cotte"]
 ora = "2026-10-08T00:00:00Z"
-righe = [{"id": f"fv-FV{i}", "tipo": "fv", "nome": f"FV{i}", "capacita": None} for i in range(1, 11)]
+# FV6 e FV7 non sono isobarici: a fine maturazione si travasa in un altro FV
+righe = [{"id": f"fv-FV{i}", "tipo": "fv", "nome": f"FV{i}", "capacita": None, "isobarico": i not in (6, 7)} for i in range(1, 11)]
 righe += [{k: v for k, v in c.items() if k != "stato"} for c in cotte]
 
 parti = range(0, len(righe), 50)

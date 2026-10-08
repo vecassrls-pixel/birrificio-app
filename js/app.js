@@ -5,7 +5,7 @@ import * as auth from './auth.js';
 import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
-  fvLiberi, litriConfezionati, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
+  fvLiberi, litriConfezionati, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
 } from './dominio.js';
 
 const $app = document.getElementById('app');
@@ -80,7 +80,7 @@ async function primoAvvio() {
   // con il cloud: cotte e fermentatori arrivano dal database, niente dati di partenza locali
   if (auth.configurato()) { await db.meta('inizializzato', true); return; }
   if (await db.meta('inizializzato')) { try { await aggiornaStorico(); } catch { /* offline */ } return; }
-  const fvs = Array.from({ length: 10 }, (_, i) => ({ id: `fv-FV${i + 1}`, tipo: 'fv', nome: `FV${i + 1}`, capacita: null }));
+  const fvs = Array.from({ length: 10 }, (_, i) => ({ id: `fv-FV${i + 1}`, tipo: 'fv', nome: `FV${i + 1}`, capacita: null, isobarico: i !== 5 && i !== 6 }));
   await db.salvaMolti(fvs);
   try {
     await importaStorico({ silenzioso: true });
@@ -214,7 +214,7 @@ function dialogNuovaCotta(pre = {}) {
       if (libero && !primoLibero) primoLibero = fv.nome;
       return html`<label style="display:flex;gap:6px;align-items:center;font-size:.9rem;color:var(--text)">
         <input type="radio" name="fv" value="${fv.nome}" style="width:auto;min-height:auto">
-        <span><b>${fv.nome}</b> ${libero ? html`<span class="fv-libero">libero</span>` : html`<span class="fv-occupato">${[...new Set(occupatoDa.map(c => `${c.birra} fino al ${dataIT(fineCotta(c, stato.durate), { day: '2-digit', month: '2-digit' })}`))].join(', ')}</span>`}</span>
+        <span><b>${fv.nome}</b> ${libero ? html`<span class="fv-libero">libero</span>` : html`<span class="fv-occupato">${[...new Set(occupatoDa.map(p => `${p.cotta.birra} fino al ${dataIT(p.a, { day: '2-digit', month: '2-digit' })}${p.cotta.fv === fv.nome && p.a < fineCotta(p.cotta, stato.durate) ? ' (travaso)' : ''}`))].join(', ')}</span>`}</span>
       </label>`.s;
     }).join('');
     const target = scelto || primoLibero;
@@ -355,6 +355,8 @@ async function vistaCotta(id) {
           ${campo('data', 'Data cotta', 'date')}
           <label>Fermentatore <select data-path="fv"><option value="">—</option>${stato.fv.map(f => html`<option ${f.nome === c.fv ? 'selected' : ''}>${f.nome}</option>`)}</select></label>
           ${campo('fine', 'Fine in FV (prevista)', 'date', `placeholder="${fine || ''}"`)}
+          <label>Travaso in <select data-path="travaso.fv"><option value="">—</option>${stato.fv.filter(f => f.nome !== c.fv).map(f => html`<option ${f.nome === (c.travaso?.fv || c.fvPercorso?.[1]) ? 'selected' : ''}>${f.nome}</option>`)}</select></label>
+          ${campo('travaso.data', 'Data travaso', 'date')}
           ${campo('litri', 'Litri finali')}
           ${campo('og', 'OG (°P)')}
           ${campo('fg', 'FG (°P)')}
@@ -370,7 +372,12 @@ async function vistaCotta(id) {
               ${da.map(x => html`<option value="${x.id}">${x.birra} · ${x.lotto} · ${dataIT(x.data)}</option>`)}</select>
             <button class="piccolo" id="bf-collega-ok">Collega</button></div>`;
         })()}
-        ${c.fvPercorso && c.fvPercorso.length > 1 ? html`<p class="totale">Percorso fermentatori: ${c.fvPercorso.join(' → ')}</p>` : ''}
+        ${(() => {
+          const t = travasoCotta(c, stato.fv);
+          if (!t) return stato.fv.find(f => f.nome === c.fv)?.isobarico === false
+            ? html`<p class="totale">${c.fv} non è isobarico: la data del travaso si ricava dal profilo, al primo giorno a 1 °C dopo i 6 °C. Se nel profilo non c'è, scrivila qui sopra.</p>` : '';
+          return html`<p class="totale">Travaso ${t.stimato ? 'previsto' : ''} il ${dataIT(t.data)}: ${c.fv} si libera, la birra passa in ${t.fv || 'un FV da scegliere'}.</p>`;
+        })()}
       </div>
 
       <div class="scheda">
@@ -494,7 +501,7 @@ async function vistaCotta(id) {
   $app.onchange = e => {
     const p = e.target.dataset.path;
     // ridisegna quando cambiano valori che influenzano KPI e stato
-    if (p && /^(og|fg|data|fine|fv|litri|numero|anno|birra|confezionato|acqua(Mash|Sparge)\.tacca|fermentazione\.\d+\.(data|densita))/.test(p)) {
+    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|acqua(Mash|Sparge)\.tacca|fermentazione\.\d+\.(data|densita|temp))/.test(p)) {
       const y = scrollY; disegna(); scrollTo(0, y);
     }
   };
@@ -579,9 +586,11 @@ function vistaPlanning() {
   const fineVista = addGiorni(plan.inizio, plan.giorni - 1);
   const oggi = oggiISO();
   const visibili = stato.cotte.filter(c => c.data && c.data <= fineVista && fineCotta(c, stato.durate) >= plan.inizio);
-  const conf = conflitti(stato.cotte.filter(c => fineCotta(c, stato.durate) >= oggi), stato.durate);
+  const periodi = visibili.flatMap(c => periodiCotta(c, stato.durate, stato.fv)).filter(p => p.da <= fineVista && p.a >= plan.inizio);
+  const conf = conflitti(stato.cotte.filter(c => fineCotta(c, stato.durate) >= oggi), stato.durate, stato.fv);
+  const senzaFv = stato.cotte.flatMap(c => periodiCotta(c, stato.durate, stato.fv)).filter(p => p.travaso && !p.fv && p.a >= oggi);
   const inConflitto = new Set(conf.flatMap(x => [x.a.id, x.b.id]));
-  const nomiFv = [...new Set([...stato.fv.map(f => f.nome), ...visibili.map(c => c.fv).filter(Boolean)])]
+  const nomiFv = [...new Set([...stato.fv.map(f => f.nome), ...periodi.map(p => p.fv).filter(Boolean)])]
     .sort((a, b) => a.localeCompare(b, 'it', { numeric: true }));
   const larghezza = plan.giorni * W;
 
@@ -600,20 +609,20 @@ function vistaPlanning() {
 
   // raggruppa cotte doppie (stessa birra, stesso FV, date vicine) in un'unica barra
   const barrePerFv = new Map();
-  for (const c of visibili.sort((a, b) => a.data.localeCompare(b.data))) {
-    const lista = barrePerFv.get(c.fv) || [];
+  for (const p of periodi.filter(x => x.fv).sort((a, b) => a.da.localeCompare(b.da))) {
+    const c = p.cotta;
+    const lista = barrePerFv.get(p.fv) || [];
     const prev = lista[lista.length - 1];
-    if (prev && nomeBirra(prev.cotte[0].birra) === nomeBirra(c.birra) && diffGiorni(prev.da, c.data) <= 2) {
+    if (prev && prev.travaso === !!p.travaso && nomeBirra(prev.cotte[0].birra) === nomeBirra(c.birra) && diffGiorni(prev.da, p.da) <= 2) {
       prev.cotte.push(c);
-      const f = fineCotta(c, stato.durate);
-      if (f > prev.a) prev.a = f;
+      if (p.a > prev.a) prev.a = p.a;
     } else {
-      lista.push({ cotte: [c], da: c.data, a: fineCotta(c, stato.durate) });
+      lista.push({ cotte: [c], da: p.da, a: p.a, travaso: !!p.travaso });
     }
-    barrePerFv.set(c.fv, lista);
+    barrePerFv.set(p.fv, lista);
   }
   const occupazione = nomiFv.map(n => {
-    const attuale = visibili.find(c => c.fv === n && c.data <= oggi && fineCotta(c, stato.durate) >= oggi);
+    const attuale = periodi.find(p => p.fv === n && p.da <= oggi && p.a >= oggi);
     return { n, attuale, cap: stato.fv.find(f => f.nome === n)?.capacita };
   });
 
@@ -629,7 +638,11 @@ function vistaPlanning() {
       <span>Bordo rosso = conflitto sullo stesso FV</span>
     </div>
     ${conf.length ? html`<div class="scheda avviso"><h2>⚠ ${conf.length} conflitt${conf.length === 1 ? 'o' : 'i'}</h2>
-      ${conf.map(x => html`<div>${x.fv}: <a href="#/cotta/${encodeURIComponent(x.a.id)}">${x.a.birra} ${x.a.lotto}</a> (fino al ${dataIT(fineCotta(x.a, stato.durate))}) e <a href="#/cotta/${encodeURIComponent(x.b.id)}">${x.b.birra} ${x.b.lotto}</a> (dal ${dataIT(x.b.data)})</div>`)}
+      ${conf.map(x => html`<div>${x.fv}: <a href="#/cotta/${encodeURIComponent(x.a.id)}">${x.a.birra} ${x.a.lotto}</a> (fino al ${dataIT(x.fineA)}) e <a href="#/cotta/${encodeURIComponent(x.b.id)}">${x.b.birra} ${x.b.lotto}</a> (dal ${dataIT(x.inizioB)})</div>`)}
+      ${conf.some(x => stato.fv.find(f => f.nome === x.fv)?.isobarico === false) ? html`<p class="totale">Su un FV non isobarico basta indicare il travaso nella scheda della cotta (data, o profilo che scende a 1 °C).</p>` : ''}
+    </div>` : ''}
+    ${senzaFv.length ? html`<div class="scheda"><h2>Travasi senza FV di arrivo</h2>
+      ${senzaFv.map(p => html`<div><a href="#/cotta/${encodeURIComponent(p.cotta.id)}">${p.cotta.birra} ${p.cotta.lotto}</a>: da ${p.cotta.fv} il ${dataIT(p.da)}, fino al ${dataIT(p.a)}</div>`)}
     </div>` : ''}
     <div class="gantt-wrap"><div class="gantt" style="width:${larghezza + 74}px">
       <div class="g-row testa"><div class="g-label">FV</div><div class="g-days" style="width:${larghezza}px">${testa}</div></div>
@@ -641,7 +654,7 @@ function vistaPlanning() {
             const s = statoCotta(c0, stato.durate);
             const left = Math.max(0, diffGiorni(plan.inizio, b.da)) * W;
             const right = (Math.min(plan.giorni - 1, diffGiorni(plan.inizio, b.a)) + 1) * W;
-            const lotti = b.cotte.map(c => c.numero).join('+') + (c0.anno ? `/${String(c0.anno).slice(2)}` : '');
+            const lotti = (b.travaso ? '↳ ' : '') + b.cotte.map(c => c.numero).join('+') + (c0.anno ? `/${String(c0.anno).slice(2)}` : '');
             const conflitto = b.cotte.some(c => inConflitto.has(c.id));
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px"
@@ -655,7 +668,7 @@ function vistaPlanning() {
       <h2>Oggi nei fermentatori</h2>
       <div class="griglia">${occupazione.map(o => html`<div>
         <b>${o.n}</b><br>
-        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.id)}">${o.attuale.birra}</a><br><span class="totale">giorno ${diffGiorni(o.attuale.data, oggi) + 1}, libero dal ${dataIT(addGiorni(fineCotta(o.attuale, stato.durate), 1))}</span>`
+        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
           : html`<span class="fv-libero">libero</span>`}
       </div>`)}</div>
     </div>
@@ -681,13 +694,15 @@ async function vistaImpostazioni() {
     <div class="scheda">
       <h2>Fermentatori</h2>
       <table class="tab-edit">
-        <thead><tr><th>Nome</th><th>Capacità (L)</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>Capacità (L)</th><th>Isobarico</th><th></th></tr></thead>
         <tbody>${stato.fv.map(f => html`<tr>
           <td><input data-fv="${f.id}" data-k="nome" value="${f.nome}"></td>
           <td><input data-fv="${f.id}" data-k="capacita" type="number" value="${f.capacita ?? ''}"></td>
+          <td style="text-align:center"><input data-fv="${f.id}" data-k="isobarico" type="checkbox" style="width:auto;min-height:auto" ${f.isobarico === false ? '' : 'checked'}></td>
           <td class="az"><button class="piccolo" data-del-fv="${f.id}">✕</button></td></tr>`)}</tbody>
       </table>
       <button class="piccolo" id="add-fv">+ Aggiungi fermentatore</button>
+      <p class="totale">Togli "Isobarico" ai fermentatori da cui travasi (FV6, FV7): nel planning si liberano il giorno del travaso.</p>
     </div>
 
     <div class="scheda">
@@ -723,7 +738,8 @@ async function vistaImpostazioni() {
   `;
   $app.querySelectorAll('[data-fv]').forEach(inp => inp.addEventListener('change', async () => {
     const f = stato.fv.find(x => x.id === inp.dataset.fv);
-    f[inp.dataset.k] = inp.type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value.trim().toUpperCase();
+    f[inp.dataset.k] = inp.type === 'checkbox' ? inp.checked
+      : inp.type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value.trim().toUpperCase();
     await db.salva(f);
   }));
   $app.querySelectorAll('[data-del-fv]').forEach(b => b.addEventListener('click', async () => {
