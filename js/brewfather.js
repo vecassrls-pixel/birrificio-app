@@ -119,6 +119,7 @@ export function unisci(esistente, b, letture = []) {
     const delta = Math.round((new Date(data) - new Date(esistente.data)) / 86400000);
     if (c.fine) c.fine = addGiorni(c.fine, delta);
     c.fermentazione = (c.fermentazione || []).map(e => (e.data ? { ...e, data: addGiorni(e.data, delta) } : e));
+    if (c.travaso?.data) c.travaso = { ...c.travaso, data: addGiorni(c.travaso.data, delta) };
   }
   Object.assign(c, { birra, numero, anno, data, lotto: numero && anno ? `${numero}/${String(anno).slice(2)}` : c.lotto });
   if ((b.recipe?.fermentables || []).length) Object.assign(c, ricettaDaBatch(b));
@@ -194,6 +195,7 @@ export function uniscaManuale(pianificata, daBf) {
     const delta = Math.round((new Date(daBf.data) - new Date(c.data)) / 86400000);
     if (c.fine) c.fine = addGiorni(c.fine, delta);
     c.fermentazione = (c.fermentazione || []).map(e => (e.data ? { ...e, data: addGiorni(e.data, delta) } : e));
+    if (c.travaso?.data) c.travaso = { ...c.travaso, data: addGiorni(c.travaso.data, delta) };
     c.data = daBf.data;
   }
   if (!(c.fermentazione || []).length) c.fermentazione = daBf.fermentazione || [];

@@ -89,36 +89,72 @@ export function litriConfezionati(c) {
   return (c.confezionato || []).reduce((t, x) => t + (Number(x.pezzi) || 0) * (Number(x.litri) || 0), 0);
 }
 
+// Travaso: i fermentatori non isobarici (FV6, FV7) a fine fermentazione e prima maturazione
+// passano la birra in un altro FV per finire la maturazione e carbonare.
+// Data del travaso: quella scritta nella scheda, altrimenti il primo giorno del profilo
+// in cui la temperatura scende a ~1 °C dopo la fase a ~6 °C.
+const nonIsobarici = fvs => new Set((fvs || []).filter(f => f.isobarico === false).map(f => f.nome));
+
+export function travasoCotta(c, fvs) {
+  const fv = c.travaso?.fv || (c.fvPercorso?.length > 1 ? c.fvPercorso[1] : '');
+  if (c.travaso?.data) return { data: c.travaso.data, fv, stimato: false };
+  if (!c.fv || !nonIsobarici(fvs).has(c.fv)) return null;
+  const log = c.fermentazione || [];
+  let freddo = false;
+  for (const e of log) {
+    const t = e.temp;
+    if (t === null || t === undefined || t === '') continue;
+    if (t >= 4 && t <= 8) freddo = true;
+    else if (freddo && t <= 2 && e.data) return { data: e.data, fv, stimato: true };
+  }
+  return null;
+}
+
+// Periodi in cui la cotta occupa i fermentatori: uno solo, o due se c'è un travaso.
+// Il FV di partenza si libera il giorno del travaso (può riempirsi di nuovo lo stesso giorno).
+export function periodiCotta(c, durate, fvs) {
+  if (!c.data) return [];
+  const fine = fineCotta(c, durate);
+  const t = travasoCotta(c, fvs);
+  if (!t || t.data <= c.data || t.data > fine) return [{ cotta: c, fv: c.fv || '', da: c.data, a: fine }];
+  return [
+    { cotta: c, fv: c.fv || '', da: c.data, a: addGiorni(t.data, -1) },
+    { cotta: c, fv: t.fv || '', da: t.data, a: fine, travaso: true },
+  ];
+}
+
 // Cotte che occupano gli stessi FV negli stessi giorni.
 // Due cotte della stessa birra a <=2 giorni di distanza nello stesso FV sono una cotta doppia, non un conflitto.
-export function conflitti(cotte, durate) {
+export function conflitti(cotte, durate, fvs) {
   const perFv = new Map();
   for (const c of cotte) {
-    if (!c.fv || !c.data) continue;
-    if (!perFv.has(c.fv)) perFv.set(c.fv, []);
-    perFv.get(c.fv).push(c);
+    for (const p of periodiCotta(c, durate, fvs)) {
+      if (!p.fv) continue;
+      if (!perFv.has(p.fv)) perFv.set(p.fv, []);
+      perFv.get(p.fv).push(p);
+    }
   }
   const out = [];
   for (const [fv, lista] of perFv) {
-    lista.sort((a, b) => a.data.localeCompare(b.data));
+    lista.sort((x, y) => x.da.localeCompare(y.da));
     for (let i = 0; i < lista.length; i++) {
       for (let j = i + 1; j < lista.length; j++) {
-        const a = lista[i], b = lista[j];
-        if (b.data > fineCotta(a, durate)) break;
+        const pa = lista[i], pb = lista[j];
+        if (pb.da > pa.a) continue;
+        const a = pa.cotta, b = pb.cotta;
+        if (a.id === b.id) continue;
         const doppia = nomeBirra(a.birra) === nomeBirra(b.birra) && Math.abs(diffGiorni(a.data, b.data)) <= 2;
-        if (!doppia) out.push({ fv, a, b });
+        if (!doppia) out.push({ fv, a, b, fineA: pa.a, inizioB: pb.da });
       }
     }
   }
   return out;
 }
 
-// FV liberi per l'intervallo [da, a]
+// FV liberi per l'intervallo [da, a]: per ogni FV i periodi che lo occupano
 export function fvLiberi(fvs, cotte, da, a, durate, escludiId) {
-  return fvs.map(f => {
-    const occ = cotte.filter(c => c.id !== escludiId && c.fv === f.nome && c.data && c.data <= a && fineCotta(c, durate) >= da);
-    return { fv: f, occupatoDa: occ };
-  });
+  const periodi = cotte.filter(c => c.id !== escludiId).flatMap(c => periodiCotta(c, durate, fvs));
+  return fvs.map(f => ({ fv: f, occupatoDa: periodi.filter(p => p.fv === f.nome && p.da <= a && p.a >= da) }));
 }
 
 // Copia ricetta e profilo di temperatura da una cotta precedente
