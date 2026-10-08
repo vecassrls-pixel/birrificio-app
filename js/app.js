@@ -457,6 +457,7 @@ async function vistaCotta(id) {
           <div><b>${a ? numIT(a, 1) + '%' : '—'}</b>ABV stimato${g.length > 1 ? ' lotto' : ''}</div>
           <div><b>${numIT(c.litri, 0)}</b>litri cotta</div>
           <div><b>${litriConf ? numIT(litriConf, 0) : '—'}</b>litri confezionati</div>
+          ${litriConf && litriGruppo > 0 ? html`<div><b>${numIT(litriConf / litriGruppo * 100, 0)}%</b>resa</div>` : ''}
         </div>
       </div>
 
@@ -596,7 +597,13 @@ async function vistaCotta(id) {
           <button class="piccolo" data-add="confezionato" data-preset="fusto:12">+ Fusti 12 L</button>
           <button class="piccolo" data-add="confezionato" data-preset="lattina/bottiglia:0.33">+ Lattine 0,33</button>
         </div>
-        ${litriConf ? html`<p class="totale">Totale confezionato: ${numIT(litriConf, 1)} L${litriGruppo ? ` (resa ${numIT(litriConf / litriGruppo * 100, 0)}%${g.length > 1 ? ` su ${numIT(litriGruppo, 0)} L di ${g.length} cotte` : ''})` : ''}</p>` : ''}
+        ${litriConf ? (litriGruppo > 0 ? html`<div class="kpi resa">
+            <div><b>${numIT(litriGruppo, 0)} L</b>litri iniziali${g.length > 1 ? ` (${g.length} cotte)` : ''}</div>
+            <div><b>${numIT(litriConf, 1)} L</b>confezionati</div>
+            <div><b>${numIT(litriGruppo - litriConf, 1)} L</b>persi (${numIT((litriGruppo - litriConf) / litriGruppo * 100, 1)}%)</div>
+            <div><b>${numIT(litriConf / litriGruppo * 100, 1)}%</b>resa</div>
+          </div>`
+          : html`<p class="totale">Totale confezionato: ${numIT(litriConf, 1)} L · per la resa scrivi i "Litri finali" in Dati cotta.</p>`) : ''}
         ${c.confezionatoNote ? html`<p class="totale">Note: ${c.confezionatoNote}</p>` : ''}
       </div>
 
