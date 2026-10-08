@@ -8,6 +8,42 @@ export const FASI_DEFAULT = [
 ];
 export const DURATA_DEFAULT = FASI_DEFAULT.reduce((t, f) => t + f.giorni, 0); // 34
 
+// Fase di ogni giorno in fermentatore, per i colori del planning.
+// 1. note di fase nel registro (Fermentazione / DH / Maturazione): valgono fino alla nota successiva;
+// 2. altrimenti le temperature: maturazione dal primo giorno a <= 8 °C, DH nei 4 giorni prima;
+// 3. se il profilo non scende mai a freddo, le fasi di default (10 fermentazione, 4 DH, poi freddo).
+export const FASI = { fermentazione: 'Fermentazione', dh: 'DH', maturazione: 'Maturazione a freddo' };
+const faseDaNota = n => (/^\s*(dh|dry)/i.test(n) ? 'dh' : /matur|fredd|cold/i.test(n) ? 'maturazione' : /^\s*ferm/i.test(n) ? 'fermentazione' : null);
+
+export function fasiCotta(c, durate) {
+  if (!c.data) return [];
+  const fine = fineCotta(c, durate);
+  const log = (c.fermentazione || []).filter(e => e.data).sort((x, y) => x.data.localeCompare(y.data));
+  const note = log.map(e => ({ data: e.data, fase: faseDaNota(e.nota || '') })).filter(x => x.fase);
+  let faseDi;
+  if (note.length) {
+    faseDi = d => { let f = 'fermentazione'; for (const n of note) if (n.data <= d) f = n.fase; return f; };
+  } else {
+    const temp = log.filter(e => e.temp !== null && e.temp !== undefined && e.temp !== '');
+    const caldo = temp.findIndex(e => e.temp > 8);
+    const freddo = caldo >= 0 ? temp.slice(caldo).find(e => e.temp <= 8) : null;
+    if (freddo) {
+      const inizioDh = addGiorni(freddo.data, -FASI_DEFAULT[1].giorni);
+      faseDi = d => (d >= freddo.data ? 'maturazione' : d >= inizioDh ? 'dh' : 'fermentazione');
+    } else {
+      const g1 = FASI_DEFAULT[0].giorni, g2 = g1 + FASI_DEFAULT[1].giorni;
+      faseDi = d => { const g = diffGiorni(c.data, d); return g < g1 ? 'fermentazione' : g < g2 ? 'dh' : 'maturazione'; };
+    }
+  }
+  const out = [];
+  for (let d = c.data; d <= fine; d = addGiorni(d, 1)) {
+    const f = faseDi(d);
+    const ultimo = out[out.length - 1];
+    if (ultimo && ultimo.fase === f) ultimo.a = d; else out.push({ fase: f, da: d, a: d });
+  }
+  return out;
+}
+
 // Righe del registro di fermentazione con le fasi di default (temperature da scrivere)
 export function profiloDefault(data) {
   const out = [];
