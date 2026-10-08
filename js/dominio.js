@@ -1,6 +1,23 @@
 // Logica di produzione: date, stati delle cotte, durate tipiche, conflitti sui fermentatori.
 
-export const DURATA_DEFAULT = 21; // giorni in FV se non c'è storico per la birra
+// Cotta pianificata senza profilo da copiare: 10 giorni di fermentazione, 4 di dry hop, 20 di maturazione a freddo
+export const FASI_DEFAULT = [
+  { nome: 'Fermentazione', giorni: 10 },
+  { nome: 'DH', giorni: 4 },
+  { nome: 'Maturazione a freddo', giorni: 20 },
+];
+export const DURATA_DEFAULT = FASI_DEFAULT.reduce((t, f) => t + f.giorni, 0); // 34
+
+// Righe del registro di fermentazione con le fasi di default (temperature da scrivere)
+export function profiloDefault(data) {
+  const out = [];
+  for (const f of FASI_DEFAULT) {
+    for (let i = 0; i < f.giorni; i++) {
+      out.push({ data: addGiorni(data, out.length), giorno: out.length + 1, temp: null, ...(i === 0 ? { nota: f.nome } : {}) });
+    }
+  }
+  return out;
+}
 
 export const oggiISO = () => toISO(new Date());
 export function toISO(d) {
