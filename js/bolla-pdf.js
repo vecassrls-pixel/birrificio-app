@@ -159,11 +159,13 @@ export function proponiRighe(ddt, articoli) {
   return ddt.righe.map(r => {
     const conf = confezione(r.descrizione);
     const pezzi = PEZZI.test(r.um) || !r.um;
-    const qta = pezzi && conf ? r.qta * conf.qta : r.qta;
-    const unita = pezzi ? (conf?.unita || 'pz') : (UNITA_PDF[r.um.toLowerCase()] || 'pz');
+    let qta = pezzi && conf ? r.qta * conf.qta : r.qta;
+    let unita = pezzi ? (conf?.unita || 'pz') : (UNITA_PDF[r.um.toLowerCase()] || 'pz');
     // articolo già noto: stessa descrizione vista in una bolla precedente, oppure nome uguale
     const art = articoli.find(a => (a.alias || []).some(x => compatta(x) === compatta(r.descrizione)))
       || trovaArticolo(articoli, nomeDaDescrizione(r.descrizione));
+    // senza peso nella descrizione: il peso per pezzo dell'articolo (lolla di riso: 1 sacco = 20 kg)
+    if (pezzi && !conf && art?.pesoPezzo > 0) { qta = r.qta * art.pesoPezzo; unita = art.unita; }
     const categoria = art?.categoria || categoriaDaDescrizione(r.descrizione);
     return {
       nome: art?.nome || nomeDaDescrizione(r.descrizione),
