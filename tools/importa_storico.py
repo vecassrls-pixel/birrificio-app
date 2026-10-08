@@ -167,6 +167,9 @@ def scheda(path):
     return rec
 
 
+VERDE_MATERIE_PRIME = "FF92D050"
+
+
 def schedule(path):
     """Blocchi del Brewing Schedule 2024+ -> {(numero, anno): {...}}"""
     wb = openpyxl.load_workbook(path, data_only=True)
@@ -209,6 +212,8 @@ def schedule(path):
                     "fvPercorso": fvs,
                     "fermentazione": log,
                     "batchRaw": clean(batch),
+                    # casella del n° cotta in verde = materie prime ordinate o in magazzino
+                    "materiePrime": ws.cell(r, 1).fill.fgColor.rgb == VERDE_MATERIE_PRIME,
                 }
     return out
 
@@ -259,6 +264,8 @@ def main(src, dst):
             c["data"] = s["data"]  # la data della scheda a volte è quella del modello copiato
             if len(s["fvPercorso"]) > 1:
                 c["fvPercorso"] = s["fvPercorso"]
+            if s["materiePrime"]:
+                c["materiePrime"] = True
             used.add((c["numero"], c["anno"]))
     # batch presenti solo nello schedule (senza scheda cotta)
     for (n, anno), s in sorted(sched.items()):
@@ -275,6 +282,7 @@ def main(src, dst):
             "sali": [], "malti": [], "luppoli": [], "confezionato": [], "confezionatoNote": "",
             "acquaMash": {"righe": []}, "acquaSparge": {"righe": []},
             "fermentazione": s["fermentazione"], "note": "",
+            **({"materiePrime": True} if s["materiePrime"] else {}),
             "stato": "pianificata" if s["data"] >= dt.date.today().isoformat() else "chiusa",
             "fonte": "Brewing Schedule Kashmir.xlsx",
         })

@@ -5,7 +5,7 @@ import * as auth from './auth.js';
 import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
-  fvLiberi, litriConfezionati, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
+  DURATA_DEFAULT, FASI, fasiCotta, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
 } from './dominio.js';
 
 const $app = document.getElementById('app');
@@ -157,7 +157,7 @@ function vistaCotte() {
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta" href="#/cotta/${encodeURIComponent(c.id)}">
           <span class="lotto">${c.lotto || '—'}</span>
-          <span class="birra">${c.birra || 'Senza nome'}</span>
+          <span class="birra">${c.birra || 'Senza nome'}${s === 'pianificata' && c.materiePrime ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}</span>
           <span class="chip ${s}">${STATI[s]}</span>
           <span class="dett">${dataIT(c.data)} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
         </a>`) : html`<p class="vuoto">Nessuna cotta trovata.</p>`}
@@ -191,6 +191,7 @@ function dialogNuovaCotta(pre = {}) {
       <h3>Fermentatore</h3>
       <div id="fv-scelta" class="griglia" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
       <label style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="copia" checked style="width:auto;min-height:auto"> Copia ricetta e profilo dall'ultima cotta della stessa birra</label>
+      <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="materiePrime" style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
       <p id="origine" class="totale"></p>
       <div class="barra" style="margin-top:14px"><span class="spazio"></span>
         <button value="annulla" formnovalidate>Annulla</button>
@@ -202,7 +203,9 @@ function dialogNuovaCotta(pre = {}) {
   const f = dlg.querySelector('form');
   const aggiornaFv = () => {
     const birra = f.birra.value;
-    const durata = Number(f.durata.value) || stato.durate.get(nomeBirra(birra)) || 21;
+    // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
+    const src0 = f.copia.checked ? ultimaCottaDi(birra) : null;
+    const durata = Number(f.durata.value) || (src0?.fermentazione?.length) || DURATA_DEFAULT;
     if (!f.durata.value || f.durata.dataset.auto) { f.durata.value = durata; f.durata.dataset.auto = '1'; }
     const da = f.data.value || oggiISO();
     const a = addGiorni(da, durata - 1);
@@ -226,6 +229,7 @@ function dialogNuovaCotta(pre = {}) {
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); });
   f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); });
   f.data.addEventListener('change', aggiornaFv);
+  f.copia.addEventListener('change', () => { if (f.durata.dataset.auto) f.durata.value = ''; aggiornaFv(); });
   aggiornaFv();
   dlg.addEventListener('close', async () => {
     dlg.remove();
@@ -241,7 +245,9 @@ function dialogNuovaCotta(pre = {}) {
       acquaMash: {}, acquaSparge: {}, fermentazione: [], confezionato: [], note: '',
     };
     const durata = Number(fd.get('durata'));
-    if (durata && !(src && base.fermentazione.length)) base.fine = addGiorni(data, durata - 1);
+    if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
+    if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
+    if (fd.get('materiePrime')) base.materiePrime = true;
     const rec = await db.salva({ ...base, birra, id: db.nuovoId('cotta') });
     location.hash = `#/cotta/${encodeURIComponent(rec.id)}`;
   });
@@ -362,6 +368,7 @@ async function vistaCotta(id) {
           ${campo('fg', 'FG (°P)')}
           ${campo('phMash', 'pH')}
         </div>
+        <label style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''} style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
         <datalist id="dl-birre2">${birreNote().map(b => html`<option value="${b}">`)}</datalist>
         ${(() => {
           if (c.brewfather) return html`<p class="totale">Collegata a Brewfather${c.brewfather.stato ? ` (stato: ${c.brewfather.stato})` : ''}.</p>`;
@@ -451,7 +458,9 @@ async function vistaCotta(id) {
         </table></div>
         <div class="barra" style="margin-top:8px">
           <button class="piccolo" data-add="confezionato" data-preset="fusto:24">+ Fusti 24 L</button>
+          <button class="piccolo" data-add="confezionato" data-preset="fusto:25">+ Fusti 25 L</button>
           <button class="piccolo" data-add="confezionato" data-preset="fusto:20">+ Fusti 20 L</button>
+          <button class="piccolo" data-add="confezionato" data-preset="fusto:12">+ Fusti 12 L</button>
           <button class="piccolo" data-add="confezionato" data-preset="lattina/bottiglia:0.33">+ Lattine 0,33</button>
         </div>
         ${litriConf ? html`<p class="totale">Totale confezionato: ${numIT(litriConf, 1)} L${c.litri ? ` (resa ${numIT(litriConf / c.litri * 100, 0)}%)` : ''}</p>` : ''}
@@ -476,7 +485,7 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     if (e.target.id === 'hlt-da' || e.target.id === 'hlt-litri') return calcolaHlt();
     if (!p) return;
-    let v = e.target.value;
+    let v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     if (e.target.type === 'number') v = v === '' ? null : Number(v);
     if (e.target.type === 'date' && v === '') v = null;
     set(c, p, v);
@@ -602,7 +611,7 @@ function vistaPlanning() {
   const testa = giorni.map((d, i) => {
     const dd = daISO(d);
     const primo = dd.getDate() === 1 || i === 0;
-    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''}" style="left:${i * W}px;width:${W}px">
+    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''}" style="left:${i * W}px;width:${W}px">
       <div style="height:18px;font-weight:600;color:var(--text);white-space:nowrap;text-align:left;padding-left:2px">${primo ? dd.toLocaleDateString('it-IT', { month: 'short' }) : ''}</div>
       <div>${dd.getDate()}</div></div>`;
   });
@@ -634,8 +643,10 @@ function vistaPlanning() {
       <button class="primario" id="pianifica">+ Pianifica cotta</button>
     </div>
     <div class="legenda">
-      ${Object.entries(STATI).map(([k, v]) => html`<span><span class="chip ${k}">${v}</span></span>`)}
+      ${Object.entries(FASI).map(([k, v]) => html`<span><span class="fase-chip" style="background:var(--f-${k})"></span> ${v}</span>`)}
+      <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
+      <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
     </div>
     ${conf.length ? html`<div class="scheda avviso"><h2>⚠ ${conf.length} conflitt${conf.length === 1 ? 'o' : 'i'}</h2>
       ${conf.map(x => html`<div>${x.fv}: <a href="#/cotta/${encodeURIComponent(x.a.id)}">${x.a.birra} ${x.a.lotto}</a> (fino al ${dataIT(x.fineA)}) e <a href="#/cotta/${encodeURIComponent(x.b.id)}">${x.b.birra} ${x.b.lotto}</a> (dal ${dataIT(x.inizioB)})</div>`)}
@@ -655,11 +666,20 @@ function vistaPlanning() {
             const left = Math.max(0, diffGiorni(plan.inizio, b.da)) * W;
             const right = (Math.min(plan.giorni - 1, diffGiorni(plan.inizio, b.a)) + 1) * W;
             const lotti = (b.travaso ? '↳ ' : '') + b.cotte.map(c => c.numero).join('+') + (c0.anno ? `/${String(c0.anno).slice(2)}` : '');
+            const mp = s === 'pianificata' && b.cotte.every(c => c.materiePrime);
             const conflitto = b.cotte.some(c => inConflitto.has(c.id));
+            // sfondo a fasi: arancione fermentazione, viola DH, celeste maturazione
+            const da = b.da < plan.inizio ? plan.inizio : b.da, a = b.a > fineVista ? fineVista : b.a;
+            const tot = diffGiorni(da, a) + 1;
+            const stops = fasiCotta(c0, stato.durate).filter(f => f.a >= da && f.da <= a).map(f => {
+              const x0 = diffGiorni(da, f.da < da ? da : f.da) / tot * 100, x1 = (diffGiorni(da, f.a > a ? a : f.a) + 1) / tot * 100;
+              return `var(--f-${f.fase}) ${x0.toFixed(2)}% ${x1.toFixed(2)}%`;
+            });
+            const sfondoFasi = stops.length ? `background:linear-gradient(to right, ${stops.join(', ')});` : '';
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
-              style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px"
+              style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
               title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)}">
-              <b>${c0.birra}</b><span>${lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span></a>`;
+              <b>${c0.birra}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span></a>`;
           })}
         </div></div>`)}
     </div></div>
