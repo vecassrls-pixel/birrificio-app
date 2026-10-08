@@ -198,3 +198,30 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 [hidden] { display: none !important; }
 .mp { background: #92d050; color: #1c1917; border-radius: 4px; padding: 0 4px; font-weight: 700; font-size: .75rem; white-space: nowrap; }
 .fase-chip { display: inline-block; width: 14px; height: 10px; border-radius: 3px; vertical-align: middle; }
+
+/* ---------- materie prime ---------- */
+.tab-mag { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.tab-mag th { text-align: left; font-size: .75rem; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.tab-mag td { padding: 6px; border-bottom: 1px solid var(--border); }
+.tab-mag th.n, .tab-mag td.n, .tab-edit th.n, .tab-edit td.n { text-align: right; white-space: nowrap; }
+.tab-mag tr.neg td { color: var(--warn); }
+.tab-mag tr.basso td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.tab-mag tr.futuro td { color: var(--muted); font-style: italic; }
+.scad.vicino { color: #c2410c; font-weight: 600; }
+.scad.scaduto { color: var(--warn); font-weight: 600; text-decoration: line-through; }
+
+/* registro HACCP S6: bianco e nero, orizzontale, pronto da stampare e archiviare */
+.s6 { background: #fff; color: #000; padding: 16px; border-radius: 8px; page: s6; }
+.s6-testa { display: flex; align-items: center; gap: 16px; }
+.s6-testa img { height: 56px; }
+.s6-testa h1 { margin: 0; font-size: 1.15rem; }
+.s6-legenda { font-size: .8rem; margin: 8px 0; }
+.tab-s6 { width: 100%; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.tab-s6 th, .tab-s6 td { border: 1px solid #000; padding: 3px 6px; text-align: left; }
+.tab-s6 th { background: #e5e5e5; }
+.tab-s6 td.n, .tab-s6 th.n { text-align: right; white-space: nowrap; }
+.tab-s6 tr.c td { font-weight: 600; }
+.tab-s6 thead { display: table-header-group; }
+.tab-s6 tr { break-inside: avoid; }
+@page s6 { size: A4 landscape; margin: 10mm; }
+@media print { .s6 { padding: 0; } .s6-testa img { height: 44px; } .tab-s6 { font-size: 10px; } .tab-s6 th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

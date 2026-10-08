@@ -3,6 +3,7 @@ import * as sync from './sync.js';
 import * as bf from './brewfather.js';
 import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
+import * as magazzino from './vista-magazzino.js';
 import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
@@ -47,6 +48,7 @@ function chiedi(msg, ok = 'Conferma') {
 
 // ---------- dati in memoria ----------
 const stato = { cotte: [], fv: [], durate: new Map() };
+magazzino.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
@@ -115,6 +117,11 @@ const routes = [
   [/^#\/cotte$/, vistaCotte],
   [/^#\/cotta\/(.+)$/, vistaCotta],
   [/^#\/planning$/, vistaPlanning],
+  [/^#\/materie-prime$/, () => magazzino.vistaMagazzino()],
+  [/^#\/materia\/(.+)$/, id => magazzino.vistaArticolo(id)],
+  [/^#\/bolla\/(.+)$/, id => magazzino.vistaBolla(id)],
+  [/^#\/inventario$/, () => magazzino.vistaInventario()],
+  [/^#\/registro-s6$/, () => magazzino.vistaRegistroS6()],
   [/^#\/impostazioni$/, vistaImpostazioni],
 ];
 let pulizia = null;
@@ -122,8 +129,9 @@ async function render() {
   const h = location.hash || '#/cotte';
   if (h.includes('access_token=')) return; // link di invito: gestito all'avvio
   if (pulizia) { pulizia(); pulizia = null; }
+  $app.oninput = $app.onchange = $app.onclick = null;
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/'))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -1128,7 +1136,7 @@ function aggiornaRete(s = {}) {
   db.onCambio(async () => {
     await carica();
     // non ridisegnare la scheda mentre si sta scrivendo
-    if (!location.hash.startsWith('#/cotta/')) render();
+    if (!/^#\/(cotta|bolla|inventario)/.test(location.hash)) render();
   });
   window.addEventListener('online', () => aggiornaRete());
   window.addEventListener('offline', () => aggiornaRete());
