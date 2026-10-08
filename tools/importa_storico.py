@@ -5,7 +5,8 @@ Uso:  python3 tools/importa_storico.py <cartella con gli xlsx> data/storico.json
 Le schede cotta hanno tutte lo stesso schema (colonna A: birra, data, lotto, FV,
 OG, pH, litri, FG; colonne B..H: sali, acqua mash, acqua sparge, malti, luppoli,
 lievito, confezionato; "Note" in fondo). Il Brewing Schedule ha per ogni batch
-un blocco di 4 righe: giorno, temperatura, densità, psi (vedi la legenda 2023).
+un blocco di 4 righe: giorno, temperatura, densità e una quarta riga che fino a metà 2025
+era la pressione (psi, ~16) e poi è diventata il pH (~4-5.3): sotto 7 è pH, sopra è psi.
 """
 import datetime as dt
 import glob
@@ -190,7 +191,7 @@ def schedule(path):
                 for k, off in (("temp", 1), ("densita", 2), ("psi", 3)):
                     v = ws.cell(r + off, c).value
                     if isinstance(v, (int, float)) and v != 0:
-                        e[k] = v
+                        e["ph" if k == "psi" and v < 7 else k] = v
                 log.append(e)
             if brew is None:
                 continue

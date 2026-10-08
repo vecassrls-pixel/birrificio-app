@@ -412,12 +412,13 @@ async function vistaCotta(id) {
       <div class="scheda">
         <h2>Fermentazione</h2>
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>psi</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
+          <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
           <tbody>${c.fermentazione.map((e, i) => html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
             <td class="num">${c.data && e.data ? diffGiorni(c.data, e.data) + 1 : e.giorno || ''}</td>
             <td><input data-path="fermentazione.${i}.data" type="date" value="${e.data || ''}"></td>
             <td><input data-path="fermentazione.${i}.temp" type="number" step="any" inputmode="decimal" value="${e.temp ?? ''}" style="min-width:60px"></td>
             <td><input data-path="fermentazione.${i}.densita" type="number" step="any" inputmode="decimal" value="${e.densita ?? ''}" style="min-width:60px"></td>
+            <td><input data-path="fermentazione.${i}.ph" type="number" step="0.01" inputmode="decimal" value="${e.ph ?? ''}" style="min-width:60px"></td>
             <td><input data-path="fermentazione.${i}.psi" type="number" step="any" inputmode="decimal" value="${e.psi ?? ''}" style="min-width:60px"></td>
             <td><input data-path="fermentazione.${i}.nota" value="${e.nota || ''}" style="min-width:120px"></td>
             <td class="az"><button class="piccolo" data-del="fermentazione.${i}" title="Rimuovi">✕</button></td>
