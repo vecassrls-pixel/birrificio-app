@@ -6,7 +6,7 @@ import { creaXlsx } from './xlsx.js';
 import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
-  CAMPI_COMUNI, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
+  CAMPI_COMUNI, SIMBOLI, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
 } from './dominio.js';
 
 const $app = document.getElementById('app');
@@ -61,6 +61,9 @@ const stileDi = birra => stato.cotte
   .filter(c => c.stile && nomeBirra(c.birra) === nomeBirra(birra))
   .sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0]?.stile || '';
 const stiliNoti = () => [...new Set([...stato.cotte.map(c => c.stile).filter(Boolean), ...STILI_COMUNI])].sort((a, b) => a.localeCompare(b));
+// 🧫 🏷️ finché la birra non è confezionata
+const simboliPronti = (c, s = statoCotta(c, stato.durate)) => (['pianificata', 'tank'].includes(s)
+  ? (c.lievitoOk ? ' ' + SIMBOLI.lievito : '') + (c.etichetteOk ? ' ' + SIMBOLI.etichette : '') : '');
 const ultimaCottaDi = birra => stato.cotte
   .filter(c => nomeBirra(c.birra) === nomeBirra(birra) && (c.malti || []).length)
   .sort((a, b) => b.data.localeCompare(a.data))[0];
@@ -173,7 +176,7 @@ function vistaCotte() {
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta" href="#/cotta/${encodeURIComponent(c.id)}">
           <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<br><small class="totale">${lotti.get(c.id)}</small>` : ''}</span>
-          <span class="birra">${c.birra || 'Senza nome'}${s === 'pianificata' && c.materiePrime ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}</span>
+          <span class="birra">${c.birra || 'Senza nome'}${s === 'pianificata' && c.materiePrime ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
           <span class="chip ${s}">${STATI[s]}</span>
           <span class="dett">${dataIT(c.data)}${c.stile ? ` · ${c.stile}` : ''} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
         </a>`) : html`<p class="vuoto">Nessuna cotta trovata.</p>`}
@@ -208,6 +211,8 @@ function dialogNuovaCotta(pre = {}) {
       <div id="fv-scelta" class="griglia" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
       <label style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="copia" checked style="width:auto;min-height:auto"> Copia ricetta e profilo dall'ultima cotta della stessa birra</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="materiePrime" style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
+      <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="lievitoOk" style="width:auto;min-height:auto"> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
+      <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="etichetteOk" style="width:auto;min-height:auto"> ${SIMBOLI.etichette} Etichette pronte</label>
       <p id="origine" class="totale"></p>
       <div class="barra" style="margin-top:14px"><span class="spazio"></span>
         <button value="annulla" formnovalidate>Annulla</button>
@@ -264,6 +269,8 @@ function dialogNuovaCotta(pre = {}) {
     if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
     if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
     if (fd.get('materiePrime')) base.materiePrime = true;
+    if (fd.get('lievitoOk')) base.lievitoOk = true;
+    if (fd.get('etichetteOk')) base.etichetteOk = true;
     if (!base.stile && stileDi(birra)) base.stile = stileDi(birra);
     const rec = await db.salva({ ...base, birra, id: db.nuovoId('cotta') });
     location.hash = `#/cotta/${encodeURIComponent(rec.id)}`;
@@ -420,6 +427,8 @@ async function vistaCotta(id) {
           ${campo('phMash', 'pH')}
         </div>
         <label style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''} style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
+        <label style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="lievitoOk" ${c.lievitoOk ? 'checked' : ''} style="width:auto;min-height:auto"> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
+        <label style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="etichetteOk" ${c.etichetteOk ? 'checked' : ''} style="width:auto;min-height:auto"> ${SIMBOLI.etichette} Etichette pronte</label>
         <datalist id="dl-stili">${stiliNoti().map(x => html`<option value="${x}">`)}</datalist>
         <datalist id="dl-birre2">${birreNote().map(b => html`<option value="${b}">`)}</datalist>
         ${(() => {
@@ -499,7 +508,7 @@ async function vistaCotta(id) {
       <div class="scheda">
         <h2>Fermentazione</h2>
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
+          <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
           <tbody>${c.fermentazione.map((e, i) => html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
             <td class="num">${c.data && e.data ? diffGiorni(c.data, e.data) + 1 : e.giorno || ''}</td>
             <td><input data-path="fermentazione.${i}.data" type="date" value="${e.data || ''}"></td>
@@ -507,6 +516,8 @@ async function vistaCotta(id) {
             <td><input data-path="fermentazione.${i}.densita" type="number" step="any" inputmode="decimal" value="${e.densita ?? ''}" style="min-width:60px"></td>
             <td><input data-path="fermentazione.${i}.ph" type="number" step="0.01" inputmode="decimal" value="${e.ph ?? ''}" style="min-width:60px"></td>
             <td><input data-path="fermentazione.${i}.psi" type="number" step="any" inputmode="decimal" value="${e.psi ?? ''}" style="min-width:60px"></td>
+            <td><input type="checkbox" data-path="fermentazione.${i}.spurgo" ${e.spurgo ? 'checked' : ''} title="Spurgo" style="width:auto;min-height:auto"></td>
+            <td><input type="checkbox" data-path="fermentazione.${i}.bubbling" ${e.bubbling ? 'checked' : ''} title="Bubbling" style="width:auto;min-height:auto"></td>
             <td><input data-path="fermentazione.${i}.nota" value="${e.nota || ''}" style="min-width:120px"></td>
             <td class="az"><button class="piccolo" data-del="fermentazione.${i}" title="Rimuovi">✕</button></td>
           </tr>`)}</tbody>
@@ -700,7 +711,8 @@ function esportaPlanning() {
       const fasi = fasiCotta(c, stato.durate);
       for (let d = p.da < da ? da : p.da; d <= p.a && d <= a; d = addGiorni(d, 1)) {
         const f = fasi.find(x => x.da <= d && x.a >= d)?.fase || 'fermentazione';
-        riga[diffGiorni(da, d) + 1] = { v: '', sfondo: COLORI_XLSX[f] };
+        const ev = eventiGiorno((c.fermentazione || []).find(e => e.data === d)).map(k => SIMBOLI[k]).join('');
+        riga[diffGiorni(da, d) + 1] = { v: ev, sfondo: COLORI_XLSX[f], centro: true };
       }
       // etichetta sul primo giorno della barra (una volta per cotta doppia/tripla)
       const chiave = g.map(x => x.id).join() + (p.travaso ? 't' : '');
@@ -708,14 +720,16 @@ function esportaPlanning() {
       scritti.add(chiave);
       const inizio = p.da < da ? da : p.da;
       const mp = statoCotta(c, stato.durate) === 'pianificata' && g.every(x => x.materiePrime);
-      riga[diffGiorni(da, inizio) + 1] = { v: `${p.travaso ? '↳ ' : ''}${lottoGruppo(g) || c.lotto || ''} ${c.birra || ''}`.trim(), grassetto: true, sfondo: mp ? COLORI_XLSX.mp : riga[diffGiorni(da, inizio) + 1]?.sfondo };
+      const pronti = simboliPronti({ ...c, lievitoOk: g.every(x => x.lievitoOk), etichetteOk: g.every(x => x.etichetteOk) });
+      riga[diffGiorni(da, inizio) + 1] = { v: `${p.travaso ? '↳ ' : ''}${lottoGruppo(g) || c.lotto || ''} ${c.birra || ''}${pronti}`.trim(), grassetto: true, sfondo: mp ? COLORI_XLSX.mp : riga[diffGiorni(da, inizio) + 1]?.sfondo };
     }
     righe.push(riga);
   }
   righe.push([], [{ v: 'Legenda', grassetto: true }],
     [{ v: 'Fermentazione', sfondo: COLORI_XLSX.fermentazione }], [{ v: 'DH', sfondo: COLORI_XLSX.dh }],
     [{ v: 'Maturazione a freddo', sfondo: COLORI_XLSX.maturazione }], [{ v: 'Materie prime ordinate', sfondo: COLORI_XLSX.mp }],
-    [{ v: 'Sabato e domenica', sfondo: COLORI_XLSX.weekend }]);
+    [{ v: 'Sabato e domenica', sfondo: COLORI_XLSX.weekend }],
+    [`${SIMBOLI.lievito} lievito pronto · ${SIMBOLI.etichette} etichette pronte · ${SIMBOLI.spurgo} spurgo · ${SIMBOLI.bubbling} bubbling`]);
 
   const elenco = stato.cotte.filter(c => c.data && c.data <= a && fineCotta(c, stato.durate) >= da)
     .sort((x, y) => x.data.localeCompare(y.data));
@@ -819,6 +833,7 @@ function vistaPlanning() {
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
+      <span>${SIMBOLI.lievito} lievito pronto · ${SIMBOLI.etichette} etichette pronte · ${SIMBOLI.spurgo} spurgo · ${SIMBOLI.bubbling} bubbling</span>
       <span><span class="g-eta" style="position:static;padding:0 4px">12</span> = giorno della birra oggi (cotta = giorno 1)</span>
     </div>
     ${conf.length ? html`<div class="scheda avviso"><h2>⚠ ${conf.length} conflitt${conf.length === 1 ? 'o' : 'i'}</h2>
@@ -852,7 +867,8 @@ function vistaPlanning() {
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
               title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)}">
-              <b>${c0.birra}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span>
+              <b>${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span>
+              ${(c0.fermentazione || []).filter(e => e.data && e.data >= da && e.data <= a && eventiGiorno(e).length).map(e => html`<span class="g-ev" style="left:${diffGiorni(plan.inizio, e.data) * W - left - 1}px;width:${W}px" title="${eventiGiorno(e).join(' + ')} il ${dataIT(e.data)}">${eventiGiorno(e).map(k => SIMBOLI[k]).join('')}</span>`)}
               ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
                 ? html`<span class="g-eta" style="left:${diffGiorni(plan.inizio, oggi) * W - left - 1}px;width:${W}px" title="Cotta del ${dataIT(c0.data)}: giorno ${diffGiorni(c0.data, oggi) + 1}">${diffGiorni(c0.data, oggi) + 1}</span>` : ''}</a>`;
           })}

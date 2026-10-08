@@ -8,6 +8,16 @@ export const FASI_DEFAULT = [
 ];
 export const DURATA_DEFAULT = FASI_DEFAULT.reduce((t, f) => t + f.giorni, 0); // 34
 
+// Simboli del planning: pronti (lievito, etichette) e giorni di spurgo / bubbling dal registro
+export const SIMBOLI = { lievito: '🧫', etichette: '🏷️', spurgo: '🔻', bubbling: '💨' };
+export function eventiGiorno(e) {
+  const nota = e?.nota || '';
+  const ev = [];
+  if (e?.spurgo || /spurg/i.test(nota)) ev.push('spurgo');
+  if (e?.bubbling || /bubbl/i.test(nota)) ev.push('bubbling');
+  return ev;
+}
+
 // Additivi sempre presenti in una cotta nuova (aggiunti solo se mancano)
 export const ADDITIVI_DEFAULT = [{ nome: 'Antifoam', qta: 50, unita: 'g' }];
 const chiaveAdditivo = n => String(n || '').toLowerCase().replace(/[^a-z]/g, '');
