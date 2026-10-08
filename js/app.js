@@ -400,14 +400,16 @@ async function vistaCotta(id) {
     return html`<div class="scheda">
       <h2>${titolo}</h2>
       <div class="scroll-x"><table class="tab-edit">
-        <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:80px">Minuti</th><th style="width:110px">Uso</th>` : ''}<th></th></tr></thead>
+        <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:90px">Min. / giorno</th><th style="width:110px">Uso</th>` : ''}<th></th></tr></thead>
         <tbody>${righe.map((r, i) => html`<tr>
           <td><input data-path="${k}.${i}.nome" value="${r.nome || ''}" list="dl-art-${k}" placeholder="scegli dal magazzino" style="min-width:140px">
             ${r.nome && !trovaArticolo(articoli, r.nome) ? html`<button class="piccolo nuovo-art" data-crea="${k}.${i}" title="Non è nel magazzino">+ Nuovo in magazzino</button>` : ''}</td>
           <td><input data-path="${k}.${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
           <td><select data-path="${k}.${i}.unita">${['kg', 'g', 'L', 'ml', ''].map(u => html`<option value="${u}" ${u === (r.unita ?? '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>
-          ${extra ? html`<td><input data-path="${k}.${i}.minuti" type="number" step="any" value="${r.minuti ?? ''}"></td>
-          <td><select data-path="${k}.${i}.uso">${['', 'bollitura', 'whirlpool', 'dry hop'].map(u => html`<option value="${u}" ${u === (r.uso || '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>` : ''}
+          ${extra ? html`<td>${r.uso === 'dry hop'
+            ? html`<input data-path="${k}.${i}.giorno" type="number" min="1" step="1" inputmode="numeric" placeholder="giorno" title="Giorno del dry hop (1 = giorno di cotta)" value="${r.giorno ?? ''}">${c.data && r.giorno > 0 ? html`<span class="totale" style="display:block;font-size:.75rem">${dataIT(addGiorni(c.data, r.giorno - 1))}</span>` : ''}`
+            : html`<input data-path="${k}.${i}.minuti" type="number" step="any" placeholder="min" value="${r.minuti ?? ''}">`}</td>
+          <td><select data-path="${k}.${i}.uso">${['', 'mash hop', 'first wort', 'bollitura', 'whirlpool', 'dip hop', 'dry hop'].map(u => html`<option value="${u}" ${u === (r.uso || '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>` : ''}
           <td class="az"><button class="piccolo" data-del="${k}.${i}" title="Rimuovi">✕</button></td>
         </tr>`)}</tbody>
       </table></div>
@@ -636,7 +638,7 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
-    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|fermentazione\.\d+\.(data|densita|temp))/.test(p)) {
+    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp))/.test(p)) {
       setTimeout(() => {
         const a = document.activeElement;
         const chiave = a && $app.contains(a) ? (a.dataset.path ? `[data-path="${a.dataset.path}"]` : a.id ? `#${a.id}` : null) : null;

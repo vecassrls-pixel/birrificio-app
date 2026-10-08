@@ -5,7 +5,7 @@
 // di oggi ma dal disponibile.
 //
 // Record nell'archivio:
-//   articolo   { nome, categoria, unita, scortaMin, alias: [], creato }  (creato: senza inventario, gli scarichi contano da quel giorno)
+//   articolo   { nome, categoria, unita, scortaMin, pesoPezzo, alias: [], creato }  (creato: senza inventario, gli scarichi contano da quel giorno; pesoPezzo: peso di un sacco/pezzo nell'unità dell'articolo)
 //   bolla      { data, fornitore, numero, righe: [{ articoloId, qta, unita, lotto, scadenza }] }
 //   inventario { data, righe: [{ articoloId, qta, lotto, scadenza }] }
 // Lotto e scadenza sono facoltativi. Le cotte non dicono quale lotto usano: si assume che
@@ -29,6 +29,15 @@ export function converti(qta, da, a) {
   if (!da || da === a) return q;
   if (!FAMIGLIA[da] || FAMIGLIA[da] !== FAMIGLIA[a]) return null;
   return (q * FATTORE[da]) / FATTORE[a];
+}
+
+// Come converti, ma i pezzi (sacchi, confezioni) valgono il peso per pezzo dell'articolo, se c'è:
+// lolla di riso 3 pz con pesoPezzo 20 (kg) = 60 kg
+export function convertiPer(art, qta, da) {
+  const q = converti(qta, da, art.unita);
+  if (q !== null || da !== 'pz' || !(art.pesoPezzo > 0)) return q;
+  const n = Number(qta);
+  return Number.isFinite(n) ? n * art.pesoPezzo : null;
 }
 
 // Nome "pulito" di un ingrediente delle schede: toglie tempi, giorni di DH, usi.
@@ -120,7 +129,7 @@ export function giacenze({ articoli, bolle, inventari, cotte, scarichi = [] }, o
   // senza inventario: tutte le bolle, ma solo gli scarichi da quando l'articolo esiste
   const dopoInventario = (g, data, tipo) => (g.inventario ? data > g.inventario.data : tipo === 'carico' || !g.articolo.creato || data >= g.articolo.creato);
   const muovi = (g, data, qta, unita, mov) => {
-    const q = converti(qta, unita, g.articolo.unita);
+    const q = convertiPer(g.articolo, qta, unita);
     if (q === null) { g.nonConvertibili++; return; }
     if (data > oggi) { if (mov.tipo === 'scarico') g.impegnato += q; g.movimenti.push({ ...mov, data, qta: mov.tipo === 'scarico' ? -q : q, futuro: true }); return; }
     if (!dopoInventario(g, data, mov.tipo)) return;

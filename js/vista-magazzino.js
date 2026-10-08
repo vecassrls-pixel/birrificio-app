@@ -193,6 +193,7 @@ export async function vistaArticolo(id) {
         <label>Categoria <select name="categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === a.categoria ? 'selected' : ''}>${v}</option>`)}</select></label>
         <label>Unità <select name="unita">${UNITA.map(x => html`<option ${x === a.unita ? 'selected' : ''}>${x}</option>`)}</select></label>
         <label>Scorta minima (${a.unita}) <input name="scortaMin" type="number" step="any" inputmode="decimal" value="${a.scortaMin || ''}"></label>
+        <label>1 pezzo / sacco = (${a.unita}) <input name="pesoPezzo" type="number" step="any" inputmode="decimal" value="${a.pesoPezzo || ''}" placeholder="es. 20" title="Per le bolle che riportano solo i pezzi"></label>
         <label style="grid-column:1/-1">Altri nomi nelle schede cotta (separati da virgola)
           <input name="alias" value="${(a.alias || []).join(', ')}" placeholder="es. Pils Schuemma, pils shuema"></label>
       </div>
@@ -223,7 +224,7 @@ export async function vistaArticolo(id) {
     const fd = new FormData(e.target);
     await u.db.salva({
       ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'), unita: fd.get('unita'),
-      scortaMin: Number(fd.get('scortaMin')) || 0,
+      scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null,
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
     });
     u.toast('Articolo salvato');
