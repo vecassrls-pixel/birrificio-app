@@ -56,7 +56,7 @@ export function fasiCotta(c, durate) {
 // Ogni cotta tiene i suoi dati del giorno di cotta (OG, pH mash, acqua, ingredienti);
 // registro di fermentazione, fine in FV e travaso sono del fermentatore e quindi comuni;
 // il confezionamento si salva solo sulla prima cotta del gruppo.
-export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso'];
+export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso', 'fg'];
 
 export function gruppoCotta(c, cotte) {
   if (!c.fv || !c.data) return [c];
@@ -66,6 +66,11 @@ export function gruppoCotta(c, cotte) {
 }
 
 // Lotto del gruppo, come nel Brewing Schedule: 51 e 52 -> "51/52"
+// OG del lotto: media dei °Plato delle cotte che ce l'hanno
+export function ogMedia(g) {
+  const v = g.map(c => Number(c.og)).filter(x => x > 0);
+  return v.length ? v.reduce((t, x) => t + x, 0) / v.length : null;
+}
 export const lottoGruppo = g => (g.length > 1 ? g.map(c => c.numero).join('/') : g[0]?.lotto || '');
 
 // Registro comune: unione per data; vale la prima cotta, le altre completano i valori mancanti
