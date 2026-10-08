@@ -611,7 +611,7 @@ function vistaPlanning() {
   const testa = giorni.map((d, i) => {
     const dd = daISO(d);
     const primo = dd.getDate() === 1 || i === 0;
-    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''}" style="left:${i * W}px;width:${W}px">
+    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''}" style="left:${i * W}px;width:${W}px">
       <div style="height:18px;font-weight:600;color:var(--text);white-space:nowrap;text-align:left;padding-left:2px">${primo ? dd.toLocaleDateString('it-IT', { month: 'short' }) : ''}</div>
       <div>${dd.getDate()}</div></div>`;
   });
