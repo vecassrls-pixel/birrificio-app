@@ -266,6 +266,7 @@ export function copiaDa(src, { data, numero, anno, fv }) {
   return {
     tipo: 'cotta',
     birra: src.birra,
+    ...(src.stile ? { stile: src.stile } : {}),
     numero, anno, lotto: lottoDi(numero, anno), data, fv: fv || src.fv,
     og: src.og ?? null, fg: null, phMash: null, litri: src.litri ?? null,
     sali: conAdditiviDefault(clone.sali || []), malti: clone.malti || [], luppoli: clone.luppoli || [], lievito: clone.lievito || [],
