@@ -157,7 +157,7 @@ function vistaCotte() {
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta" href="#/cotta/${encodeURIComponent(c.id)}">
           <span class="lotto">${c.lotto || '—'}</span>
-          <span class="birra">${c.birra || 'Senza nome'}</span>
+          <span class="birra">${c.birra || 'Senza nome'}${s === 'pianificata' && c.materiePrime ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}</span>
           <span class="chip ${s}">${STATI[s]}</span>
           <span class="dett">${dataIT(c.data)} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
         </a>`) : html`<p class="vuoto">Nessuna cotta trovata.</p>`}
@@ -191,6 +191,7 @@ function dialogNuovaCotta(pre = {}) {
       <h3>Fermentatore</h3>
       <div id="fv-scelta" class="griglia" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
       <label style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="copia" checked style="width:auto;min-height:auto"> Copia ricetta e profilo dall'ultima cotta della stessa birra</label>
+      <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="materiePrime" style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
       <p id="origine" class="totale"></p>
       <div class="barra" style="margin-top:14px"><span class="spazio"></span>
         <button value="annulla" formnovalidate>Annulla</button>
@@ -242,6 +243,7 @@ function dialogNuovaCotta(pre = {}) {
     };
     const durata = Number(fd.get('durata'));
     if (durata && !(src && base.fermentazione.length)) base.fine = addGiorni(data, durata - 1);
+    if (fd.get('materiePrime')) base.materiePrime = true;
     const rec = await db.salva({ ...base, birra, id: db.nuovoId('cotta') });
     location.hash = `#/cotta/${encodeURIComponent(rec.id)}`;
   });
@@ -362,6 +364,7 @@ async function vistaCotta(id) {
           ${campo('fg', 'FG (°P)')}
           ${campo('phMash', 'pH')}
         </div>
+        <label style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''} style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
         <datalist id="dl-birre2">${birreNote().map(b => html`<option value="${b}">`)}</datalist>
         ${(() => {
           if (c.brewfather) return html`<p class="totale">Collegata a Brewfather${c.brewfather.stato ? ` (stato: ${c.brewfather.stato})` : ''}.</p>`;
@@ -476,7 +479,7 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     if (e.target.id === 'hlt-da' || e.target.id === 'hlt-litri') return calcolaHlt();
     if (!p) return;
-    let v = e.target.value;
+    let v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     if (e.target.type === 'number') v = v === '' ? null : Number(v);
     if (e.target.type === 'date' && v === '') v = null;
     set(c, p, v);
@@ -636,6 +639,7 @@ function vistaPlanning() {
     <div class="legenda">
       ${Object.entries(STATI).map(([k, v]) => html`<span><span class="chip ${k}">${v}</span></span>`)}
       <span>Bordo rosso = conflitto sullo stesso FV</span>
+      <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
     </div>
     ${conf.length ? html`<div class="scheda avviso"><h2>⚠ ${conf.length} conflitt${conf.length === 1 ? 'o' : 'i'}</h2>
       ${conf.map(x => html`<div>${x.fv}: <a href="#/cotta/${encodeURIComponent(x.a.id)}">${x.a.birra} ${x.a.lotto}</a> (fino al ${dataIT(x.fineA)}) e <a href="#/cotta/${encodeURIComponent(x.b.id)}">${x.b.birra} ${x.b.lotto}</a> (dal ${dataIT(x.inizioB)})</div>`)}
@@ -655,11 +659,12 @@ function vistaPlanning() {
             const left = Math.max(0, diffGiorni(plan.inizio, b.da)) * W;
             const right = (Math.min(plan.giorni - 1, diffGiorni(plan.inizio, b.a)) + 1) * W;
             const lotti = (b.travaso ? '↳ ' : '') + b.cotte.map(c => c.numero).join('+') + (c0.anno ? `/${String(c0.anno).slice(2)}` : '');
+            const mp = s === 'pianificata' && b.cotte.every(c => c.materiePrime);
             const conflitto = b.cotte.some(c => inConflitto.has(c.id));
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px"
               title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)}">
-              <b>${c0.birra}</b><span>${lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span></a>`;
+              <b>${c0.birra}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span></a>`;
           })}
         </div></div>`)}
     </div></div>

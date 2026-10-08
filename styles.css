@@ -178,3 +178,4 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 .accesso { max-width: 400px; margin: 8vh auto 0; }
 .errore { color: var(--warn); min-height: 1.2em; margin: 8px 0 0; }
 [hidden] { display: none !important; }
+.mp { background: #92d050; color: #1c1917; border-radius: 4px; padding: 0 4px; font-weight: 700; font-size: .75rem; white-space: nowrap; }
