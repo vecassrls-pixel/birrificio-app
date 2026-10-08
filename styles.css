@@ -64,6 +64,7 @@ h3 { font-size: .95rem; margin: 1rem 0 .4rem; color: var(--muted); text-transfor
 .rete.off { color: var(--warn); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+main.largo { max-width: none; padding-left: 12px; padding-right: 12px; }
 .barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .barra .spazio { flex: 1; }
 .vuoto { color: var(--muted); text-align: center; padding: 32px 0; }
@@ -174,8 +175,18 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
   .riga-cotta { grid-template-columns: 56px 1fr auto; }
 }
 @media print {
-  .top, .barra, button { display: none !important; }
-  .scheda { border: none; padding: 0; }
+  @page { size: A4; margin: 12mm; }
+  :root { color-scheme: light; }
+  body { background: #fff !important; color: #000 !important; font-size: 11px; }
+  .top, #app > .barra, button, .calc-hlt, .stato-salvataggio { display: none !important; }
+  input[type="date"][value=""] { color: transparent !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .scheda { border: none; padding: 0; margin: 0 0 10px; break-inside: avoid; background: none !important; box-shadow: none !important; }
+  .scroll-x { overflow: visible !important; }
+  input, select, textarea { border: none !important; background: none !important; padding: 0 !important; min-height: 0 !important; color: #000 !important; -webkit-appearance: none; appearance: none; }
+  select { background-image: none !important; }
+  .tab-edit td, .tab-edit th { padding: 1px 4px !important; }
+  a { color: #000; text-decoration: none; }
 }
 .calc-hlt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 10px; background: var(--surface-2); border-radius: 8px; font-size: .9rem; }
 .calc-hlt input { width: 90px; min-height: 34px; }

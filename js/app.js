@@ -2,6 +2,7 @@ import * as db from './db.js';
 import * as sync from './sync.js';
 import * as bf from './brewfather.js';
 import * as auth from './auth.js';
+import { creaXlsx } from './xlsx.js';
 import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
@@ -110,6 +111,7 @@ async function render() {
   const h = location.hash || '#/cotte';
   if (h.includes('access_token=')) return; // link di invito: gestito all'avvio
   if (pulizia) { pulizia(); pulizia = null; }
+  $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
   document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/'))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
@@ -371,7 +373,7 @@ async function vistaCotta(id) {
         <span class="spazio"></span>
         <span id="salv" class="stato-salvataggio"></span>
         <button id="duplica">Duplica</button>
-        ${window.self === window.top ? html`<button id="stampa">Stampa</button>` : ''}
+        ${window.self === window.top ? html`<button id="stampa" title="Si apre la stampa: scegli “Salva come PDF”">Salva PDF</button>` : ''}
       </div>
       <div class="scheda">
         <div class="barra" style="margin:0">
@@ -632,6 +634,10 @@ async function vistaCotta(id) {
       toast('Cotta collegata a Brewfather');
       const y = scrollY; disegna(); scrollTo(0, y);
     } else if (t.id === 'stampa') {
+      // il titolo diventa il nome proposto per il file PDF
+      const titolo = document.title;
+      document.title = `Cotta ${c.lotto || ''} ${c.birra || ''}`.replace(/[/\\:]/g, '-').trim();
+      addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
       window.print();
     }
   };
@@ -652,6 +658,75 @@ function set(o, path, v) {
 // ---------- Planning ----------
 const plan = { inizio: null, giorni: 84 };
 const W = 30; // pixel per giorno
+
+// Export del planning in Excel: righe = FV, colonne = giorni, colori come nell'app.
+// Periodo: dall'inizio della vista attuale fino all'ultima cotta in programma.
+const COLORI_XLSX = { fermentazione: 'FB923C', dh: 'B39DFA', maturazione: '7DD3FC', weekend: 'F7DBE3', mp: '92D050', testa: 'E7E5E4' };
+function esportaPlanning() {
+  const da = plan.inizio || addGiorni(oggiISO(), -21);
+  const fini = stato.cotte.filter(c => c.data).map(c => fineCotta(c, stato.durate));
+  const a = [addGiorni(da, plan.giorni - 1), ...fini].sort().pop();
+  const giorni = Array.from({ length: diffGiorni(da, a) + 1 }, (_, i) => addGiorni(da, i));
+  const periodi = stato.cotte.filter(c => c.data && c.data <= a && fineCotta(c, stato.durate) >= da)
+    .flatMap(c => periodiCotta(c, stato.durate, stato.fv)).filter(p => p.fv && p.da <= a && p.a >= da);
+  const nomiFv = [...new Set([...stato.fv.map(f => f.nome), ...periodi.map(p => p.fv)])]
+    .sort((x, y) => x.localeCompare(y, 'it', { numeric: true }));
+  const fest = d => [0, 6].includes(daISO(d).getDay());
+  const GG = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
+  const testa = (v, d) => ({ v, centro: true, grassetto: true, sfondo: d && fest(d) ? COLORI_XLSX.weekend : COLORI_XLSX.testa });
+  const righe = [
+    [testa('FV'), ...giorni.map((d, i) => testa(i === 0 || d.endsWith('-01') ? daISO(d).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' }) : '', d))],
+    [testa(''), ...giorni.map(d => testa(daISO(d).getDate(), d))],
+    [testa(''), ...giorni.map(d => testa(GG[daISO(d).getDay()], d))],
+  ];
+  for (const n of nomiFv) {
+    const riga = [{ v: n, grassetto: true }, ...giorni.map(d => (fest(d) ? { v: '', sfondo: COLORI_XLSX.weekend } : null))];
+    const suFv = periodi.filter(p => p.fv === n).sort((x, y) => x.da.localeCompare(y.da));
+    const scritti = new Set();
+    for (const p of suFv) {
+      const c = p.cotta;
+      const g = gruppoCotta(c, stato.cotte);
+      const fasi = fasiCotta(c, stato.durate);
+      for (let d = p.da < da ? da : p.da; d <= p.a && d <= a; d = addGiorni(d, 1)) {
+        const f = fasi.find(x => x.da <= d && x.a >= d)?.fase || 'fermentazione';
+        riga[diffGiorni(da, d) + 1] = { v: '', sfondo: COLORI_XLSX[f] };
+      }
+      // etichetta sul primo giorno della barra (una volta per cotta doppia/tripla)
+      const chiave = g.map(x => x.id).join() + (p.travaso ? 't' : '');
+      if (scritti.has(chiave)) continue;
+      scritti.add(chiave);
+      const inizio = p.da < da ? da : p.da;
+      const mp = statoCotta(c, stato.durate) === 'pianificata' && g.every(x => x.materiePrime);
+      riga[diffGiorni(da, inizio) + 1] = { v: `${p.travaso ? '↳ ' : ''}${lottoGruppo(g) || c.lotto || ''} ${c.birra || ''}`.trim(), grassetto: true, sfondo: mp ? COLORI_XLSX.mp : riga[diffGiorni(da, inizio) + 1]?.sfondo };
+    }
+    righe.push(riga);
+  }
+  righe.push([], [{ v: 'Legenda', grassetto: true }],
+    [{ v: 'Fermentazione', sfondo: COLORI_XLSX.fermentazione }], [{ v: 'DH', sfondo: COLORI_XLSX.dh }],
+    [{ v: 'Maturazione a freddo', sfondo: COLORI_XLSX.maturazione }], [{ v: 'Materie prime ordinate', sfondo: COLORI_XLSX.mp }],
+    [{ v: 'Sabato e domenica', sfondo: COLORI_XLSX.weekend }]);
+
+  const elenco = stato.cotte.filter(c => c.data && c.data <= a && fineCotta(c, stato.durate) >= da)
+    .sort((x, y) => x.data.localeCompare(y.data));
+  const cotte = [
+    ['Lotto', 'Lotto gruppo', 'Birra', 'Stile', 'FV', 'Data cotta', 'Fine in FV', 'Travaso in', 'Data travaso', 'Litri', 'OG °P', 'Stato', 'Materie prime'].map(v => testa(v)),
+    ...elenco.map(c => {
+      const g = gruppoCotta(c, stato.cotte);
+      return [c.lotto || '', g.length > 1 ? lottoGruppo(g) : '', c.birra || '', c.stile || '', c.fv || '', dataIT(c.data), dataIT(fineCotta(c, stato.durate)),
+        c.travaso?.fv || '', c.travaso?.data ? dataIT(c.travaso.data) : '', c.litri ?? '', c.og ?? '', STATI[statoCotta(c, stato.durate)] || '',
+        c.materiePrime ? { v: 'sì', sfondo: COLORI_XLSX.mp } : ''];
+    }),
+  ];
+  const blob = creaXlsx([
+    { nome: 'Planning', righe, larghezze: [8, ...giorni.map(() => 4.5)], blocca: { righe: 3, colonne: 1 } },
+    { nome: 'Cotte', righe: cotte, larghezze: [8, 10, 22, 18, 6, 11, 11, 10, 12, 8, 7, 12, 13], blocca: { righe: 1 } },
+  ]);
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `planning-${da}-${a}.xlsx`;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+}
 
 function vistaPlanning() {
   if (!plan.inizio) plan.inizio = addGiorni(oggiISO(), -21);
@@ -703,6 +778,7 @@ function vistaPlanning() {
       <h1 style="margin:0">Planning fermentatori</h1>
       <span class="spazio"></span>
       <button id="prec">◀</button><button id="oggi">Oggi</button><button id="succ">▶</button>
+      <button id="esporta">Esporta Excel</button>
       <button class="primario" id="pianifica">+ Pianifica cotta</button>
     </div>
     <div class="legenda">
@@ -760,6 +836,7 @@ function vistaPlanning() {
   document.getElementById('succ').onclick = () => { plan.inizio = addGiorni(plan.inizio, 28); vistaPlanning(); };
   document.getElementById('oggi').onclick = () => { plan.inizio = addGiorni(oggiISO(), -21); vistaPlanning(); scrollOggi(); };
   document.getElementById('pianifica').onclick = () => dialogNuovaCotta({ titolo: 'Pianifica cotta', data: addGiorni(oggiISO(), 7) });
+  document.getElementById('esporta').onclick = esportaPlanning;
   scrollOggi();
   function scrollOggi() {
     const wrap = document.querySelector('.gantt-wrap');
