@@ -1,6 +1,6 @@
 // Service worker: tiene in cache l'app così si apre anche senza internet.
 // Cambiare VERSIONE a ogni rilascio per far scaricare i file aggiornati.
-const VERSIONE = 'birrificio-v22';
+const VERSIONE = 'birrificio-v23';
 const FILE = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'img/logo-kashmir.png',
   'js/app.js', 'js/auth.js', 'js/config.js', 'js/serbatoio.js', 'js/brewfather.js', 'js/db.js', 'js/dominio.js', 'js/sync.js', 'js/xlsx.js', 'js/magazzino.js', 'js/vista-magazzino.js', 'data/storico.json',

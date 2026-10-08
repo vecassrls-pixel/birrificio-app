@@ -914,6 +914,46 @@ function vistaPlanning() {
 }
 
 // ---------- Impostazioni ----------
+const NOMI_RUOLO = { admin: 'Amministratore', editore: 'Può modificare', lettore: 'Solo lettura' };
+
+// Solo l'admin: chi può entrare e con quale ruolo. L'invito con la password si manda da Supabase.
+async function gestioneUtenti() {
+  const box = document.getElementById('utenti');
+  const disegna = (utenti, errore = '') => {
+    box.innerHTML = html`<h2>Utenti</h2>
+      <p class="totale">"Solo lettura" vede tutto (cotte, planning, magazzino, stampe) ma non può modificare nulla. Dopo averlo aggiunto qui, invialo da Supabase: Authentication → Users → Invite user, con la stessa email.</p>
+      ${errore ? html`<p class="errore">${errore}</p>` : ''}
+      <table class="tab-edit"><thead><tr><th>Email</th><th>Ruolo</th><th></th></tr></thead>
+      <tbody>${utenti.map(x => html`<tr>
+        <td>${x.email}</td>
+        <td><select data-ruolo="${x.email}" ${x.email === auth.utente()?.email?.toLowerCase() ? 'disabled' : ''}>${Object.entries(NOMI_RUOLO).map(([k, v]) => html`<option value="${k}" ${k === x.ruolo ? 'selected' : ''}>${v}</option>`)}</select></td>
+        <td class="az">${x.email === auth.utente()?.email?.toLowerCase() ? '' : html`<button class="piccolo" data-togli="${x.email}" title="Togli accesso">✕</button>`}</td>
+      </tr>`)}</tbody></table>
+      <form class="barra" id="nuovo-utente" style="margin-top:10px">
+        <input name="email" type="email" required placeholder="email@esempio.it" style="flex:2;min-width:200px">
+        <select name="ruolo" style="flex:1">${Object.entries(NOMI_RUOLO).map(([k, v]) => html`<option value="${k}" ${k === 'lettore' ? 'selected' : ''}>${v}</option>`)}</select>
+        <button class="primario">Aggiungi</button>
+      </form>`.s;
+    box.querySelector('#nuovo-utente').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try { await auth.aggiungiUtente(fd.get('email'), fd.get('ruolo')); toast('Utente aggiunto: ora invialo da Supabase'); carica(); }
+      catch (ex) { carica(ex.message); }
+    };
+    box.querySelectorAll('[data-ruolo]').forEach(sel => { sel.onchange = async () => {
+      try { await auth.cambiaRuolo(sel.dataset.ruolo, sel.value); toast('Ruolo aggiornato'); } catch (ex) { carica(ex.message); }
+    }; });
+    box.querySelectorAll('[data-togli]').forEach(b => { b.onclick = async () => {
+      if (!(await chiedi(`Togliere l'accesso a ${b.dataset.togli}?`, 'Togli'))) return;
+      try { await auth.togliUtente(b.dataset.togli); carica(); } catch (ex) { carica(ex.message); }
+    }; });
+  };
+  const carica = async (errore = '') => {
+    try { disegna(await auth.elencoUtenti(), errore); }
+    catch (ex) { box.innerHTML = html`<h2>Utenti</h2><p class="errore">${ex.message}</p><p class="totale">Hai eseguito supabase/migrazione_ruoli.sql?</p>`.s; }
+  };
+  carica();
+}
 async function vistaImpostazioni() {
   const nonInviati = (await db.daInviare()).length;
   const bfUltimo = await db.meta('brewfatherUltimo');
@@ -936,7 +976,7 @@ async function vistaImpostazioni() {
     <div class="scheda">
       <h2>Account e sincronizzazione</h2>
       ${auth.configurato() ? html`
-        <p>Accesso come <b>${auth.utente()?.email || '—'}</b></p>
+        <p>Accesso come <b>${auth.utente()?.email || '—'}</b> · ${NOMI_RUOLO[auth.ruolo()]}</p>
         <p class="totale">I dati restano anche su questo dispositivo: l'app funziona offline e invia le modifiche appena torna internet.</p>
         <div class="barra"><button id="sync-ora">Sincronizza ora</button><button class="pericolo" id="esci">Esci</button></div>
         <p class="totale" id="sync-stato"></p>
@@ -944,7 +984,12 @@ async function vistaImpostazioni() {
       : html`<p class="totale">Versione di prova: i dati sono solo su questo dispositivo, senza account e senza cloud.</p>`}
     </div>
 
-    <div class="scheda">
+    ${auth.configurato() && auth.ruolo() === 'admin' ? html`<div class="scheda" id="utenti">
+      <h2>Utenti</h2>
+      <p class="totale">Carico…</p>
+    </div>` : ''}
+
+    <div class="scheda solo-editori">
       <h2>Brewfather</h2>
       <p class="totale">Ricette e cotte si scrivono in Brewfather. Qui arrivano birra, numero, data, ricetta, valori misurati e letture del densimetro; fermentatore, tacche e confezionamento restano quelli inseriti nell'app.</p>
       <div class="barra">
@@ -954,7 +999,7 @@ async function vistaImpostazioni() {
       <p class="totale" id="bf-stato">${bfUltimo ? `Ultimo import: ${new Date(bfUltimo).toLocaleString('it-IT')}` : 'Mai importato.'}</p>
     </div>
 
-    <div class="scheda">
+    <div class="scheda solo-editori">
       <h2>Dati</h2>
       <div class="barra">
         ${auth.configurato() ? '' : html`<button id="storico">Importa storico schede cotta</button>`}
@@ -991,6 +1036,7 @@ async function vistaImpostazioni() {
     location.hash = '#/cotte';
     location.reload();
   };
+  if (document.getElementById('utenti')) gestioneUtenti();
   document.getElementById('bf-attive').onclick = () => importaBrewfather(false);
   document.getElementById('bf-tutto').onclick = () => importaBrewfather(true);
   const off = sync.onStato(s => {
@@ -1112,12 +1158,35 @@ function schermataPassword(link) {
 }
 
 // ---------- stato rete ----------
-function aggiornaRete(s = {}) {
+let statoRete = {};
+function aggiornaRete(s = statoRete) {
+  statoRete = s;
   const el = document.getElementById('rete');
   const online = navigator.onLine;
   el.classList.toggle('off', !online);
   el.textContent = !online ? '● offline' : s.errore ? '● errore sync' : s.attivo ? '● sincronizzato' : '● solo locale';
+  if (lettore) el.textContent += ' · sola lettura';
 }
+
+// ---------- profili: il lettore vede tutto ma non modifica nulla ----------
+// Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
+const LIBERI = '#q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+let lettore = false;
+function bloccaModifiche() {
+  if (!lettore) return;
+  $app.querySelectorAll('input, select, textarea, button').forEach(el => { if (!el.matches(LIBERI)) el.disabled = true; });
+}
+new MutationObserver(bloccaModifiche).observe($app, { childList: true, subtree: true });
+function applicaRuolo(r, { ridisegna = true } = {}) {
+  const prima = lettore;
+  lettore = r === 'lettore';
+  db.impostaSolaLettura(lettore);
+  document.body.classList.toggle('lettore', lettore);
+  document.body.classList.toggle('admin', r === 'admin');
+  aggiornaRete();
+  if (ridisegna && prima !== lettore) render();
+}
+window.addEventListener('unhandledrejection', e => { if (/sola lettura/i.test(e.reason?.message || '')) toast(e.reason.message); });
 
 // ---------- avvio ----------
 (async function avvio() {
@@ -1130,6 +1199,8 @@ function aggiornaRete(s = {}) {
     if (!(await auth.caricaSessione())) return schermataAccesso();
     window.addEventListener('sessione-scaduta', () => schermataAccesso('La sessione è scaduta o l\'accesso è stato revocato. Rientra.'));
     bf.usaToken(auth.token);
+    applicaRuolo(auth.ruolo(), { ridisegna: false });
+    auth.caricaRuolo().then(applicaRuolo);
   }
   await primoAvvio();
   await carica();

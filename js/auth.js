@@ -99,3 +99,36 @@ export async function token() {
     return null;
   }
 }
+
+// ---------- ruoli: admin (gestisce gli utenti), editore, lettore (solo lettura) ----------
+const rest = () => CONFIG.supabaseUrl.replace(/\/$/, '') + '/rest/v1/utenti_autorizzati';
+async function chiamataUtenti(q = '', { method = 'GET', body } = {}) {
+  const t = await token();
+  if (!t) throw new Error('Serve internet per gestire gli utenti.');
+  const res = await fetch(rest() + q, {
+    method,
+    headers: { ...headers(), Authorization: `Bearer ${t}`, Prefer: 'return=representation' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const dati = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(/duplicate/i.test(dati?.message || '') ? 'Email già presente.' : dati?.message || res.statusText);
+  return dati;
+}
+
+// Ruolo dell'utente loggato, salvato con la sessione per funzionare anche offline.
+// Se la migrazione dei ruoli non è ancora stata eseguita vale "editore" (comportamento di prima).
+export const ruolo = () => sessione?.ruolo || 'editore';
+export async function caricaRuolo() {
+  if (!sessione || !navigator.onLine) return ruolo();
+  try {
+    const righe = await chiamataUtenti(`?select=ruolo&email=ilike.${encodeURIComponent(sessione.email)}`);
+    sessione.ruolo = righe?.[0]?.ruolo || 'editore';
+  } catch { sessione.ruolo = sessione.ruolo || 'editore'; }
+  await db.meta('sessione', sessione);
+  return sessione.ruolo;
+}
+
+export const elencoUtenti = () => chiamataUtenti('?select=email,ruolo,aggiunto&order=aggiunto.asc');
+export const aggiungiUtente = (email, r) => chiamataUtenti('', { method: 'POST', body: { email: email.trim().toLowerCase(), ruolo: r } });
+export const cambiaRuolo = (email, r) => chiamataUtenti(`?email=eq.${encodeURIComponent(email)}`, { method: 'PATCH', body: { ruolo: r } });
+export const togliUtente = email => chiamataUtenti(`?email=eq.${encodeURIComponent(email)}`, { method: 'DELETE' });
