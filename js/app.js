@@ -4,6 +4,8 @@ import * as bf from './brewfather.js';
 import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
 import * as magazzino from './vista-magazzino.js';
+import * as statistiche from './vista-statistiche.js';
+import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
 import {
@@ -50,6 +52,7 @@ function chiedi(msg, ok = 'Conferma') {
 // ---------- dati in memoria ----------
 const stato = { cotte: [], fv: [], durate: new Map() };
 magazzino.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
+statistiche.init({ $app, html, db, stato, dataIT, numIT, oggiISO });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
@@ -124,6 +127,7 @@ const routes = [
   [/^#\/inventario$/, () => magazzino.vistaInventario()],
   [/^#\/scarico\/(.+)$/, id => magazzino.vistaScarico(id)],
   [/^#\/registro-s6$/, () => magazzino.vistaRegistroS6()],
+  [/^#\/statistiche$/, () => statistiche.vistaStatistiche()],
   [/^#\/impostazioni$/, vistaImpostazioni],
 ];
 let pulizia = null;
@@ -297,7 +301,7 @@ const SEZIONI_INGR = [
 ];
 
 // Correzioni del pH con acido lattico: sul mosto (giorno di cotta) o più avanti
-const FASI_ACIDO = ['ammostamento', 'sparge', 'bollitura', 'fermentazione', 'maturazione'];
+const FASI_ACIDO = ['ammostamento', 'sparge', 'bollitura', 'dip hopping', 'fermentazione', 'maturazione'];
 
 async function vistaCotta(id) {
   const orig = await db.leggi(id);
@@ -390,17 +394,28 @@ async function vistaCotta(id) {
   }
   const taccaCalcolata = (k, etichetta) => html`<label>${etichetta}<input id="tacca-${k}" class="calcolato" readonly tabindex="-1" value="${c[k].taccaFine == null ? '' : numIT(c[k].taccaFine)}" placeholder="—"></label>`;
 
+  // Registro di fermentazione: di default solo la prima riga, l'ultima, oggi, le righe aggiunte a mano
+  // e quelle in cui cambia qualcosa (temperatura) o c'è una misura (°P, pH, psi, nota, spurgo, bubbling).
+  let fermTutte = false;
+  function rigaFermUtile(i) {
+    const e = c.fermentazione[i], prima = c.fermentazione[i - 1];
+    const pieno = v => v !== null && v !== undefined && v !== '';
+    return i === 0 || i === c.fermentazione.length - 1 || e.manuale || e.data === oggiISO()
+      || pieno(e.densita) || pieno(e.ph) || pieno(e.psi) || !!e.nota || e.spurgo || e.bubbling
+      || Number(e.temp ?? NaN) !== Number(prima?.temp ?? NaN) && (pieno(e.temp) || pieno(prima?.temp));
+  }
   const CAT_SEZIONE = { malti: ['malto', 'zucchero'], luppoli: ['luppolo'], lievito: ['lievito'], sali: ['sale', 'coadiuvante', 'aggiunta', 'spezia'] };
   const fmtGiac = a => `${CATEGORIE[a.categoria] || ''} · in magazzino ${numIT(a.giacenza, a.unita === 'kg' || a.unita === 'L' ? 1 : 0)} ${a.unita}`;
   function tabIngredienti(k, titolo, unitaDef) {
     const righe = c[k];
     const extra = k === 'luppoli';
+    const lievito = k === 'lievito';
     // prima le voci della categoria della sezione, poi le altre
     const voci = [...articoli].sort((a, b) => (CAT_SEZIONE[k].includes(b.categoria) - CAT_SEZIONE[k].includes(a.categoria)) || a.nome.localeCompare(b.nome, 'it'));
     return html`<div class="scheda">
       <h2>${titolo}</h2>
       <div class="scroll-x"><table class="tab-edit">
-        <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:90px">Min. / giorno</th><th style="width:110px">Uso</th>` : ''}<th></th></tr></thead>
+        <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:90px">Min. / giorno</th><th style="width:110px">Uso</th>` : ''}${lievito ? html`<th style="width:110px" title="Lievito recuperato da un'altra birra: non si scala dal magazzino">Recuperato</th>` : ''}<th></th></tr></thead>
         <tbody>${righe.map((r, i) => html`<tr>
           <td><input data-path="${k}.${i}.nome" value="${r.nome || ''}" list="dl-art-${k}" placeholder="scegli dal magazzino" style="min-width:140px">
             ${r.nome && !trovaArticolo(articoli, r.nome) ? html`<button class="piccolo nuovo-art" data-crea="${k}.${i}" title="Non è nel magazzino">+ Nuovo in magazzino</button>` : ''}</td>
@@ -410,6 +425,7 @@ async function vistaCotta(id) {
             ? html`<input data-path="${k}.${i}.giorno" type="number" min="1" step="1" inputmode="numeric" placeholder="giorno" title="Giorno del dry hop (1 = giorno di cotta)" value="${r.giorno ?? ''}">${c.data && r.giorno > 0 ? html`<span class="totale" style="display:block;font-size:.75rem">${dataIT(addGiorni(c.data, r.giorno - 1))}</span>` : ''}`
             : html`<input data-path="${k}.${i}.minuti" type="number" step="any" placeholder="min" value="${r.minuti ?? ''}">`}</td>
           <td><select data-path="${k}.${i}.uso">${['', 'mash hop', 'first wort', 'bollitura', 'whirlpool', 'dip hop', 'dry hop'].map(u => html`<option value="${u}" ${u === (r.uso || '') ? 'selected' : ''}>${u || '—'}</option>`)}</select></td>` : ''}
+          ${lievito ? html`<td><label class="spunta" style="min-height:34px"><input type="checkbox" data-path="${k}.${i}.recuperato" ${r.recuperato ? 'checked' : ''}> da altra birra</label></td>` : ''}
           <td class="az"><button class="piccolo" data-del="${k}.${i}" title="Rimuovi">✕</button></td>
         </tr>`)}</tbody>
       </table></div>
@@ -457,6 +473,7 @@ async function vistaCotta(id) {
           <div><b>${a ? numIT(a, 1) + '%' : '—'}</b>ABV stimato${g.length > 1 ? ' lotto' : ''}</div>
           <div><b>${numIT(c.litri, 0)}</b>litri cotta</div>
           <div><b>${litriConf ? numIT(litriConf, 0) : '—'}</b>litri confezionati</div>
+          ${litriConf && litriGruppo > 0 ? html`<div><b>${numIT(litriConf / litriGruppo * 100, 0)}%</b>resa</div>` : ''}
         </div>
       </div>
 
@@ -507,6 +524,7 @@ async function vistaCotta(id) {
           ${campo('acquaMash.tempMash', 'T° mash')}
           ${campo('acquaMash.ph15', 'pH a 15 min')}
           ${campo('acquaSparge.temp', 'T° sparge')}
+          ${campo('whirlpoolMin', 'Durata whirlpool (min)')}
         </div>
         <h3>Serbatoio acqua calda (tacche in cm)</h3>
         <div class="griglia">
@@ -548,6 +566,7 @@ async function vistaCotta(id) {
         </table></div>
         <div class="barra" style="margin-top:8px">
           <button class="piccolo" data-add="acido" data-preset="ammostamento">+ In ammostamento</button>
+          <button class="piccolo" data-add="acido" data-preset="dip hopping">+ Dip hopping</button>
           <button class="piccolo" data-add="acido" data-preset="fermentazione">+ Più avanti</button>
         </div>
         ${c.acido.length ? html`<p class="totale">Totale acido lattico: ${numIT(c.acido.reduce((t, r) => t + (Number(r.ml) || 0), 0), 1)} ml</p>` : ''}
@@ -555,9 +574,10 @@ async function vistaCotta(id) {
 
       <div class="scheda">
         <h2>Fermentazione</h2>
+        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null))}
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
-          <tbody>${c.fermentazione.map((e, i) => html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
+          <tbody>${c.fermentazione.map((e, i) => (!fermTutte && !rigaFermUtile(i) ? '' : html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
             <td class="num">${c.data && e.data ? diffGiorni(c.data, e.data) + 1 : e.giorno || ''}</td>
             <td><input data-path="fermentazione.${i}.data" type="date" value="${e.data || ''}"></td>
             <td><input data-path="fermentazione.${i}.temp" type="number" step="any" inputmode="decimal" value="${e.temp ?? ''}" style="min-width:60px"></td>
@@ -568,11 +588,12 @@ async function vistaCotta(id) {
             <td><input type="checkbox" data-path="fermentazione.${i}.bubbling" ${e.bubbling ? 'checked' : ''} title="Bubbling" style="width:auto;min-height:auto"></td>
             <td><input data-path="fermentazione.${i}.nota" value="${e.nota || ''}" style="min-width:120px"></td>
             <td class="az"><button class="piccolo" data-del="fermentazione.${i}" title="Rimuovi">✕</button></td>
-          </tr>`)}</tbody>
+          </tr>`))}</tbody>
         </table></div>
         <div class="barra" style="margin-top:8px">
           <button class="piccolo primario" id="lettura-oggi">+ Lettura di oggi</button>
           <button class="piccolo" data-add="fermentazione">+ Riga</button>
+          ${(() => { const n = c.fermentazione.filter((_, i) => !rigaFermUtile(i)).length; return n ? html`<span class="spazio"></span><button class="piccolo" id="ferm-tutte">${fermTutte ? 'Mostra solo i cambiamenti' : `Mostra tutti i giorni (${n} uguali nascosti)`}</button>` : ''; })()}
         </div>
       </div>
 
@@ -595,7 +616,13 @@ async function vistaCotta(id) {
           <button class="piccolo" data-add="confezionato" data-preset="fusto:12">+ Fusti 12 L</button>
           <button class="piccolo" data-add="confezionato" data-preset="lattina/bottiglia:0.33">+ Lattine 0,33</button>
         </div>
-        ${litriConf ? html`<p class="totale">Totale confezionato: ${numIT(litriConf, 1)} L${litriGruppo ? ` (resa ${numIT(litriConf / litriGruppo * 100, 0)}%${g.length > 1 ? ` su ${numIT(litriGruppo, 0)} L di ${g.length} cotte` : ''})` : ''}</p>` : ''}
+        ${litriConf ? (litriGruppo > 0 ? html`<div class="kpi resa">
+            <div><b>${numIT(litriGruppo, 0)} L</b>litri iniziali${g.length > 1 ? ` (${g.length} cotte)` : ''}</div>
+            <div><b>${numIT(litriConf, 1)} L</b>confezionati</div>
+            <div><b>${numIT(litriGruppo - litriConf, 1)} L</b>persi (${numIT((litriGruppo - litriConf) / litriGruppo * 100, 1)}%)</div>
+            <div><b>${numIT(litriConf / litriGruppo * 100, 1)}%</b>resa</div>
+          </div>`
+          : html`<p class="totale">Totale confezionato: ${numIT(litriConf, 1)} L · per la resa scrivi i "Litri finali" in Dati cotta.</p>`) : ''}
         ${c.confezionatoNote ? html`<p class="totale">Note: ${c.confezionatoNote}</p>` : ''}
       </div>
 
@@ -609,6 +636,7 @@ async function vistaCotta(id) {
         <button class="pericolo" id="elimina">Elimina cotta</button>
       </div>
     `;
+    attivaGrafico(c, diffGiorni, dataIT);
   }
 
   ricalcolaTacche();
@@ -638,7 +666,7 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
-    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp))/.test(p)) {
+    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
       setTimeout(() => {
         const a = document.activeElement;
         const chiave = a && $app.contains(a) ? (a.dataset.path ? `[data-path="${a.dataset.path}"]` : a.id ? `#${a.id}` : null) : null;
@@ -654,10 +682,10 @@ async function vistaCotta(id) {
       const k = t.dataset.add;
       if (k === 'fermentazione') {
         const last = c.fermentazione[c.fermentazione.length - 1];
-        c.fermentazione.push({ data: last?.data ? addGiorni(last.data, 1) : c.data || oggiISO(), temp: last?.temp ?? null });
+        c.fermentazione.push({ data: last?.data ? addGiorni(last.data, 1) : c.data || oggiISO(), temp: last?.temp ?? null, manuale: true });
       } else if (k === 'acido') {
         const fase = t.dataset.preset;
-        c.acido.push({ fase, data: fase === 'ammostamento' ? c.data || oggiISO() : oggiISO(), ml: null, phPrima: null, phDopo: null, nota: '' });
+        c.acido.push({ fase, data: fase === 'ammostamento' || fase === 'dip hopping' ? c.data || oggiISO() : oggiISO(), ml: null, phPrima: null, phDopo: null, nota: '' });
       } else if (k === 'confezionato') {
         const [tipo, litri] = t.dataset.preset.split(':');
         c.confezionato.push({ tipo, pezzi: null, litri: Number(litri), data: oggiISO() });
@@ -682,12 +710,15 @@ async function vistaCotta(id) {
       c[k].splice(Number(i), 1);
       salvaPresto();
       const y = scrollY; disegna(); scrollTo(0, y);
+    } else if (t.id === 'ferm-tutte') {
+      fermTutte = !fermTutte;
+      const y = scrollY; disegna(); scrollTo(0, y);
     } else if (t.id === 'lettura-oggi') {
       const oggi = oggiISO();
       let e2 = c.fermentazione.find(x => x.data === oggi);
       if (!e2) {
         const prec = [...c.fermentazione].filter(x => x.data < oggi).pop();
-        e2 = { data: oggi, temp: prec?.temp ?? null };
+        e2 = { data: oggi, temp: prec?.temp ?? null, manuale: true };
         c.fermentazione.push(e2);
         c.fermentazione.sort((a, b) => (a.data || '').localeCompare(b.data || ''));
       }
@@ -1222,7 +1253,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '#q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '#ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

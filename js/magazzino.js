@@ -86,6 +86,10 @@ export function dataUscita(c, sezione, r) {
   return c.data;
 }
 
+// Lievito recuperato da un'altra cotta: spunta nella scheda (o "recuperato" nel nome, schede vecchie).
+// Non esce dal magazzino.
+export const lievitoRecuperato = (sezione, r) => sezione === 'lievito' && (!!r.recuperato || /recuperat|recupero/i.test(r.nome || ''));
+
 // Tutti gli scarichi delle cotte: [{ articolo|null, nome, sezione, qta, unita, data, cotta }]
 export function scarichiCotte(cotte, articoli) {
   const out = [];
@@ -93,7 +97,7 @@ export function scarichiCotte(cotte, articoli) {
     if (!c.data || c.eliminato) continue;
     for (const sez of SEZIONI) {
       for (const r of c[sez] || []) {
-        if (!r.nome || !(Number(r.qta) > 0)) continue;
+        if (!r.nome || !(Number(r.qta) > 0) || lievitoRecuperato(sez, r)) continue;
         // nelle schede l'acido lattico è scritto in "g" ma sono ml
         const unita = /acido/i.test(r.nome) && r.unita === 'g' ? 'ml' : r.unita || '';
         out.push({ articolo: trovaArticolo(articoli, r.nome), nome: r.nome, sezione: /acido/i.test(r.nome) ? 'acido' : sez, qta: Number(r.qta), unita, data: dataUscita(c, sez, r), cotta: c });
@@ -250,4 +254,42 @@ export function registroS6(dati, da, a) {
   }
   return righe.filter(r => (!da || r.data >= da) && (!a || r.data <= a))
     .sort((x, y) => x.data.localeCompare(y.data) || x.cs.localeCompare(y.cs) || x.prodotto.localeCompare(y.prodotto, 'it'));
+}
+
+// Unisce un doppione: tutto ciò che era di `togli` (bolle, inventari, scarichi manuali) passa a `tieni`,
+// il nome e gli alias di `togli` diventano alias di `tieni` (così le cotte lo trovano ancora).
+// Restituisce i record da salvare, oppure { errore } se le quantità degli inventari non sono convertibili.
+export function unisciArticoli(tieni, togli, { bolle, inventari, scarichi = [] }) {
+  const k = chiaveNome(tieni.nome);
+  const alias = [...new Set([...(tieni.alias || []), togli.nome, ...(togli.alias || [])])].filter(x => chiaveNome(x) !== k);
+  const art = {
+    ...tieni, alias,
+    scortaMin: tieni.scortaMin || togli.scortaMin || 0,
+    pesoPezzo: tieni.pesoPezzo || (tieni.unita === togli.unita ? togli.pesoPezzo : null) || null,
+    creato: [tieni.creato, togli.creato].filter(Boolean).sort()[0] || tieni.creato,
+  };
+  const modificati = [art];
+  for (const b of [...bolle, ...scarichi]) {
+    if (!(b.righe || []).some(r => r.articoloId === togli.id)) continue;
+    modificati.push({ ...b, righe: b.righe.map(r => (r.articoloId === togli.id ? { ...r, articoloId: tieni.id, ...(r.nome !== undefined ? { nome: tieni.nome } : {}) } : r)) });
+  }
+  for (const inv of inventari) {
+    if (!(inv.righe || []).some(r => r.articoloId === togli.id)) continue;
+    const righe = [];
+    for (const r of inv.righe) {
+      if (r.articoloId !== togli.id) { righe.push(r); continue; }
+      const q = r.qta === null || r.qta === '' || r.qta === undefined ? r.qta : converti(r.qta, togli.unita, tieni.unita);
+      if (q === null && r.qta !== null) return { errore: `L'inventario del ${inv.data} ha ${togli.nome} in ${togli.unita}: non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      const gia = righe.find(x => x.articoloId === tieni.id);
+      if (gia) gia.qta = (Number(gia.qta) || 0) + (Number(q) || 0);
+      else righe.push({ ...r, articoloId: tieni.id, qta: q });
+    }
+    // la riga di `tieni` già presente nello stesso inventario va sommata anche se viene dopo
+    const doppie = righe.filter(x => x.articoloId === tieni.id);
+    if (doppie.length > 1) {
+      const somma = { ...doppie[0], qta: doppie.reduce((t, x) => t + (Number(x.qta) || 0), 0) };
+      modificati.push({ ...inv, righe: [...righe.filter(x => x.articoloId !== tieni.id), somma] });
+    } else modificati.push({ ...inv, righe });
+  }
+  return { modificati };
 }

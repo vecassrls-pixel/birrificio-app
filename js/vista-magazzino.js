@@ -2,7 +2,7 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, unisciArticoli,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe } from './bolla-pdf.js';
 
@@ -34,8 +34,10 @@ export async function vistaMagazzino() {
   const dati = await datiMagazzino();
   const g = giacenze(dati);
   const q = chiaveNome(filtri.q);
+  const nascondiZero = leggiPref();
   const righe = [...g.values()].filter(x => (!filtri.categoria || x.articolo.categoria === filtri.categoria)
-    && (!q || chiaveNome(x.articolo.nome).includes(q) || (x.articolo.alias || []).some(a => chiaveNome(a).includes(q))));
+    && (!q || chiaveNome(x.articolo.nome).includes(q) || (x.articolo.alias || []).some(a => chiaveNome(a).includes(q)))
+    && !(nascondiZero && aZero(x.giacenza) && aZero(x.impegnato)));
   const sotto = [...g.values()].filter(x => x.sottoScorta || x.disponibile < 0);
   const scadenze = [...g.values()].filter(x => x.statoScadenza);
   const scollegati = daCollegare(dati.cotte, dati.articoli, inizioControllo(dati.inventari)).slice(0, 40);
@@ -63,6 +65,7 @@ export async function vistaMagazzino() {
       <input id="q" type="search" placeholder="Cerca articolo…" value="${filtri.q}" style="flex:2;min-width:180px">
       <select id="cat" style="flex:1;min-width:140px"><option value="">Tutte le categorie</option>
         ${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === filtri.categoria ? 'selected' : ''}>${v}</option>`)}</select>
+      <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondiZero ? 'checked' : ''}> Nascondi le materie prime a 0</label>
     </div>` : ''}
     ${Object.entries(CATEGORIE).map(([cat, titolo]) => {
       const rr = righe.filter(x => x.articolo.categoria === cat);
@@ -101,6 +104,7 @@ export async function vistaMagazzino() {
   const $ = s => document.getElementById(s);
   $('q')?.addEventListener('input', e => { filtri.q = e.target.value; vistaMagazzino().then(() => { const el = $('q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }); });
   $('cat')?.addEventListener('change', e => { filtri.categoria = e.target.value; vistaMagazzino(); });
+  $('nascondi-zero')?.addEventListener('change', e => { scriviPref(e.target.checked); vistaMagazzino(); });
   $('nuovo-art').onclick = () => dialogArticolo({});
   $('da-ricette')?.addEventListener('click', async () => {
     const proposti = articoliDaRicette(dati.cotte, dati.articoli, u.addGiorni(u.oggiISO(), -365));
@@ -199,6 +203,12 @@ export async function vistaArticolo(id) {
       </div>
       <div class="barra" style="margin-top:12px;margin-bottom:0"><span class="spazio"></span><button class="primario">Salva</button></div>
     </form>
+    ${dati.articoli.length > 1 ? html`<div class="scheda solo-editori"><h2>Unisci un doppione</h2>
+      <p class="totale">Se lo stesso prodotto è stato creato due volte con nomi diversi: scegli il doppione, le sue bolle, inventari e scarichi passano a <b>${a.nome}</b>, il suo nome diventa un alias e il doppione viene eliminato.</p>
+      <div class="barra" style="margin:0"><select id="doppione" style="flex:1;min-width:200px"><option value="">Scegli il doppione…</option>
+        ${[...dati.articoli].filter(x => x.id !== a.id).sort((x, y) => (y.categoria === a.categoria) - (x.categoria === a.categoria) || x.nome.localeCompare(y.nome, 'it'))
+          .map(x => html`<option value="${x.id}">${x.nome} (${CATEGORIE[x.categoria] || ''}, ${x.unita})</option>`)}</select>
+        <button id="unisci">Unisci in ${a.nome}</button></div></div>` : ''}
     ${g.lotti.some(l => l.lotto || l.scadenza) ? u.html`<div class="scheda"><h2>Lotti in magazzino</h2>
       <p class="totale">Stima: si assume che le cotte usino prima la merce caricata da più tempo.</p>
       <div class="scroll-x"><table class="tab-mag">
@@ -228,6 +238,18 @@ export async function vistaArticolo(id) {
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
     });
     u.toast('Articolo salvato');
+    vistaArticolo(id);
+  };
+  const $unisci = document.getElementById('unisci');
+  if ($unisci) $unisci.onclick = async () => {
+    const togli = dati.articoli.find(x => x.id === document.getElementById('doppione').value);
+    if (!togli) return u.toast('Scegli prima il doppione');
+    if (!(await u.chiedi(`Unire ${togli.nome} in ${a.nome}? ${togli.nome} viene eliminato e tutti i suoi movimenti passano a ${a.nome}.`, 'Unisci'))) return;
+    const r = unisciArticoli(a, togli, dati);
+    if (r.errore) return u.toast(r.errore);
+    await u.db.salvaMolti(r.modificati.map(({ aggiornato: _a, ...x }) => x)); // ora nuova: vince nella sincronizzazione
+    await u.db.elimina(togli.id);
+    u.toast(`${togli.nome} unito in ${a.nome}`);
     vistaArticolo(id);
   };
   document.getElementById('elimina').onclick = async () => {

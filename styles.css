@@ -237,3 +237,26 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 label.spunta { display: flex; flex-direction: row; align-items: center; gap: 6px; min-height: 44px; }
 label.spunta input { width: auto; min-height: auto; }
 .tab-edit .nuovo-art { display: block; margin-top: 2px; font-size: .75rem; }
+/* statistiche */
+label.in-linea { display: flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+label.in-linea select { width: auto; }
+.tab-stat tr[data-periodo] { cursor: pointer; }
+.tab-stat tr[data-periodo]:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tab-stat tr.scelto td { background: color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 600; }
+.barra-stat { display: block; height: 10px; border-radius: 3px; background: var(--accent); min-width: 2px; }
+/* grafico fermentazione (scheda cotta) */
+.graf-ferm { position: relative; margin: 4px 0 12px; }
+.graf-ferm svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.gf-titolo { font-size: 12px; font-weight: 600; fill: var(--text); }
+.gf-asse { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.gf-val { font-size: 11px; font-weight: 600; fill: var(--text); }
+.gf-griglia { stroke: var(--border); stroke-width: 1; }
+.gf-oggi { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.gf-croce { stroke: var(--muted); stroke-width: 1; }
+.gf-linea { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.gf-punto { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.gf-tip { position: absolute; top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: .8rem; box-shadow: 0 2px 8px rgb(0 0 0 / .12); pointer-events: none; white-space: nowrap; color: var(--text); }
+.gf-tip span { color: var(--muted); }
+.gf-tip-testa { font-weight: 600; margin-bottom: 2px; }
+.gf-nota { color: var(--muted); font-style: italic; }
+@media print { .gf-tip, .gf-croce { display: none; } }

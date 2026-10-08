@@ -283,6 +283,7 @@ export function copiaDa(src, { data, numero, anno, fv }) {
     acquaMash: { tempMash: src.acquaMash?.tempMash ?? null, litri: src.acquaMash?.litri ?? null, tempAcqua: src.acquaMash?.tempAcqua ?? null },
     acquaSparge: { temp: src.acquaSparge?.temp ?? null, litri: src.acquaSparge?.litri ?? null },
     acquaDip: { litri: src.acquaDip?.litri ?? null },
+    whirlpoolMin: src.whirlpoolMin ?? null,
     fermentazione: profilo,
     confezionato: [],
     note: src.note || '',
