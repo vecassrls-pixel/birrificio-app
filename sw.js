@@ -3,7 +3,7 @@
 const VERSIONE = 'birrificio-v28';
 const FILE = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'img/logo-kashmir.png',
-  'js/app.js', 'js/auth.js', 'js/config.js', 'js/serbatoio.js', 'js/brewfather.js', 'js/db.js', 'js/dominio.js', 'js/sync.js', 'js/xlsx.js', 'js/magazzino.js', 'js/vista-magazzino.js', 'js/bolla-pdf.js', 'js/vista-statistiche.js', 'data/storico.json',
+  'js/app.js', 'js/auth.js', 'js/config.js', 'js/serbatoio.js', 'js/brewfather.js', 'js/db.js', 'js/dominio.js', 'js/sync.js', 'js/xlsx.js', 'js/magazzino.js', 'js/vista-magazzino.js', 'js/bolla-pdf.js', 'js/vista-statistiche.js', 'js/grafico-ferm.js', 'data/storico.json',
 ];
 
 self.addEventListener('install', e => {

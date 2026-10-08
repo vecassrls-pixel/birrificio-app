@@ -5,6 +5,7 @@ import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
 import * as magazzino from './vista-magazzino.js';
 import * as statistiche from './vista-statistiche.js';
+import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
 import {
@@ -573,6 +574,7 @@ async function vistaCotta(id) {
 
       <div class="scheda">
         <h2>Fermentazione</h2>
+        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null))}
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
           <tbody>${c.fermentazione.map((e, i) => (!fermTutte && !rigaFermUtile(i) ? '' : html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
@@ -634,6 +636,7 @@ async function vistaCotta(id) {
         <button class="pericolo" id="elimina">Elimina cotta</button>
       </div>
     `;
+    attivaGrafico(c, diffGiorni, dataIT);
   }
 
   ricalcolaTacche();
@@ -663,7 +666,7 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
-    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp))/.test(p)) {
+    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
       setTimeout(() => {
         const a = document.activeElement;
         const chiave = a && $app.contains(a) ? (a.dataset.path ? `[data-path="${a.dataset.path}"]` : a.id ? `#${a.id}` : null) : null;
