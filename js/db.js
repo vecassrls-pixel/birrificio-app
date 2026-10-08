@@ -58,7 +58,14 @@ export async function leggi(id) {
 }
 
 // Salvataggio da parte dell'utente: marca il record da sincronizzare.
+// Profilo in sola lettura: nessuna modifica locale (il database le rifiuterebbe comunque)
+let soloLettura = false;
+export const impostaSolaLettura = v => { soloLettura = !!v; };
+const SOLA_LETTURA = 'Profilo in sola lettura: non puoi modificare i dati.';
+function controllaScrittura() { if (soloLettura) throw new Error(SOLA_LETTURA); }
+
 export async function salva(record) {
+  controllaScrittura();
   const r = { ...record, aggiornato: new Date().toISOString(), daSincronizzare: 1 };
   await tx('records', 'readwrite', s => asPromise(s.put(r)));
   notifica();
@@ -66,6 +73,7 @@ export async function salva(record) {
 }
 
 export async function salvaMolti(records, { daSincronizzare = 1 } = {}) {
+  controllaScrittura();
   const ora = new Date().toISOString();
   await tx('records', 'readwrite', s => {
     for (const rec of records) s.put({ aggiornato: ora, ...rec, daSincronizzare });
