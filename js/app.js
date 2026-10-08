@@ -458,7 +458,9 @@ async function vistaCotta(id) {
         </table></div>
         <div class="barra" style="margin-top:8px">
           <button class="piccolo" data-add="confezionato" data-preset="fusto:24">+ Fusti 24 L</button>
+          <button class="piccolo" data-add="confezionato" data-preset="fusto:25">+ Fusti 25 L</button>
           <button class="piccolo" data-add="confezionato" data-preset="fusto:20">+ Fusti 20 L</button>
+          <button class="piccolo" data-add="confezionato" data-preset="fusto:12">+ Fusti 12 L</button>
           <button class="piccolo" data-add="confezionato" data-preset="lattina/bottiglia:0.33">+ Lattine 0,33</button>
         </div>
         ${litriConf ? html`<p class="totale">Totale confezionato: ${numIT(litriConf, 1)} L${c.litri ? ` (resa ${numIT(litriConf / c.litri * 100, 0)}%)` : ''}</p>` : ''}
