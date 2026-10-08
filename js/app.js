@@ -300,7 +300,7 @@ const SEZIONI_INGR = [
 ];
 
 // Correzioni del pH con acido lattico: sul mosto (giorno di cotta) o più avanti
-const FASI_ACIDO = ['ammostamento', 'sparge', 'bollitura', 'fermentazione', 'maturazione'];
+const FASI_ACIDO = ['ammostamento', 'sparge', 'bollitura', 'dip hopping', 'fermentazione', 'maturazione'];
 
 async function vistaCotta(id) {
   const orig = await db.leggi(id);
@@ -553,6 +553,7 @@ async function vistaCotta(id) {
         </table></div>
         <div class="barra" style="margin-top:8px">
           <button class="piccolo" data-add="acido" data-preset="ammostamento">+ In ammostamento</button>
+          <button class="piccolo" data-add="acido" data-preset="dip hopping">+ Dip hopping</button>
           <button class="piccolo" data-add="acido" data-preset="fermentazione">+ Più avanti</button>
         </div>
         ${c.acido.length ? html`<p class="totale">Totale acido lattico: ${numIT(c.acido.reduce((t, r) => t + (Number(r.ml) || 0), 0), 1)} ml</p>` : ''}
@@ -668,7 +669,7 @@ async function vistaCotta(id) {
         c.fermentazione.push({ data: last?.data ? addGiorni(last.data, 1) : c.data || oggiISO(), temp: last?.temp ?? null });
       } else if (k === 'acido') {
         const fase = t.dataset.preset;
-        c.acido.push({ fase, data: fase === 'ammostamento' ? c.data || oggiISO() : oggiISO(), ml: null, phPrima: null, phDopo: null, nota: '' });
+        c.acido.push({ fase, data: fase === 'ammostamento' || fase === 'dip hopping' ? c.data || oggiISO() : oggiISO(), ml: null, phPrima: null, phDopo: null, nota: '' });
       } else if (k === 'confezionato') {
         const [tipo, litri] = t.dataset.preset.split(':');
         c.confezionato.push({ tipo, pezzi: null, litri: Number(litri), data: oggiISO() });
