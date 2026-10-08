@@ -5,7 +5,7 @@ import * as auth from './auth.js';
 import { litriATacca, prelievo, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
-  fvLiberi, litriConfezionati, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
+  DURATA_DEFAULT, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
 } from './dominio.js';
 
 const $app = document.getElementById('app');
@@ -203,7 +203,9 @@ function dialogNuovaCotta(pre = {}) {
   const f = dlg.querySelector('form');
   const aggiornaFv = () => {
     const birra = f.birra.value;
-    const durata = Number(f.durata.value) || stato.durate.get(nomeBirra(birra)) || 21;
+    // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
+    const src0 = f.copia.checked ? ultimaCottaDi(birra) : null;
+    const durata = Number(f.durata.value) || (src0?.fermentazione?.length) || DURATA_DEFAULT;
     if (!f.durata.value || f.durata.dataset.auto) { f.durata.value = durata; f.durata.dataset.auto = '1'; }
     const da = f.data.value || oggiISO();
     const a = addGiorni(da, durata - 1);
@@ -227,6 +229,7 @@ function dialogNuovaCotta(pre = {}) {
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); });
   f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); });
   f.data.addEventListener('change', aggiornaFv);
+  f.copia.addEventListener('change', () => { if (f.durata.dataset.auto) f.durata.value = ''; aggiornaFv(); });
   aggiornaFv();
   dlg.addEventListener('close', async () => {
     dlg.remove();
@@ -242,7 +245,8 @@ function dialogNuovaCotta(pre = {}) {
       acquaMash: {}, acquaSparge: {}, fermentazione: [], confezionato: [], note: '',
     };
     const durata = Number(fd.get('durata'));
-    if (durata && !(src && base.fermentazione.length)) base.fine = addGiorni(data, durata - 1);
+    if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
+    if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
     if (fd.get('materiePrime')) base.materiePrime = true;
     const rec = await db.salva({ ...base, birra, id: db.nuovoId('cotta') });
     location.hash = `#/cotta/${encodeURIComponent(rec.id)}`;
