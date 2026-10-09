@@ -31,7 +31,7 @@ function nomePeriodo(k) {
 export const GRUPPI_INGR = [
   ['malto', 'Malti', 'kg'],
   ['luppolo', 'Luppoli', 'kg'],
-  ['lievito', 'Lieviti', 'g'],
+  ['lievito', 'Lieviti', 'kg'],
   ['zucchero', 'Zuccheri', 'kg'],
 ];
 const SEZIONI = ['malti', 'luppoli', 'lievito', 'sali'];
@@ -169,13 +169,13 @@ export async function vistaStatistiche() {
       <h2>Andamento per ${filtri.gruppo}</h2>
       <p class="totale">Tocca una riga per vedere il dettaglio di quel periodo qui sotto.</p>
       ${andamento.length ? html`<div class="scroll-x"><table class="tab-mag tab-stat">
-        <thead><tr><th>Periodo</th><th class="n">Cotte</th><th class="n">Litri prodotti</th><th></th><th class="n">Litri confez.</th><th class="n">Malti kg</th><th class="n">Luppoli kg</th><th class="n">Lieviti g</th><th class="n">Zuccheri kg</th></tr></thead>
+        <thead><tr><th>Periodo</th><th class="n">Cotte</th><th class="n">Litri prodotti</th><th></th><th class="n">Litri confez.</th><th class="n">Malti kg</th><th class="n">Luppoli kg</th><th class="n">Lieviti kg</th><th class="n">Zuccheri kg</th></tr></thead>
         <tbody>${andamento.map(r => html`<tr data-periodo="${r.k}" class="${r.k === filtri.dettaglio ? 'scelto' : ''}">
           <td>${nomePeriodo(r.k)}</td><td class="n">${r.cotte || '—'}</td><td class="n">${u.numIT(r.prodotti, 0)}</td>
           <td style="width:30%"><span class="barra-stat" style="width:${Math.round(r.prodotti / maxLitri * 100)}%"></span></td>
           <td class="n">${r.confezionati ? u.numIT(r.confezionati, 0) : '—'}</td>
           <td class="n">${r.malto ? kg(r.malto) : '—'}</td><td class="n">${r.luppolo ? kg(r.luppolo) : '—'}</td>
-          <td class="n">${r.lievito ? u.numIT(r.lievito, 0) : '—'}</td><td class="n">${r.zucchero ? kg(r.zucchero) : '—'}</td>
+          <td class="n">${r.lievito ? kg(r.lievito) : '—'}</td><td class="n">${r.zucchero ? kg(r.zucchero) : '—'}</td>
         </tr>`)}</tbody></table></div>` : html`<p class="totale">Nessuna cotta in questo periodo.</p>`}
     </div>
 

@@ -96,17 +96,17 @@ export function scarichiCotte(cotte, articoli) {
   for (const c of cotte) {
     if (!c.data || c.eliminato) continue;
     for (const sez of SEZIONI) {
-      for (const r of c[sez] || []) {
+      for (const [i, r] of (c[sez] || []).entries()) {
         if (!r.nome || !(Number(r.qta) > 0) || lievitoRecuperato(sez, r)) continue;
         // nelle schede l'acido lattico è scritto in "g" ma sono ml
         const unita = /acido/i.test(r.nome) && r.unita === 'g' ? 'ml' : r.unita || '';
-        out.push({ articolo: trovaArticolo(articoli, r.nome), nome: r.nome, sezione: /acido/i.test(r.nome) ? 'acido' : sez, qta: Number(r.qta), unita, data: dataUscita(c, sez, r), cotta: c });
+        out.push({ articolo: trovaArticolo(articoli, r.nome), nome: r.nome, sezione: /acido/i.test(r.nome) ? 'acido' : sez, qta: Number(r.qta), unita, data: dataUscita(c, sez, r), cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `${sez}.${i}` } });
       }
     }
     // correzioni pH con acido lattico (ml), ognuna alla sua data
-    for (const r of c.acido || []) {
+    for (const [i, r] of (c.acido || []).entries()) {
       if (!(Number(r.ml) > 0)) continue;
-      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: Number(r.ml), unita: 'ml', data: r.data || c.data, cotta: c });
+      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: Number(r.ml), unita: 'ml', data: r.data || c.data, cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `acido.${i}` } });
     }
   }
   return out;
@@ -141,21 +141,26 @@ export function giacenze({ articoli, bolle, inventari, cotte, scarichi = [] }, o
     g.movimenti.push({ ...mov, data, qta: mov.tipo === 'scarico' ? -q : q });
   };
   for (const b of bolle) {
-    for (const r of b.righe || []) {
+    for (const [i, r] of (b.righe || []).entries()) {
       const g = res.get(r.articoloId);
-      if (g && b.data) muovi(g, b.data, r.qta, r.unita || g.articolo.unita, { tipo: 'carico', rif: `Bolla ${b.numero || ''} ${b.fornitore || ''}`.trim(), id: b.id, lotto: r.lotto || '', scadenza: r.scadenza || '', chi: [b.fornitore, b.numero && `DDT ${b.numero}`].filter(Boolean).join(' · ') });
+      if (g && b.data) muovi(g, b.data, r.qta, r.unita || g.articolo.unita, { tipo: 'carico', rif: `Bolla ${b.numero || ''} ${b.fornitore || ''}`.trim(), id: b.id, dove: { tipo: 'bolla', id: b.id, path: `righe.${i}` }, lotto: r.lotto || '', scadenza: r.scadenza || '', chi: [b.fornitore, b.numero && `DDT ${b.numero}`].filter(Boolean).join(' · ') });
     }
   }
   for (const s of scarichiCotte(cotte, articoli)) {
     const g = s.articolo && res.get(s.articolo.id);
-    if (g) muovi(g, s.data, s.qta, s.unita || g.articolo.unita, { tipo: 'scarico', rif: `${s.cotta.birra || ''} ${s.cotta.lotto || ''}`.trim(), id: s.cotta.id, nome: s.nome, chi: destinoCotta(s) });
+    if (g) muovi(g, s.data, s.qta, s.unita || g.articolo.unita, { tipo: 'scarico', rif: `${s.cotta.birra || ''} ${s.cotta.lotto || ''}`.trim(), id: s.cotta.id, nome: s.nome, chi: destinoCotta(s), lottoScelto: s.lotto, dove: s.dove });
   }
-  // scarichi manuali (vendita, reso, scarto): se è indicato il lotto esce da quello
+  // movimenti manuali. Scarichi (vendita, reso, scarto): se è indicato il lotto esce da quello.
+  // Carichi (reso da cliente, prestito, rettifica…): entrano con il loro lotto e scadenza, come una bolla.
   for (const sc of scarichi) {
-    for (const r of sc.righe || []) {
+    const carico = sc.verso === 'carico';
+    const chi = [(carico ? MOTIVI_CARICO : MOTIVI_SCARICO)[sc.motivo] || (carico ? 'Carico' : 'Scarico'), sc.destinatario].filter(Boolean).join(' · ');
+    for (const [i, r] of (sc.righe || []).entries()) {
       const g = res.get(r.articoloId);
-      const chi = [MOTIVI_SCARICO[sc.motivo] || 'Scarico', sc.destinatario].filter(Boolean).join(' · ');
-      if (g && sc.data) muovi(g, sc.data, r.qta, r.unita || g.articolo.unita, { tipo: 'scarico', manuale: true, rif: chi, id: sc.id, lottoScelto: r.lotto || '', chi });
+      if (!g || !sc.data) continue;
+      const dove = { tipo: 'scarico', id: sc.id, path: `righe.${i}` };
+      if (carico) muovi(g, sc.data, r.qta, r.unita || g.articolo.unita, { tipo: 'carico', manuale: true, rif: chi, id: sc.id, dove, lotto: r.lotto || '', scadenza: r.scadenza || '', chi });
+      else muovi(g, sc.data, r.qta, r.unita || g.articolo.unita, { tipo: 'scarico', manuale: true, rif: chi, id: sc.id, dove, lottoScelto: r.lotto || '', chi });
     }
   }
   for (const g of res.values()) {
@@ -205,6 +210,7 @@ function simulaLotti(g) {
 const ORDINE_MOV = { inventario: 0, carico: 1, scarico: 2 };
 
 export const MOTIVI_SCARICO = { vendita: 'Vendita', reso: 'Reso al fornitore', scarto: 'Scarto / rottura', altro: 'Altro' };
+export const MOTIVI_CARICO = { acquisto: 'Acquisto senza bolla', reso_cliente: 'Reso da cliente', prestito: 'Prestito / scambio', omaggio: 'Campione / omaggio', rettifica: 'Rettifica', altro: 'Altro' };
 const destinoCotta = s => `${s.sezione === 'acido' ? 'Correzione pH' : s.data !== s.cotta.data || /\b(dh|dry ?hop)\b/i.test(s.nome) ? 'Dry hop' : 'Cotta'} ${s.cotta.lotto || ''} ${s.cotta.birra || ''}`.replace(/\s+/g, ' ').trim();
 
 // Ingredienti delle cotte (da una data in poi) che non corrispondono a nessun articolo
@@ -243,14 +249,32 @@ export function registroS6(dati, da, a) {
   const oggi = oggiISO();
   const fino = a && a < oggi ? a : oggi;
   const righe = [];
+  const giaInRegistro = new Set(); // scarichi delle cotte già presi dalle giacenze (con il lotto)
   for (const g of giacenze(dati, fino).values()) {
     const art = g.articolo;
     const base = { prodotto: art.nome, unita: art.unita, categoria: art.categoria };
     for (const m of g.movimenti) {
       if (m.futuro) continue;
-      if (m.tipo === 'carico') righe.push({ ...base, cs: 'C', data: m.data, lotto: m.lotto, scadenza: m.scadenza, qta: m.qta, chi: m.chi });
-      if (m.tipo === 'scarico') for (const l of m.lotti || []) righe.push({ ...base, cs: 'S', data: m.data, lotto: l.lotto, scadenza: l.scadenza, qta: l.qta, chi: m.chi });
+      if (m.tipo === 'carico') righe.push({ ...base, cs: 'C', data: m.data, lotto: m.lotto, scadenza: m.scadenza, qta: m.qta, chi: m.chi, dove: m.dove });
+      // lotto scritto a mano (scheda cotta o registro): vale quello, anche se non risulta tra i lotti caricati
+      if (m.tipo === 'scarico' && m.lottoScelto && !(m.lotti || []).some(l => l.lotto.toLowerCase() === m.lottoScelto.toLowerCase())) {
+        righe.push({ ...base, cs: 'S', data: m.data, lotto: m.lottoScelto, scadenza: '', qta: -m.qta, chi: m.chi, dove: m.dove });
+      } else if (m.tipo === 'scarico') for (const l of m.lotti || []) righe.push({ ...base, cs: 'S', data: m.data, lotto: l.lotto, scadenza: l.scadenza, qta: l.qta, chi: m.chi, dove: m.dove });
+      if (m.tipo === 'scarico' && !m.manuale) giaInRegistro.add(`${m.id}|${m.nome}|${m.data}`);
     }
+  }
+  // Il registro elenca TUTTO quello che le cotte hanno usato, anche se non conta per la giacenza:
+  // cotte fatte prima dell'inventario o della creazione dell'articolo, o ingredienti non ancora
+  // collegati a un articolo del magazzino (lotto sconosciuto).
+  for (const sc of scarichiCotte(dati.cotte || [], dati.articoli || [])) {
+    if (sc.data > fino || giaInRegistro.has(`${sc.cotta.id}|${sc.nome}|${sc.data}`)) continue;
+    const art = sc.articolo;
+    const q = art ? convertiPer(art, sc.qta, sc.unita || art.unita) : sc.qta;
+    righe.push({
+      prodotto: art?.nome || chiaveNome(sc.nome).replace(/\b\w/g, l => l.toUpperCase()) || sc.nome, unita: art ? art.unita : sc.unita || unitaDa(sc.sezione),
+      categoria: art?.categoria || categoriaDa(sc.sezione, sc.nome),
+      cs: 'S', data: sc.data, lotto: sc.lotto, scadenza: '', qta: q ?? sc.qta, chi: destinoCotta(sc), scollegato: !art, dove: sc.dove,
+    });
   }
   return righe.filter(r => (!da || r.data >= da) && (!a || r.data <= a))
     .sort((x, y) => x.data.localeCompare(y.data) || x.cs.localeCompare(y.cs) || x.prodotto.localeCompare(y.prodotto, 'it'));
