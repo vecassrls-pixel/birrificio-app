@@ -479,7 +479,8 @@ export async function vistaRegistroS6() {
       ${righe.length ? html`<table class="tab-s6">
         <thead><tr><th>C/S</th><th>Data</th><th>Prodotto</th><th>Lotto</th><th class="n">QTA</th><th>Scadenza</th><th>Dest/Prov</th></tr></thead>
         <tbody>${righe.map(r => html`<tr class="${r.cs === 'C' ? 'c' : ''}">
-          <td>${r.cs}</td><td>${u.dataIT(r.data)}</td><td>${r.prodotto}</td><td>${r.lotto}</td>
+          <td>${r.cs}</td><td>${u.dataIT(r.data)}</td><td>${r.prodotto}</td>
+          <td>${r.lotto || !r.dove ? r.lotto : html`<input class="s6-lotto" data-dove="${JSON.stringify(r.dove)}" placeholder="+ lotto" title="Scrivi il lotto: si salva su ${r.dove.tipo === 'cotta' ? 'la scheda cotta' : r.dove.tipo === 'bolla' ? 'la bolla' : 'il movimento manuale'}">`}</td>
           <td class="n">${fmt(r.qta, r.unita)}</td><td>${r.scadenza ? u.dataIT(r.scadenza) : ''}</td><td>${r.chi}</td>
         </tr>`)}</tbody></table>` : html`<p class="vuoto">Nessun movimento nel periodo.</p>`}
     </div>`;
@@ -487,6 +488,23 @@ export async function vistaRegistroS6() {
   $('s6-da').onchange = e => { s6.da = e.target.value; vistaRegistroS6(); };
   $('s6-a').onchange = e => { s6.a = e.target.value; vistaRegistroS6(); };
   $('s6-cat').onchange = e => { s6.categoria = e.target.value; vistaRegistroS6(); };
+  // lotto mancante scritto qui: va sulla riga di origine (ingrediente della cotta, riga della bolla o del movimento manuale)
+  u.$app.querySelectorAll('.s6-lotto').forEach(el => {
+    el.onchange = async () => {
+      const lotto = el.value.trim();
+      if (!lotto) return;
+      const dove = JSON.parse(el.dataset.dove);
+      const rec = await u.db.leggi(dove.id);
+      const [k, i] = dove.path.split('.');
+      if (!rec?.[k]?.[i]) return u.toast('Riga di origine non trovata');
+      rec[k][i] = { ...rec[k][i], lotto };
+      const { aggiornato: _a, ...daSalvare } = rec;
+      await u.db.salva(daSalvare);
+      u.toast(`Lotto ${lotto} salvato`);
+      const y = scrollY;
+      vistaRegistroS6().then(() => scrollTo(0, y));
+    };
+  });
   $('stampa').onclick = () => {
     const titolo = document.title;
     document.title = `S6 carico scarico ${s6.da} ${s6.a}`;
