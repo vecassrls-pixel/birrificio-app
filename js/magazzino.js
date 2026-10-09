@@ -248,6 +248,7 @@ export function registroS6(dati, da, a) {
   const oggi = oggiISO();
   const fino = a && a < oggi ? a : oggi;
   const righe = [];
+  const giaInRegistro = new Set(); // scarichi delle cotte già presi dalle giacenze (con il lotto)
   for (const g of giacenze(dati, fino).values()) {
     const art = g.articolo;
     const base = { prodotto: art.nome, unita: art.unita, categoria: art.categoria };
@@ -255,7 +256,21 @@ export function registroS6(dati, da, a) {
       if (m.futuro) continue;
       if (m.tipo === 'carico') righe.push({ ...base, cs: 'C', data: m.data, lotto: m.lotto, scadenza: m.scadenza, qta: m.qta, chi: m.chi });
       if (m.tipo === 'scarico') for (const l of m.lotti || []) righe.push({ ...base, cs: 'S', data: m.data, lotto: l.lotto, scadenza: l.scadenza, qta: l.qta, chi: m.chi });
+      if (m.tipo === 'scarico' && !m.manuale) giaInRegistro.add(`${m.id}|${m.nome}|${m.data}`);
     }
+  }
+  // Il registro elenca TUTTO quello che le cotte hanno usato, anche se non conta per la giacenza:
+  // cotte fatte prima dell'inventario o della creazione dell'articolo, o ingredienti non ancora
+  // collegati a un articolo del magazzino (lotto sconosciuto).
+  for (const sc of scarichiCotte(dati.cotte || [], dati.articoli || [])) {
+    if (sc.data > fino || giaInRegistro.has(`${sc.cotta.id}|${sc.nome}|${sc.data}`)) continue;
+    const art = sc.articolo;
+    const q = art ? convertiPer(art, sc.qta, sc.unita || art.unita) : sc.qta;
+    righe.push({
+      prodotto: art?.nome || chiaveNome(sc.nome).replace(/\b\w/g, l => l.toUpperCase()) || sc.nome, unita: art ? art.unita : sc.unita || unitaDa(sc.sezione),
+      categoria: art?.categoria || categoriaDa(sc.sezione, sc.nome),
+      cs: 'S', data: sc.data, lotto: '', scadenza: '', qta: q ?? sc.qta, chi: destinoCotta(sc), scollegato: !art,
+    });
   }
   return righe.filter(r => (!da || r.data >= da) && (!a || r.data <= a))
     .sort((x, y) => x.data.localeCompare(y.data) || x.cs.localeCompare(y.cs) || x.prodotto.localeCompare(y.prodotto, 'it'));

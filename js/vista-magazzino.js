@@ -475,6 +475,7 @@ export async function vistaRegistroS6() {
           <div>Periodo: dal ${u.dataIT(s6.da)} al ${u.dataIT(s6.a)}${s6.categoria ? ` · ${CATEGORIE[s6.categoria]}` : ''} · stampato il ${u.dataIT(u.oggiISO())}</div></div>
       </div>
       <p class="s6-legenda">Legenda: C = carico - S = scarico - QTA = quantità - Dest = destinatario - Prov = Provenienza</p>
+      ${righe.some(r => r.scollegato) ? html`<p class="totale non-stampa">${righe.filter(r => r.scollegato).length} righe hanno un ingrediente non collegato a un articolo del magazzino: compaiono col nome della scheda cotta e senza lotto. Collegali in Materie prime → "Ingredienti delle cotte non collegati".</p>` : ''}
       ${righe.length ? html`<table class="tab-s6">
         <thead><tr><th>C/S</th><th>Data</th><th>Prodotto</th><th>Lotto</th><th class="n">QTA</th><th>Scadenza</th><th>Dest/Prov</th></tr></thead>
         <tbody>${righe.map(r => html`<tr class="${r.cs === 'C' ? 'c' : ''}">

@@ -260,3 +260,4 @@ label.in-linea select { width: auto; }
 .gf-tip-testa { font-weight: 600; margin-bottom: 2px; }
 .gf-nota { color: var(--muted); font-style: italic; }
 @media print { .gf-tip, .gf-croce { display: none; } }
+@media print { .non-stampa { display: none !important; } }
