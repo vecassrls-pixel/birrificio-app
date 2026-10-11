@@ -224,6 +224,7 @@ function dialogNuovaCotta(pre = {}) {
       <h3>Fermentatore</h3>
       <div id="fv-scelta" class="griglia" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
       <label style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="copia" checked style="width:auto;min-height:auto"> Copia ricetta e profilo dall'ultima cotta della stessa birra</label>
+      <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="dh" checked style="width:auto;min-height:auto"> Con dry hop (DH)</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="materiePrime" style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="lievitoOk" style="width:auto;min-height:auto"> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="etichetteOk" style="width:auto;min-height:auto"> ${SIMBOLI.etichette} Etichette pronte</label>
@@ -259,10 +260,12 @@ function dialogNuovaCotta(pre = {}) {
     const r = dlg.querySelector(`input[name=fv][value="${target}"]`);
     if (r) r.checked = true;
     const src = ultimaCottaDi(birra);
+    if (!f.dh.dataset.toccato) f.dh.checked = !(src0 && src0.dh === false);
     dlg.querySelector('#origine').textContent = src ? `Ultima cotta di ${nomeBirra(birra)}: lotto ${src.lotto} del ${dataIT(src.data)}` : (birra ? 'Nessuna cotta precedente con ricetta per questa birra.' : '');
   };
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); });
   f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); });
+  f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
   f.data.addEventListener('change', aggiornaFv);
   f.copia.addEventListener('change', () => { if (f.durata.dataset.auto) f.durata.value = ''; aggiornaFv(); });
   aggiornaFv();
@@ -282,6 +285,7 @@ function dialogNuovaCotta(pre = {}) {
     const durata = Number(fd.get('durata'));
     if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
     if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
+    base.dh = !!fd.get('dh');
     if (fd.get('materiePrime')) base.materiePrime = true;
     if (fd.get('lievitoOk')) base.lievitoOk = true;
     if (fd.get('etichetteOk')) base.etichetteOk = true;
@@ -494,7 +498,8 @@ async function vistaCotta(id) {
           ${campo('fg', 'FG (°P)')}
           ${campo('phMash', 'pH')}
         </div>
-        <label style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''} style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
+        <label style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="dh" ${c.dh !== false ? 'checked' : ''} style="width:auto;min-height:auto"> Con dry hop (DH)</label>
+        <label style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''} style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
         <label style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="lievitoOk" ${c.lievitoOk ? 'checked' : ''} style="width:auto;min-height:auto"> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
         <label style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="etichetteOk" ${c.etichetteOk ? 'checked' : ''} style="width:auto;min-height:auto"> ${SIMBOLI.etichette} Etichette pronte</label>
         <datalist id="dl-stili">${stiliNoti().map(x => html`<option value="${x}">`)}</datalist>
