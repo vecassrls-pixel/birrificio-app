@@ -419,3 +419,25 @@ label:has(> input[type="checkbox"]) { font-size: .92rem; font-weight: 400; color
 .accesso-logo { display: block; width: min(300px, 80%); height: auto; margin: 4px auto 18px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .accesso-logo { content: url(img/gb-logo-chiaro.png); } }
 :root[data-theme="dark"] .accesso-logo { content: url(img/gb-logo-chiaro.png); }
+/* lotto e scadenza */
+.lista-lotti { display: grid; gap: 6px; }
+.riga-lotto { display: grid; grid-template-columns: 120px 1fr auto auto; gap: 6px 12px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); }
+.riga-lotto .birra { font-weight: 600; color: var(--text); text-decoration: none; min-width: 0; }
+.riga-lotto .chip { justify-self: start; }
+.riga-scadenza { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.riga-scadenza label { width: 160px; }
+.riga-scadenza .scad-testo { flex: 1; min-width: 180px; padding-bottom: 10px; }
+.copia-lotto { white-space: nowrap; }
+@media (max-width: 760px) {
+  .riga-lotto { grid-template-columns: 1fr auto; }
+  .riga-lotto .chip { grid-column: 1 / -1; }
+  .riga-lotto .num { grid-column: 1; grid-row: 3; }
+  .riga-lotto .copia-lotto { grid-column: 2; grid-row: 2 / 4; }
+  .riga-scadenza label { width: calc(50% - 7px); }
+}
+@media print { .riga-scadenza .copia-lotto { display: none; } }
+@media (max-width: 760px) {
+  /* su telefono resta solo il pallino (verde salvato, arancio in corso), così il titolo si legge */
+  .testa-scheda .stato-salvataggio { font-size: 0; }
+  .testa-scheda .stato-salvataggio::before { margin-right: 0; width: 9px; height: 9px; }
+}

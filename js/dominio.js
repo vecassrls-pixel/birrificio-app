@@ -66,7 +66,7 @@ export function fasiCotta(c, durate) {
 // Ogni cotta tiene i suoi dati del giorno di cotta (OG, pH mash, acqua, ingredienti);
 // registro di fermentazione, fine in FV e travaso sono del fermentatore e quindi comuni;
 // il confezionamento si salva solo sulla prima cotta del gruppo.
-export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso', 'fg'];
+export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso', 'fg', 'scadenza', 'mesiScadenza'];
 
 export function gruppoCotta(c, cotte) {
   if (!c.fv || !c.data) return [c];
@@ -289,4 +289,45 @@ export function copiaDa(src, { data, numero, anno, fv }) {
     note: src.note || '',
     origine: src.lotto,
   };
+}
+
+// ---------- lotto e scadenza da etichetta ----------
+// Dal foglio "prezzi & lotti" del Brewing Schedule: scadenza = mese del confezionamento
+// (o della fine in FV) + 12 mesi; le birre forti/scure durano 24 mesi.
+const MESI_24 = ['RAM POWER', 'TEHURA', 'CANICOLA', 'BABOUSHKA', 'XMAS', 'MASTER OF ROASTED', 'MASTER OF PEATED', 'RED MONK', 'STROGOFF', 'NAT'];
+const MESI_BREVI = ['GEN', 'FEB', 'MAR', 'APR', 'MAG', 'GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV', 'DIC'];
+
+// mesi di durata: quelli della cotta, poi dell'ultima cotta della stessa birra, poi 24 o 12
+export function mesiScadenza(c, cotte = []) {
+  if (Number(c.mesiScadenza) > 0) return Number(c.mesiScadenza);
+  const prec = cotte
+    .filter(x => x.id !== c.id && !x.eliminato && Number(x.mesiScadenza) > 0 && nomeBirra(x.birra) === nomeBirra(c.birra))
+    .sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
+  if (prec) return Number(prec.mesiScadenza);
+  const n = nomeBirra(c.birra).toUpperCase();
+  return MESI_24.some(b => n === b || n.startsWith(b + ' ')) ? 24 : 12;
+}
+
+// { mese: 'AAAA-MM', stimata } — scritta a mano nella scheda, altrimenti calcolata
+export function scadenzaCotta(c, cotte = [], durate) {
+  const g = gruppoCotta(c, cotte);
+  const conScad = g.find(x => x.scadenza);
+  if (conScad) return { mese: conScad.scadenza, stimata: false };
+  if (!c.data) return null;
+  const conf = g.flatMap(x => x.confezionato || []).map(x => x.data).filter(Boolean).sort()[0];
+  // senza confezionamento: fine in FV, ma non prima della durata tipica (lo storico ha registri corti)
+  const fine = fineCotta(g[0], durate), minima = addGiorni(g[0].data, DURATA_DEFAULT - 1);
+  const base = conf || (fine > minima ? fine : minima);
+  const tot = Number(base.slice(0, 4)) * 12 + Number(base.slice(5, 7)) - 1 + mesiScadenza(c, cotte);
+  return { mese: `${Math.floor(tot / 12)}-${String(tot % 12 + 1).padStart(2, '0')}`, stimata: !conf };
+}
+
+export const meseScadenzaIT = mese => (mese ? `${MESI_BREVI[Number(mese.slice(5, 7)) - 1]}. ${mese.slice(2, 4)}` : '');
+
+// testo da incollare, nel formato del foglio: "Lotto 51/52/25 - Scad. OTT. 26"
+export function testoLottoScadenza(c, cotte = [], durate) {
+  const g = gruppoCotta(c, cotte);
+  const lotto = g.length > 1 ? `${lottoGruppo(g)}/${String(c.anno || c.data.slice(0, 4)).slice(2)}` : c.lotto || '';
+  const s = scadenzaCotta(c, cotte, durate);
+  return `Lotto ${lotto}${s ? ` - Scad. ${meseScadenzaIT(s.mese)}` : ''}`;
 }

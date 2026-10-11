@@ -10,7 +10,7 @@ import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
-  CAMPI_COMUNI, SIMBOLI, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
+  CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
 } from './dominio.js';
 
 const $app = document.getElementById('app');
@@ -35,6 +35,18 @@ function toast(msg) {
   t.hidden = false;
   clearTimeout(toast.t);
   toast.t = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+// copia negli appunti (con ripiego per i browser senza Clipboard API)
+async function copia(testo) {
+  try { await navigator.clipboard.writeText(testo); }
+  catch {
+    const t = document.createElement('textarea');
+    t.value = testo; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } finally { t.remove(); }
+  }
+  toast(`Copiato: ${testo}`);
 }
 
 // conferma dentro la pagina (confirm() non è disponibile ovunque)
@@ -628,6 +640,16 @@ async function vistaCotta(id) {
           <button class="piccolo" data-add="confezionato" data-preset="fusto:12">+ Fusti 12 L</button>
           <button class="piccolo" data-add="confezionato" data-preset="lattina/bottiglia:0.33">+ Lattine 0,33</button>
         </div>
+        ${(() => {
+          const sc = scadenzaCotta(c, stato.cotte.map(x => (x.id === c.id ? c : x)), stato.durate);
+          const testo = testoLottoScadenza(c, stato.cotte.map(x => (x.id === c.id ? c : x)), stato.durate);
+          return html`<div class="riga-scadenza">
+            <label>Scadenza (mese) <input data-path="scadenza" type="month" value="${c.scadenza || ''}"></label>
+            <label>Durata (mesi) <input data-path="mesiScadenza" type="number" min="1" step="1" inputmode="numeric" value="${c.mesiScadenza ?? ''}" placeholder="${mesiScadenza({ ...c, mesiScadenza: null }, stato.cotte)}"></label>
+            <div class="scad-testo"><b class="num">${testo}</b>${sc?.stimata ? html`<span class="totale"> stimata ${c.confezionato.some(r => r.data) ? 'dal confezionamento' : 'dalla fine in FV'}</span>` : ''}</div>
+            <button class="piccolo copia-lotto" data-copia="${testo}" title="Copia lotto e scadenza">⧉ Copia</button>
+          </div>`;
+        })()}
         ${litriConf ? (litriGruppo > 0 ? html`<div class="kpi resa">
             <div><b>${numIT(litriGruppo, 0)} L</b>litri iniziali${g.length > 1 ? ` (${g.length} cotte)` : ''}</div>
             <div><b>${numIT(litriConf, 1)} L</b>confezionati</div>
@@ -703,7 +725,7 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
-    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
+    if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|scadenza|mesiScadenza|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
       setTimeout(() => {
         const a = document.activeElement;
         const chiave = a && $app.contains(a) ? (a.dataset.path ? `[data-path="${a.dataset.path}"]` : a.id ? `#${a.id}` : null) : null;
@@ -715,7 +737,9 @@ async function vistaCotta(id) {
   $app.onclick = async e => {
     const t = e.target.closest('button');
     if (!t) return;
-    if (t.dataset.add) {
+    if (t.dataset.copia) {
+      copia(t.dataset.copia);
+    } else if (t.dataset.add) {
       const k = t.dataset.add;
       if (k === 'fermentazione') {
         const last = c.fermentazione[c.fermentazione.length - 1];
@@ -939,6 +963,18 @@ function vistaPlanning() {
     }
     barrePerFv.set(p.fv, lista);
   }
+  // lotti e scadenze: birre in fermentatore, pianificate a breve e confezionate negli ultimi 4 mesi (una riga per lotto)
+  const lottiScad = [];
+  const visti = new Set();
+  for (const c of [...stato.cotte].filter(c => c.data && !c.eliminato).sort((a, b) => b.data.localeCompare(a.data))) {
+    const s = statoCotta(c, stato.durate);
+    const recente = s === 'tank' || (s === 'pianificata' && c.data <= addGiorni(oggi, 21)) || (s === 'confezionata' && fineCotta(c, stato.durate) >= addGiorni(oggi, -120));
+    if (!recente) continue;
+    const g = gruppoCotta(c, stato.cotte);
+    if (visti.has(g[0].id)) continue;
+    visti.add(g[0].id);
+    lottiScad.push({ c: g[0], s, testo: testoLottoScadenza(g[0], stato.cotte, stato.durate), scad: scadenzaCotta(g[0], stato.cotte, stato.durate) });
+  }
   const occupazione = nomiFv.map(n => {
     const attuale = periodi.find(p => p.fv === n && p.da <= oggi && p.a >= oggi);
     return { n, attuale, cap: stato.fv.find(f => f.nome === n)?.capacita };
@@ -996,7 +1032,7 @@ function vistaPlanning() {
             const sfondoFasi = stops.length ? `background:linear-gradient(to right, ${stops.join(', ')});` : '';
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
-              title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)}">
+              title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)} · ${testoLottoScadenza(c0, stato.cotte, stato.durate)}">
               <b>${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span>
               ${(c0.fermentazione || []).filter(e => e.data && e.data >= da && e.data <= a && eventiGiorno(e).length).map(e => html`<span class="g-ev" style="left:${diffGiorni(plan.inizio, e.data) * W - left - 1}px;width:${W}px" title="${eventiGiorno(e).join(' + ')} il ${dataIT(e.data)}">${eventiGiorno(e).map(k => SIMBOLI[k]).join('')}</span>`)}
               ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
@@ -1009,11 +1045,24 @@ function vistaPlanning() {
       <h2>Oggi nei fermentatori</h2>
       <div class="griglia occupazione">${occupazione.map(o => html`<div>
         <b>${o.n}</b><br>
-        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
+        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a>
+          <button class="piccolo copia-lotto" data-copia="${testoLottoScadenza(o.attuale.cotta, stato.cotte, stato.durate)}" title="Copia lotto e scadenza">⧉ Lotto e scad.</button><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
           : html`<span class="fv-libero">libero</span>`}
       </div>`)}</div>
     </div>
+
+    ${lottiScad.length ? html`<div class="scheda">
+      <h2>Lotti e scadenze</h2>
+      <p class="totale" style="margin:-6px 0 8px">Scadenza = mese del confezionamento (o della fine in FV) + 12 mesi, 24 per le birre forti. Si cambia nella scheda della cotta, sezione Confezionamento.</p>
+      <div class="lista-lotti">${lottiScad.map(x => html`<div class="riga-lotto">
+        <span class="chip ${x.s}">${STATI[x.s]}</span>
+        <a href="#/cotta/${encodeURIComponent(x.c.id)}" class="birra">${x.c.birra}</a>
+        <span class="num">${x.testo.replace(/^Lotto /, '')}${x.scad?.stimata ? html` <span class="totale" title="Stimata: diventa definitiva con la data di confezionamento o scrivendola nella scheda">(stimata)</span>` : ''}</span>
+        <button class="piccolo copia-lotto" data-copia="${x.testo}" title="Copia: ${x.testo}">⧉ Copia</button>
+      </div>`)}</div>
+    </div>` : ''}
   `;
+  $app.onclick = e => { const b = e.target.closest('[data-copia]'); if (b) copia(b.dataset.copia); };
   document.getElementById('prec').onclick = () => { plan.inizio = addGiorni(plan.inizio, -28); vistaPlanning(); };
   document.getElementById('succ').onclick = () => { plan.inizio = addGiorni(plan.inizio, 28); vistaPlanning(); };
   document.getElementById('oggi').onclick = () => { plan.annoScelto = null; vistaDaGennaio(); vistaPlanning(); scrollOggi(); };
@@ -1295,7 +1344,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '#stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '.copia-lotto, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;
