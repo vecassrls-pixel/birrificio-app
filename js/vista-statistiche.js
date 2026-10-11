@@ -188,6 +188,7 @@ export async function vistaStatistiche() {
   u.$app.innerHTML = html`
     <div class="barra st-testa">
       <h1 style="margin:0">Statistiche</h1><span class="spazio"></span>
+      <a class="btn" href="#/costi" title="Costo delle cotte, costo al litro e margine">€<span class="solo-desktop"> Costi</span></a>
       <button id="stampa" class="st-libero" title="Stampa o salva in PDF">⎙<span class="solo-desktop"> Stampa</span></button>
     </div>
     <div class="filtri-stato st-anni" id="st-anno" role="group" aria-label="Anno">

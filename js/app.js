@@ -6,6 +6,10 @@ import { creaXlsx } from './xlsx.js';
 import * as magazzino from './vista-magazzino.js';
 import * as statistiche from './vista-statistiche.js';
 import * as magBirra from './vista-birra.js';
+import * as costi from './vista-costi.js';
+import * as ordine from './vista-ordine.js';
+import * as cerca from './vista-cerca.js';
+import * as backup from './backup.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
@@ -66,6 +70,9 @@ function chiedi(msg, ok = 'Conferma') {
 const stato = { cotte: [], fv: [], durate: new Map() };
 magazzino.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 statistiche.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO });
+cerca.init({ $app, html, db, stato, dataIT });
+ordine.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia });
+costi.init({ $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
@@ -148,6 +155,9 @@ const routes = [
   [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
   [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
   [/^#\/statistiche$/, () => statistiche.vistaStatistiche()],
+  [/^#\/costi$/, () => costi.vistaCosti()],
+  [/^#\/ordine$/, () => ordine.vistaOrdine()],
+  [/^#\/cerca$/, () => cerca.vistaCerca()],
   [/^#\/impostazioni$/, vistaImpostazioni],
 ];
 let pulizia = null;
@@ -156,8 +166,9 @@ async function render() {
   if (h.includes('access_token=')) return; // link di invito: gestito all'avvio
   if (pulizia) { pulizia(); pulizia = null; }
   $app.oninput = $app.onchange = $app.onclick = null;
+  document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro-s6|scarico)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/movbirra/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro-s6|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/movbirra/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi'))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -165,6 +176,12 @@ async function render() {
   location.hash = '#/cotte';
 }
 window.addEventListener('hashchange', render);
+// "/" apre la ricerca (se non si sta scrivendo in un campo)
+document.addEventListener('keydown', e => {
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+  e.preventDefault();
+  location.hash = '#/cerca';
+});
 
 // ---------- Lista cotte ----------
 const filtri = { q: '', anno: '', stato: '', limite: 60 };
@@ -337,6 +354,7 @@ async function vistaCotta(id) {
   c.acquaDip = c.acquaDip || {};
   // ingredienti scelti dalle voci del magazzino (anche a zero)
   let articoli = await magazzino.articoliRicetta();
+  const datiCosto = await costi.datiCosti();
   // cotte non ancora fatte: antifoam già pronto negli additivi (lo storico non si tocca)
   if (c.data && c.data >= oggiISO()) c.sali = conAdditiviDefault(c.sali);
 
@@ -488,7 +506,7 @@ async function vistaCotta(id) {
           </span>
         </div>
         <nav class="indice" aria-label="Sezioni della scheda">
-          ${[['dati', 'Dati'], ['acqua', 'Acqua'], ['malti', 'Malti'], ['luppoli', 'Luppoli'], ['lievito', 'Lievito'], ['sali', 'Sali'], ['acido', 'Acido'], ['ferm', 'Fermentazione'], ['conf', 'Confezionamento'], ['note', 'Note']]
+          ${[['dati', 'Dati'], ['acqua', 'Acqua'], ['malti', 'Malti'], ['luppoli', 'Luppoli'], ['lievito', 'Lievito'], ['sali', 'Sali'], ['acido', 'Acido'], ['ferm', 'Fermentazione'], ['conf', 'Confezionamento'], ['costo', 'Costo'], ['note', 'Note']]
             .map(([k, t]) => html`<a data-vai="sez-${k}">${t}</a>`)}
         </nav>
       </div>
@@ -537,7 +555,13 @@ async function vistaCotta(id) {
         <datalist id="dl-stili">${stiliNoti().map(x => html`<option value="${x}">`)}</datalist>
         <datalist id="dl-birre2">${birreNote().map(b => html`<option value="${b}">`)}</datalist>
         ${(() => {
-          if (c.brewfather) return html`<p class="totale">Collegata a Brewfather${c.brewfather.stato ? ` (stato: ${c.brewfather.stato})` : ''}.</p>`;
+          if (c.brewfather) {
+            const diversi = bf.daInviare(c, stato.cotte.map(x => (x.id === c.id ? c : x)), stato.durate) || {};
+            const voci = Object.entries(diversi).map(([k, v]) => `${bf.ETICHETTE_BF[k]} ${k === 'stato' ? v : numIT(v, k === 'litri' || k === 'litriConf' ? 0 : 2)}`);
+            return html`<div class="calc-hlt"><span>Collegata a Brewfather${c.brewfather.stato ? ` (stato: ${c.brewfather.stato})` : ''}.
+              ${voci.length ? html` Da inviare: <b>${voci.join(' · ')}</b>` : c.brewfather.inviato ? html` <span class="totale">Valori inviati il ${new Date(c.brewfather.inviato.data).toLocaleString('it-IT')}.</span>` : ''}</span>
+              ${voci.length ? html`<button class="piccolo" id="bf-invia">Invia a Brewfather</button>` : ''}</div>`;
+          }
           const da = stato.cotte.filter(x => x.id !== c.id && x.brewfather && x.id.startsWith('cotta-bf-') && x.data && c.data && Math.abs(diffGiorni(c.data, x.data)) <= 30);
           if (!da.length) return '';
           return html`<div class="calc-hlt"><b>Collega a Brewfather</b>
@@ -673,6 +697,7 @@ async function vistaCotta(id) {
         ${c.confezionatoNote ? html`<p class="totale">Note: ${c.confezionatoNote}</p>` : ''}
       </div>
 
+      ${costi.htmlCosto(c, stato.cotte.map(x => (x.id === c.id ? c : x)), datiCosto)}
       <div class="scheda" id="sez-note">
         <h2>Note</h2>
         <textarea data-path="note" rows="4">${c.note || ''}</textarea>
@@ -809,6 +834,19 @@ async function vistaCotta(id) {
     } else if (t.id === 'duplica') {
       await salvaOra();
       dialogNuovaCotta({ birra: c.birra, titolo: `Nuova cotta da ${c.lotto}` });
+    } else if (t.id === 'bf-invia') {
+      t.disabled = true;
+      try {
+        await salvaOra();
+        const diversi = bf.daInviare(c, stato.cotte.map(x => (x.id === c.id ? c : x)), stato.durate) || {};
+        const nuovo = await bf.inviaMisure((await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT, c, diversi);
+        c.brewfather = nuovo.brewfather;
+        await salvaOra();
+        toast('Valori inviati a Brewfather');
+      } catch (ex) {
+        toast(ex.message.includes('Failed to fetch') ? 'Brewfather non raggiungibile: serve internet' : ex.message);
+      }
+      const y = scrollY; disegna(); scrollTo(0, y);
     } else if (t.id === 'bf-collega-ok') {
       const altroId = document.getElementById('bf-collega').value;
       const altro = stato.cotte.find(x => x.id === altroId);
@@ -1141,6 +1179,7 @@ async function gestioneUtenti() {
 async function vistaImpostazioni() {
   const nonInviati = (await db.daInviare()).length;
   const bfUltimo = await db.meta('brewfatherUltimo');
+  const backupUltimo = await backup.ultimo();
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
     <div class="scheda">
@@ -1179,7 +1218,9 @@ async function vistaImpostazioni() {
       <div class="barra">
         <button class="primario" id="bf-attive">Aggiorna cotte in corso</button>
         <button id="bf-tutto">Importa tutto lo storico</button>
+        <button id="bf-invia-tutte">Invia i valori dell'app (ultimi 90 giorni)</button>
       </div>
+      <p class="totale">"Invia" scrive in Brewfather OG, FG, litri, pH mash, litri confezionati e stato (solo in avanti) delle cotte collegate, quando nell'app sono diversi. Serve una chiave API con il permesso "Edit Batches".</p>
       <p class="totale" id="bf-stato">${bfUltimo ? `Ultimo import: ${new Date(bfUltimo).toLocaleString('it-IT')}` : 'Mai importato.'}</p>
     </div>
 
@@ -1187,9 +1228,11 @@ async function vistaImpostazioni() {
       <h2>Dati</h2>
       <div class="barra">
         ${auth.configurato() ? '' : html`<button id="storico">Importa storico schede cotta</button>`}
-        <button id="esporta">Scarica backup (JSON)</button>
+        <button id="esporta">Scarica backup ora</button>
         <label class="btn" style="color:var(--text);font-size:inherit">Ripristina backup<input id="ripristina" type="file" accept="application/json" hidden></label>
       </div>
+      <label class="spunta"><input type="checkbox" id="backup-auto" ${backup.automatico() ? 'checked' : ''}> Backup automatico ogni settimana su questo dispositivo</label>
+      <p class="totale">Il file (tutti i dati: cotte, magazzino, birra, prezzi) finisce nella cartella Download. ${backupUltimo ? `Ultimo backup su questo dispositivo: ${new Date(backupUltimo).toLocaleString('it-IT')}.` : 'Nessun backup ancora su questo dispositivo.'}</p>
       <p class="totale">${stato.cotte.length} cotte su questo dispositivo.</p>
     </div>
   `;
@@ -1223,6 +1266,7 @@ async function vistaImpostazioni() {
   if (document.getElementById('utenti')) gestioneUtenti();
   document.getElementById('bf-attive').onclick = () => importaBrewfather(false);
   document.getElementById('bf-tutto').onclick = () => importaBrewfather(true);
+  document.getElementById('bf-invia-tutte').onclick = () => inviaBrewfather();
   const off = sync.onStato(s => {
     const el = document.getElementById('sync-stato');
     if (!el) return;
@@ -1233,19 +1277,19 @@ async function vistaImpostazioni() {
   const storico = document.getElementById('storico');
   if (storico) storico.onclick = () => importaStorico().catch(e => toast('Import non riuscito: ' + e.message));
   document.getElementById('esporta').onclick = async () => {
-    const dati = await db.esporta();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(dati)], { type: 'application/json' }));
-    a.download = `birrificio-backup-${oggiISO()}.json`;
-    a.click();
+    const n = await backup.scarica();
+    toast(`Backup scaricato: ${n} record`);
+  };
+  document.getElementById('backup-auto').onchange = e => {
+    backup.impostaAutomatico(e.target.checked);
+    toast(e.target.checked ? 'Backup automatico attivo su questo dispositivo' : 'Backup automatico spento su questo dispositivo');
   };
   document.getElementById('ripristina').onchange = async e => {
     const file = e.target.files[0];
     if (!file) return;
-    const dati = JSON.parse(await file.text());
-    if (dati.app !== 'birrificio') return toast('File non valido');
-    await db.applicaRemoti(dati.records);
-    toast('Backup ripristinato');
+    if (!(await chiedi(`Ripristinare ${file.name}? Tornano i dati del file che qui mancano o sono più vecchi; le modifiche più recenti restano.`, 'Ripristina'))) return;
+    try { toast(`Backup ripristinato: ${await backup.ripristina(file)} record`); }
+    catch (ex) { toast(ex.message); }
   };
 }
 
@@ -1278,6 +1322,35 @@ async function importaBrewfather(completo) {
     scrivi(e.message.includes('Failed to fetch') || e.message.includes('404')
       ? 'Brewfather non raggiungibile: funziona quando l\'app è online sul suo server con la chiave API configurata.'
       : e.message);
+  } finally {
+    bottoni.forEach(b => { b.disabled = false; });
+  }
+}
+
+// Invia a Brewfather i valori cambiati nell'app delle cotte collegate degli ultimi 90 giorni
+async function inviaBrewfather() {
+  const out = document.getElementById('bf-stato');
+  const scrivi = t => { if (out) out.textContent = t; };
+  const bottoni = [...document.querySelectorAll('#bf-attive, #bf-tutto, #bf-invia-tutte')];
+  const da = addGiorni(oggiISO(), -90);
+  const lista = stato.cotte.filter(c => c.brewfather?.id && c.data && c.data >= da)
+    .map(c => ({ c, diversi: bf.daInviare(c, stato.cotte, stato.durate) || {} }))
+    .filter(x => Object.keys(x.diversi).length);
+  if (!lista.length) return scrivi('Niente da inviare: Brewfather ha già i valori dell\'app.');
+  if (!(await chiedi(`Inviare a Brewfather i valori di ${lista.length} cotte? ${lista.slice(0, 6).map(x => `${x.c.birra} ${x.c.lotto}`).join(', ')}${lista.length > 6 ? '…' : ''}`, 'Invia'))) return;
+  bottoni.forEach(b => { b.disabled = true; });
+  const proxy = (await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT;
+  let fatte = 0;
+  try {
+    for (const [i, x] of lista.entries()) {
+      scrivi(`Invio ${i + 1} di ${lista.length}: ${x.c.birra} ${x.c.lotto}…`);
+      const nuovo = await bf.inviaMisure(proxy, x.c, x.diversi);
+      await db.salva(nuovo);
+      fatte++;
+    }
+    scrivi(`Fatto: ${fatte} cotte aggiornate in Brewfather.`);
+  } catch (e) {
+    scrivi(`${fatte ? `${fatte} inviate, poi errore: ` : ''}${e.message.includes('Failed to fetch') ? 'Brewfather non raggiungibile.' : e.message}`);
   } finally {
     bottoni.forEach(b => { b.disabled = false; });
   }
@@ -1420,4 +1493,6 @@ misuraTop();
   sync.avvia();
   render();
   chiudiSplash();
+  // backup settimanale (dopo un primo giro di sincronizzazione, per avere i dati aggiornati)
+  if (!lettore) setTimeout(() => backup.controlla().then(f => f && toast('Backup settimanale scaricato nella cartella Download')).catch(() => {}), 8000);
 })();

@@ -106,6 +106,24 @@ export async function applicaRemoti(remoti) {
   return cambiati;
 }
 
+// Ripristino da backup: i record del file che qui mancano o sono più vecchi tornano, da inviare al cloud
+export async function ripristina(records) {
+  controllaScrittura();
+  let n = 0;
+  await tx('records', 'readwrite', async s => {
+    for (const r of records) {
+      if (!r?.id || !r.tipo) continue;
+      const locale = await asPromise(s.get(r.id));
+      if (!locale || (r.aggiornato || '') > (locale.aggiornato || '')) {
+        s.put({ ...r, daSincronizzare: 1 });
+        n++;
+      }
+    }
+  });
+  if (n) notifica();
+  return n;
+}
+
 export async function segnaInviati(records) {
   await tx('records', 'readwrite', async s => {
     for (const r of records) {

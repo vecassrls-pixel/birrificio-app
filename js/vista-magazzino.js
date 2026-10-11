@@ -52,6 +52,7 @@ export async function vistaMagazzino() {
         <div><b>${dati.bolle.length}</b>bolle</div>
       </div></div>
       <span class="spazio"></span>
+      <a class="btn" href="#/ordine" title="Cosa ordinare per le cotte pianificate">🛒 Da ordinare</a>
       <a class="btn" href="#/registro-s6">Registro S6</a>
       <a class="btn" href="#/inventario">Inventario</a>
       <button id="nuovo-art">+ Articolo</button>
@@ -198,6 +199,7 @@ export async function vistaArticolo(id) {
         <label>Categoria <select name="categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === a.categoria ? 'selected' : ''}>${v}</option>`)}</select></label>
         <label>Unità <select name="unita">${UNITA.map(x => html`<option ${x === a.unita ? 'selected' : ''}>${x}</option>`)}</select></label>
         <label>Scorta minima (${a.unita}) <input name="scortaMin" type="number" step="any" inputmode="decimal" value="${a.scortaMin || ''}"></label>
+        <label>Prezzo (€/${a.unita}) <input name="prezzo" type="number" step="any" inputmode="decimal" value="${a.prezzo || ''}" title="Usato per il costo delle cotte se le bolle non hanno il prezzo"></label>
         <label>1 pezzo / sacco = (${a.unita}) <input name="pesoPezzo" type="number" step="any" inputmode="decimal" value="${a.pesoPezzo || ''}" placeholder="es. 20" title="Per le bolle che riportano solo i pezzi"></label>
         <label style="grid-column:1/-1">Altri nomi nelle schede cotta (separati da virgola)
           <input name="alias" value="${(a.alias || []).join(', ')}" placeholder="es. Pils Schuemma, pils shuema"></label>
@@ -235,7 +237,7 @@ export async function vistaArticolo(id) {
     const fd = new FormData(e.target);
     await u.db.salva({
       ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'), unita: fd.get('unita'),
-      scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null,
+      scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, prezzo: Number(fd.get('prezzo')) || null,
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
     });
     u.toast('Articolo salvato');
@@ -313,7 +315,7 @@ export async function vistaBolla(id) {
       <div class="scheda"><h2>Righe</h2>
         ${daPdf() ? html`<p class="totale">Controlla le righe lette dal PDF: togli la spunta a quello che non va in magazzino e correggi il nome se l'articolo esiste già con un altro nome (la descrizione del fornitore viene ricordata per le prossime bolle).</p>` : ''}
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr>${daPdf() ? html`<th title="Carica in magazzino">✓</th>` : ''}<th>Articolo</th><th style="width:130px">Categoria (se nuovo)</th><th style="width:100px">Quantità</th><th style="width:80px">Unità</th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th><th></th></tr></thead>
+          <thead><tr>${daPdf() ? html`<th title="Carica in magazzino">✓</th>` : ''}<th>Articolo</th><th style="width:130px">Categoria (se nuovo)</th><th style="width:100px">Quantità</th><th style="width:80px">Unità</th><th style="width:110px" title="Prezzo per unità della riga, senza IVA: serve per il costo delle cotte">€/unità (facolt.)</th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th><th></th></tr></thead>
           <tbody>${b.righe.map((r, i) => {
             const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
             return html`<tr class="${r.includi === false ? 'escluso' : ''}">
@@ -322,6 +324,7 @@ export async function vistaBolla(id) {
               <td>${art ? html`<span class="totale">${CATEGORIE[art.categoria]}</span>` : html`<select data-r="${i}.categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (r.categoria || 'malto') ? 'selected' : ''}>${v}</option>`)}</select>`}</td>
               <td><input data-r="${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
               <td><select data-r="${i}.unita">${UNITA.map(x => html`<option ${x === (r.unita || art?.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></td>
+              <td><input data-r="${i}.prezzo" type="number" step="any" inputmode="decimal" value="${r.prezzo ?? ''}"></td>
               <td><input data-r="${i}.lotto" value="${r.lotto || ''}"></td>
               <td><input data-r="${i}.scadenza" type="date" value="${r.scadenza || ''}"></td>
               <td class="az"><button class="piccolo" data-del="${i}" title="Rimuovi">✕</button></td>
@@ -375,7 +378,7 @@ export async function vistaBolla(id) {
           art.alias = [...(art.alias || []), r.descrizione];
           if (!nuovi.includes(art)) aggiornati.set(art.id, art);
         }
-        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', ...(r.descrizione ? { descrizione: r.descrizione } : {}) };
+        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', ...(Number(r.prezzo) > 0 ? { prezzo: Number(r.prezzo) } : {}), ...(r.descrizione ? { descrizione: r.descrizione } : {}) };
       });
       if (nuovi.length || aggiornati.size) await u.db.salvaMolti([...nuovi, ...aggiornati.values()].map(({ aggiornato: _a, ...a }) => a));
       await u.db.salva({ ...b, id: b.id || u.db.nuovoId('bolla'), righe: out });
