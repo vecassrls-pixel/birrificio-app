@@ -152,16 +152,15 @@ const filtri = { q: '', anno: '', stato: '', limite: 60 };
 function vistaCotte() {
   const anni = [...new Set(stato.cotte.map(c => c.anno).filter(Boolean))].sort((a, b) => b - a);
   const q = filtri.q.trim().toLowerCase();
-  const lista = stato.cotte
+  const filtrate = stato.cotte
     .map(c => ({ c, s: statoCotta(c, stato.durate) }))
-    .filter(({ c, s }) =>
+    .filter(({ c }) =>
       (!q || `${c.birra} ${c.lotto} ${c.fv}`.toLowerCase().includes(q)) &&
-      (!filtri.anno || String(c.anno) === filtri.anno) &&
-      (!filtri.stato || s === filtri.stato))
+      (!filtri.anno || String(c.anno) === filtri.anno));
+  const perStato = filtrate.reduce((m, { s }) => m.set(s, (m.get(s) || 0) + 1), new Map());
+  const lista = filtrate
+    .filter(({ s }) => !filtri.stato || s === filtri.stato)
     .sort((a, b) => (b.c.data || '').localeCompare(a.c.data || '') || (b.c.numero || 0) - (a.c.numero || 0));
-
-  const inTank = stato.cotte.filter(c => statoCotta(c, stato.durate) === 'tank').length;
-  const prossime = stato.cotte.filter(c => statoCotta(c, stato.durate) === 'pianificata').length;
 
   // cotte doppie/triple: lotto del gruppo (51/52)
   const lotti = new Map();
@@ -171,25 +170,23 @@ function vistaCotte() {
   }
   $app.innerHTML = html`
     <div class="barra">
-      <div><h1>Cotte</h1><div class="kpi">
-        <div><b>${inTank}</b>in fermentatore</div>
-        <div><b>${prossime}</b>pianificate</div>
-        <div><b>${stato.cotte.length}</b>totali</div>
-      </div></div>
+      <h1 style="margin:0">Cotte</h1>
       <span class="spazio"></span>
       <button class="primario" id="nuova">+ Nuova cotta</button>
     </div>
     <div class="barra">
       <input id="q" type="search" placeholder="Cerca birra, lotto, FV…" value="${filtri.q}" style="flex:2;min-width:180px">
-      <select id="anno" style="flex:1;min-width:110px"><option value="">Tutti gli anni</option>
+      <select id="anno" style="flex:0 0 auto;width:auto"><option value="">Tutti gli anni</option>
         ${anni.map(a => html`<option ${String(a) === filtri.anno ? 'selected' : ''}>${a}</option>`)}</select>
-      <select id="stato" style="flex:1;min-width:140px"><option value="">Tutti gli stati</option>
-        ${Object.entries(STATI).map(([k, v]) => html`<option value="${k}" ${k === filtri.stato ? 'selected' : ''}>${v}</option>`)}</select>
+    </div>
+    <div class="filtri-stato" id="stati" role="group" aria-label="Filtra per stato">
+      <button data-stato="" class="${filtri.stato ? '' : 'attivo'}" aria-pressed="${!filtri.stato}">Tutte <b>${filtrate.length}</b></button>
+      ${['tank', 'pianificata', 'confezionata', 'chiusa'].map(k => [k, STATI[k]]).map(([k, v]) => html`<button data-stato="${k}" class="${k === filtri.stato ? 'attivo' : ''}" aria-pressed="${k === filtri.stato}">${v} <b>${perStato.get(k) || 0}</b></button>`)}
     </div>
     <div class="lista">
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
-        <a class="riga-cotta" href="#/cotta/${encodeURIComponent(c.id)}">
-          <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<br><small class="totale">${lotti.get(c.id)}</small>` : ''}</span>
+        <a class="riga-cotta ${s}" href="#/cotta/${encodeURIComponent(c.id)}">
+          <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<small title="Cotta doppia/tripla">${lotti.get(c.id)}</small>` : ''}</span>
           <span class="birra">${c.birra || 'Senza nome'}${c.materiePrime && ['pianificata', 'tank'].includes(s) ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
           <span class="chip ${s}">${STATI[s]}</span>
           <span class="dett">${dataIT(c.data)}${c.stile ? ` · ${c.stile}` : ''} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
@@ -200,7 +197,10 @@ function vistaCotte() {
   const q$ = document.getElementById('q');
   q$.addEventListener('input', () => { filtri.q = q$.value; filtri.limite = 60; vistaCotte(); document.getElementById('q').focus(); document.getElementById('q').setSelectionRange(filtri.q.length, filtri.q.length); });
   document.getElementById('anno').onchange = e => { filtri.anno = e.target.value; vistaCotte(); };
-  document.getElementById('stato').onchange = e => { filtri.stato = e.target.value; vistaCotte(); };
+  document.getElementById('stati').onclick = e => {
+    const b = e.target.closest('button[data-stato]');
+    if (b) { filtri.stato = b.dataset.stato; filtri.limite = 60; vistaCotte(); }
+  };
   document.getElementById('nuova').onclick = () => dialogNuovaCotta();
   const altre = document.getElementById('altre');
   if (altre) altre.onclick = () => { filtri.limite += 100; vistaCotte(); };
@@ -356,8 +356,8 @@ async function vistaCotta(id) {
     });
     return salvataggio;
   };
-  const segna = t => { const el = document.getElementById('salv'); if (el) el.textContent = t; };
-  pulizia = () => { if (timer) salvaOra(); };
+  const segna = t => { const el = document.getElementById('salv'); if (el) { el.textContent = t; el.classList.toggle('in-corso', !/✓/.test(t)); } };
+  pulizia = () => { removeEventListener('scroll', suScroll); if (timer) salvaOra(); };
 
   function campo(path, etichetta, tipo = 'number', extra = '') {
     const v = get(c, path);
@@ -412,7 +412,7 @@ async function vistaCotta(id) {
     const lievito = k === 'lievito';
     // prima le voci della categoria della sezione, poi le altre
     const voci = [...articoli].sort((a, b) => (CAT_SEZIONE[k].includes(b.categoria) - CAT_SEZIONE[k].includes(a.categoria)) || a.nome.localeCompare(b.nome, 'it'));
-    return html`<div class="scheda">
+    return html`<div class="scheda" id="sez-${k}">
       <h2>${titolo}</h2>
       <div class="scroll-x"><table class="tab-edit">
         <thead><tr><th>Nome</th><th style="width:90px">Quantità</th><th style="width:70px">Unità</th>${extra ? html`<th style="width:90px">Min. / giorno</th><th style="width:110px">Uso</th>` : ''}${lievito ? html`<th style="width:110px" title="Lievito recuperato da un'altra birra: non si scala dal magazzino">Recuperato</th>` : ''}<th></th></tr></thead>
@@ -450,13 +450,23 @@ async function vistaCotta(id) {
     const litriConf = litriConfezionati(c);
     const litriGruppo = g.length > 1 ? g.reduce((t, x) => t + (Number(x.id === c.id ? c.litri : x.litri) || 0), 0) : c.litri;
     const ultimaLettura = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
+    const salvPrima = document.getElementById('salv');
     $app.innerHTML = html`
-      <div class="barra">
-        <a href="#/cotte" class="btn">← Cotte</a>
-        <span class="spazio"></span>
-        <span id="salv" class="stato-salvataggio"></span>
-        <button id="duplica">Duplica</button>
-        ${window.self === window.top ? html`<button id="stampa" title="Si apre la stampa: scegli “Salva come PDF”">Salva PDF</button>` : ''}
+      <div class="testa-scheda">
+        <div class="barra">
+          <a href="#/cotte" class="btn" title="Torna alla lista delle cotte">←<span class="solo-desktop"> Cotte</span></a>
+          <span class="titolo-breve">${c.birra || 'Nuova cotta'} · ${c.lotto || '—'}</span>
+          <span class="spazio"></span>
+          <span id="salv" class="stato-salvataggio ${salvPrima?.classList.contains('in-corso') ? 'in-corso' : ''}">${salvPrima?.textContent || ''}</span>
+          <span class="azioni-testa barra" style="margin:0;flex-wrap:nowrap">
+            <button id="duplica" title="Nuova cotta con la stessa ricetta">⧉<span class="testo"> Duplica</span></button>
+            ${window.self === window.top ? html`<button id="stampa" title="Si apre la stampa: scegli “Salva come PDF”">⎙<span class="testo"> Salva PDF</span></button>` : ''}
+          </span>
+        </div>
+        <nav class="indice" aria-label="Sezioni della scheda">
+          ${[['dati', 'Dati'], ['acqua', 'Acqua'], ['malti', 'Malti'], ['luppoli', 'Luppoli'], ['lievito', 'Lievito'], ['sali', 'Sali'], ['acido', 'Acido'], ['ferm', 'Fermentazione'], ['conf', 'Confezionamento'], ['note', 'Note']]
+            .map(([k, t]) => html`<a data-vai="sez-${k}">${t}</a>`)}
+        </nav>
       </div>
       <div class="scheda">
         <div class="barra" style="margin:0">
@@ -477,7 +487,7 @@ async function vistaCotta(id) {
         </div>
       </div>
 
-      <div class="scheda">
+      <div class="scheda" id="sez-dati">
         <h2>Dati cotta</h2>
         <div class="griglia">
           <label style="grid-column:span 2">Birra <input data-path="birra" list="dl-birre2" value="${c.birra || ''}"></label>
@@ -494,9 +504,11 @@ async function vistaCotta(id) {
           ${campo('fg', 'FG (°P)')}
           ${campo('phMash', 'pH')}
         </div>
-        <label style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''} style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
-        <label style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="lievitoOk" ${c.lievitoOk ? 'checked' : ''} style="width:auto;min-height:auto"> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
-        <label style="margin-top:6px;display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--text)"><input type="checkbox" data-path="etichetteOk" ${c.etichetteOk ? 'checked' : ''} style="width:auto;min-height:auto"> ${SIMBOLI.etichette} Etichette pronte</label>
+        <div class="spunte">
+          <label><input type="checkbox" data-path="materiePrime" ${c.materiePrime ? 'checked' : ''}> Materie prime ordinate o in magazzino</label>
+          <label><input type="checkbox" data-path="lievitoOk" ${c.lievitoOk ? 'checked' : ''}> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
+          <label><input type="checkbox" data-path="etichetteOk" ${c.etichetteOk ? 'checked' : ''}> ${SIMBOLI.etichette} Etichette pronte</label>
+        </div>
         <datalist id="dl-stili">${stiliNoti().map(x => html`<option value="${x}">`)}</datalist>
         <datalist id="dl-birre2">${birreNote().map(b => html`<option value="${b}">`)}</datalist>
         ${(() => {
@@ -516,7 +528,7 @@ async function vistaCotta(id) {
         })()}
       </div>
 
-      <div class="scheda">
+      <div class="scheda" id="sez-acqua">
         <h2>Acqua e mash</h2>
         <div class="griglia">
           ${campo('acquaMash.tempAmbiente', 'T° ambiente')}
@@ -550,7 +562,7 @@ async function vistaCotta(id) {
 
       ${SEZIONI_INGR.map(([k, t, u]) => tabIngredienti(k, t, u))}
 
-      <div class="scheda">
+      <div class="scheda" id="sez-acido">
         <h2>Acido lattico</h2>
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:150px">Fase</th><th style="width:150px">Data</th><th style="width:80px">ml</th><th style="width:80px">pH prima</th><th style="width:80px">pH dopo</th><th>Nota</th><th></th></tr></thead>
@@ -572,7 +584,7 @@ async function vistaCotta(id) {
         ${c.acido.length ? html`<p class="totale">Totale acido lattico: ${numIT(c.acido.reduce((t, r) => t + (Number(r.ml) || 0), 0), 1)} ml</p>` : ''}
       </div>
 
-      <div class="scheda">
+      <div class="scheda" id="sez-ferm">
         <h2>Fermentazione</h2>
         ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null))}
         <div class="scroll-x"><table class="tab-edit">
@@ -597,7 +609,7 @@ async function vistaCotta(id) {
         </div>
       </div>
 
-      <div class="scheda">
+      <div class="scheda" id="sez-conf">
         <h2>Confezionamento${g.length > 1 ? html` <span class="totale">· lotto ${lottoGruppo(g)}</span>` : ''}</h2>
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th>Formato</th><th style="width:90px">Pezzi</th><th style="width:100px">Litri/pezzo</th><th style="width:140px">Data</th><th></th></tr></thead>
@@ -626,7 +638,7 @@ async function vistaCotta(id) {
         ${c.confezionatoNote ? html`<p class="totale">Note: ${c.confezionatoNote}</p>` : ''}
       </div>
 
-      <div class="scheda">
+      <div class="scheda" id="sez-note">
         <h2>Note</h2>
         <textarea data-path="note" rows="4">${c.note || ''}</textarea>
       </div>
@@ -637,7 +649,32 @@ async function vistaCotta(id) {
       </div>
     `;
     attivaGrafico(c, diffGiorni, dataIT);
+    $app.querySelector('.indice').onclick = e => {
+      const a = e.target.closest('[data-vai]');
+      if (a) document.getElementById(a.dataset.vai)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    evidenziaSezione();
   }
+  // indice: evidenzia la sezione che si sta guardando
+  function evidenziaSezione() {
+    const indice = $app.querySelector('.indice');
+    if (!indice) return;
+    const soglia = (document.querySelector('.testa-scheda')?.getBoundingClientRect().bottom || 0) + 24;
+    let attiva = null;
+    for (const a of indice.querySelectorAll('[data-vai]')) {
+      const el = document.getElementById(a.dataset.vai);
+      if (el && el.getBoundingClientRect().top <= soglia) attiva = a;
+    }
+    if (attiva && innerHeight + scrollY >= document.documentElement.scrollHeight - 4) attiva = indice.querySelector('[data-vai]:last-child');
+    for (const a of indice.querySelectorAll('[data-vai]')) a.classList.toggle('attivo', a === attiva);
+    // la voce attiva resta visibile anche quando l'indice scorre (telefono)
+    if (attiva && (attiva.offsetLeft < indice.scrollLeft || attiva.offsetLeft + attiva.offsetWidth > indice.scrollLeft + indice.clientWidth)) {
+      indice.scrollLeft = attiva.offsetLeft - 16;
+    }
+  }
+  let rafSez = 0;
+  const suScroll = () => { cancelAnimationFrame(rafSez); rafSez = requestAnimationFrame(evidenziaSezione); };
+  addEventListener('scroll', suScroll, { passive: true });
 
   ricalcolaTacche();
   disegna();
@@ -915,18 +952,20 @@ function vistaPlanning() {
         <option value="">Anno…</option>
         ${anniPlanning().map(y => html`<option value="${y}" ${plan.annoScelto === y ? 'selected' : ''}>${y}</option>`)}
       </select>
-      <button id="prec">◀</button><button id="oggi">Oggi</button><button id="succ">▶</button>
-      <button id="esporta">Esporta Excel</button>
+      <span class="gruppo"><button id="prec" title="4 settimane prima" aria-label="4 settimane prima">◀</button><button id="oggi">Oggi</button><button id="succ" title="4 settimane dopo" aria-label="4 settimane dopo">▶</button></span>
+      <button id="esporta" title="Scarica il planning in Excel">⬇<span class="solo-desktop"> Esporta</span> Excel</button>
       <button class="primario" id="pianifica">+ Pianifica cotta</button>
     </div>
-    <div class="legenda">
-      ${Object.entries(FASI).map(([k, v]) => html`<span><span class="fase-chip" style="background:var(--f-${k})"></span> ${v}</span>`)}
+    <details class="legenda-box">
+      <summary>${Object.entries(FASI).map(([k, v]) => html`<span><span class="fase-chip" style="background:var(--f-${k})"></span> ${v}</span>`)}<span class="apri">Legenda</span></summary>
+      <div class="legenda">
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
       <span>${SIMBOLI.lievito} lievito pronto · ${SIMBOLI.etichette} etichette pronte · ${SIMBOLI.spurgo} spurgo · ${SIMBOLI.bubbling} bubbling</span>
       <span><span class="g-eta" style="position:static;padding:0 4px">12</span> = giorno della birra oggi (cotta = giorno 1)</span>
-    </div>
+      </div>
+    </details>
     ${conf.length ? html`<div class="scheda avviso"><h2>⚠ ${conf.length} conflitt${conf.length === 1 ? 'o' : 'i'}</h2>
       ${conf.map(x => html`<div>${x.fv}: <a href="#/cotta/${encodeURIComponent(x.a.id)}">${x.a.birra} ${x.a.lotto}</a> (fino al ${dataIT(x.fineA)}) e <a href="#/cotta/${encodeURIComponent(x.b.id)}">${x.b.birra} ${x.b.lotto}</a> (dal ${dataIT(x.inizioB)})</div>`)}
       ${conf.some(x => stato.fv.find(f => f.nome === x.fv)?.isobarico === false) ? html`<p class="totale">Su un FV non isobarico basta indicare il travaso nella scheda della cotta (data, o profilo che scende a 1 °C).</p>` : ''}
@@ -968,7 +1007,7 @@ function vistaPlanning() {
 
     <div class="scheda" style="margin-top:12px">
       <h2>Oggi nei fermentatori</h2>
-      <div class="griglia">${occupazione.map(o => html`<div>
+      <div class="griglia occupazione">${occupazione.map(o => html`<div>
         <b>${o.n}</b><br>
         ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
           : html`<span class="fv-libero">libero</span>`}
@@ -1253,7 +1292,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '#ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '#stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;
@@ -1272,6 +1311,12 @@ function applicaRuolo(r, { ridisegna = true } = {}) {
 window.addEventListener('unhandledrejection', e => { if (/sola lettura/i.test(e.reason?.message || '')) toast(e.reason.message); });
 
 // ---------- avvio ----------
+// altezza dell'intestazione: serve alla barra fissa della scheda cotta
+const $top = document.querySelector('.top');
+const misuraTop = () => document.documentElement.style.setProperty('--top-h', `${$top.offsetHeight}px`);
+if ('ResizeObserver' in window) new ResizeObserver(misuraTop).observe($top);
+misuraTop();
+
 (async function avvio() {
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
