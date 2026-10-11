@@ -30,6 +30,7 @@ export const conAdditiviDefault = (sali = []) => [
 // 1. note di fase nel registro (Fermentazione / DH / Maturazione): valgono fino alla nota successiva;
 // 2. altrimenti le temperature: maturazione dal primo giorno a <= 8 °C, DH nei 4 giorni prima;
 // 3. se il profilo non scende mai a freddo, le fasi di default (10 fermentazione, 4 DH, poi freddo).
+// Cotta senza dry hop (c.dh === false): i giorni di DH restano fermentazione.
 export const FASI = { fermentazione: 'Fermentazione', dh: 'DH', maturazione: 'Maturazione a freddo' };
 const faseDaNota = n => (/^\s*(dh|dry)/i.test(n) ? 'dh' : /matur|fredd|cold/i.test(n) ? 'maturazione' : /^\s*ferm/i.test(n) ? 'fermentazione' : null);
 
@@ -55,7 +56,8 @@ export function fasiCotta(c, durate) {
   }
   const out = [];
   for (let d = c.data; d <= fine; d = addGiorni(d, 1)) {
-    const f = faseDi(d);
+    let f = faseDi(d);
+    if (f === 'dh' && c.dh === false) f = 'fermentazione';
     const ultimo = out[out.length - 1];
     if (ultimo && ultimo.fase === f) ultimo.a = d; else out.push({ fase: f, da: d, a: d });
   }
@@ -66,7 +68,7 @@ export function fasiCotta(c, durate) {
 // Ogni cotta tiene i suoi dati del giorno di cotta (OG, pH mash, acqua, ingredienti);
 // registro di fermentazione, fine in FV e travaso sono del fermentatore e quindi comuni;
 // il confezionamento si salva solo sulla prima cotta del gruppo.
-export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso', 'fg', 'scadenza', 'mesiScadenza'];
+export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso', 'fg', 'scadenza', 'mesiScadenza', 'dh'];
 
 export function gruppoCotta(c, cotte) {
   if (!c.fv || !c.data) return [c];
