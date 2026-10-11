@@ -340,7 +340,7 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 @media print { .s6 { padding: 0; } .s6-testa img { height: 44px; } .tab-s6 { font-size: 10px; } .tab-s6 th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
 /* profilo in sola lettura: niente pulsanti di modifica, campi non modificabili */
-.lettore .solo-editori, .lettore #app button:disabled, .lettore #app a[href="#/bolla/nuova"], .lettore #app a[href="#/inventario"], .lettore #app a[href="#/scarico/nuovo"], .lettore #app a[href="#/scarico/carico"] { display: none !important; }
+.lettore .solo-editori, .lettore #app button:disabled, .lettore #app a[href="#/bolla/nuova"], .lettore #app a[href="#/inventario"], .lettore #app a[href="#/scarico/nuovo"], .lettore #app a[href="#/scarico/carico"], .lettore #app a[href^="#/movbirra/"]:not(.riga-cotta), .lettore #app a[href="#/birra-inventario"], .lettore #app a[href^="#/birra-importa"] { display: none !important; }
 .lettore #app input:disabled, .lettore #app select:disabled, .lettore #app textarea:disabled { opacity: 1; color: var(--text); cursor: default; }
 .tab-edit tr.escluso td { opacity: .45; }
 .tab-edit tr.escluso td:first-child { opacity: 1; }
@@ -441,3 +441,8 @@ label:has(> input[type="checkbox"]) { font-size: .92rem; font-weight: 400; color
   .testa-scheda .stato-salvataggio { font-size: 0; }
   .testa-scheda .stato-salvataggio::before { margin-right: 0; width: 9px; height: 9px; }
 }
+/* magazzino birra */
+.tab-birra tr.gruppo-birra td { font-weight: 700; padding-top: 14px; border-bottom: 1px solid var(--border); }
+.tab-birra tr:not(.gruppo-birra) td:first-child { padding-left: 14px; }
+.scheda.escluso > .scroll-x { opacity: .45; }
+details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }

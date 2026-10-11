@@ -3,7 +3,7 @@
 const VERSIONE = 'birrificio-v32';
 const FILE = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'img/logo-kashmir.png', 'img/gb-logo.png', 'img/gb-logo-chiaro.png', 'img/gb-monogramma.png', 'img/gb-monogramma-chiaro.png', 'img/gb-anim-lettere.png', 'img/gb-anim-arco-su.png', 'img/gb-anim-arco-giu.png', 'img/gb-anim-scritta.png',
-  'js/app.js', 'js/auth.js', 'js/config.js', 'js/serbatoio.js', 'js/brewfather.js', 'js/db.js', 'js/dominio.js', 'js/sync.js', 'js/xlsx.js', 'js/magazzino.js', 'js/vista-magazzino.js', 'js/bolla-pdf.js', 'js/vista-statistiche.js', 'js/grafico-ferm.js', 'data/storico.json',
+  'js/app.js', 'js/auth.js', 'js/config.js', 'js/serbatoio.js', 'js/brewfather.js', 'js/db.js', 'js/dominio.js', 'js/sync.js', 'js/xlsx.js', 'js/magazzino.js', 'js/vista-magazzino.js', 'js/bolla-pdf.js', 'js/vista-statistiche.js', 'js/grafico-ferm.js', 'js/birra.js', 'js/vista-birra.js', 'data/storico.json',
 ];
 
 self.addEventListener('install', e => {

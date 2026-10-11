@@ -5,6 +5,7 @@ import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
 import * as magazzino from './vista-magazzino.js';
 import * as statistiche from './vista-statistiche.js';
+import * as magBirra from './vista-birra.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
@@ -65,6 +66,7 @@ function chiedi(msg, ok = 'Conferma') {
 const stato = { cotte: [], fv: [], durate: new Map() };
 magazzino.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 statistiche.init({ $app, html, db, stato, dataIT, numIT, oggiISO });
+magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
@@ -139,6 +141,12 @@ const routes = [
   [/^#\/inventario$/, () => magazzino.vistaInventario()],
   [/^#\/scarico\/(.+)$/, id => magazzino.vistaScarico(id)],
   [/^#\/registro-s6$/, () => magazzino.vistaRegistroS6()],
+  [/^#\/birra$/, () => magBirra.vistaBirra()],
+  [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
+  [/^#\/movbirra\/(.+)$/, id => magBirra.vistaMovimento(id)],
+  [/^#\/birra-inventario$/, () => magBirra.vistaInventario()],
+  [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
+  [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
   [/^#\/statistiche$/, () => statistiche.vistaStatistiche()],
   [/^#\/impostazioni$/, vistaImpostazioni],
 ];
@@ -149,7 +157,7 @@ async function render() {
   if (pulizia) { pulizia(); pulizia = null; }
   $app.oninput = $app.onchange = $app.onclick = null;
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro|scarico)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro-s6|scarico)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/movbirra/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -1344,7 +1352,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.copia-lotto, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '.copia-lotto, #b-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;
@@ -1399,7 +1407,7 @@ misuraTop();
   db.onCambio(async () => {
     await carica();
     // non ridisegnare la scheda mentre si sta scrivendo
-    if (!/^#\/(cotta|bolla|inventario|scarico)/.test(location.hash)) render();
+    if (!/^#\/(cotta|bolla|inventario|scarico|movbirra|birra-)/.test(location.hash)) render();
   });
   window.addEventListener('online', () => aggiornaRete());
   window.addEventListener('offline', () => aggiornaRete());
