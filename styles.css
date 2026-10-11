@@ -11,9 +11,11 @@
   --accent-tenue: #fdf0e1;
   --ok: #15803d;
   --warn: #b91c1c;
-  --top-bg: #1c1917;
-  --top-text: #f5f1ea;
-  --top-muted: #b5ada3;
+  --top-bg: #0f1a2e;
+  --top-text: #f3f6fb;
+  --top-muted: #a9b4c6;
+  --brand: #0b57d6;
+  --brand-chiaro: #4d94ff;
   --s-pianificata: #2563eb;
   --s-tank: #d97706;
   --s-confezionata: #15803d;
@@ -31,7 +33,7 @@
   :root:not([data-theme="light"]) {
     --bg: #141210; --surface: #1f1c19; --surface-2: #2a2622; --text: #f5f1ea; --muted: #b2a99e;
     --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
-    --ok: #4ade80; --warn: #f87171; --top-bg: #0d0c0b;
+    --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
     --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
     --weekend: #3d1c27; --ombra: none;
     color-scheme: dark;
@@ -40,7 +42,7 @@
 :root[data-theme="dark"] {
   --bg: #141210; --surface: #1f1c19; --surface-2: #2a2622; --text: #f5f1ea; --muted: #b2a99e;
   --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
-  --ok: #4ade80; --warn: #f87171; --top-bg: #0d0c0b;
+  --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
   --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
   --weekend: #3d1c27; --ombra: none;
   color-scheme: dark;
@@ -66,7 +68,7 @@ h3 { font-size: .8rem; margin: 1.1rem 0 .5rem; color: var(--muted); text-transfo
   background: var(--top-bg); color: var(--top-text);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.02rem; text-decoration: none; color: var(--top-text); white-space: nowrap; }
-.brand img { width: 28px; height: 28px; border-radius: 7px; display: block; }
+.brand img { height: 32px; width: auto; display: block; }
 .top nav { display: flex; gap: 2px; flex: 1; min-width: 0; }
 .top nav a {
   display: flex; align-items: center; gap: 7px; text-decoration: none; color: var(--top-muted);
@@ -74,7 +76,7 @@ h3 { font-size: .8rem; margin: 1.1rem 0 .5rem; color: var(--muted); text-transfo
 }
 .top nav a:hover { color: var(--top-text); background: rgb(255 255 255 / .06); }
 .top nav a.attivo { background: rgb(255 255 255 / .12); color: #fff; font-weight: 600; }
-.top nav a.attivo svg { stroke: #f59e0b; }
+.top nav a.attivo svg { stroke: var(--brand-chiaro); }
 .top nav svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .rete { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--top-muted); white-space: nowrap; }
 .rete.off { color: #fca5a5; }
@@ -268,8 +270,8 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
   .top nav a span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .top nav a svg { width: 23px; height: 23px; }
   .top nav a.attivo { background: none; color: #fff; }
-  .top nav a.attivo svg { stroke: #f59e0b; }
-  .top nav a.attivo span { color: #f59e0b; }
+  .top nav a.attivo svg { stroke: var(--brand-chiaro); }
+  .top nav a.attivo span { color: var(--brand-chiaro); }
   main { padding: 14px 14px calc(28px + var(--nav-h) + env(safe-area-inset-bottom)); }
   main.largo { padding-left: 10px; padding-right: 10px; }
   .scheda { padding: 14px; }
@@ -384,3 +386,36 @@ label.in-linea select { width: auto; }
 .tab-edit .nuovo-art:hover:not(:disabled) { background: none; text-decoration: underline; }
 .tab-stat td:first-child, .tab-stat th:first-child { white-space: nowrap; }
 label:has(> input[type="checkbox"]) { font-size: .92rem; font-weight: 400; color: var(--text); }
+
+/* ---------- avvio: logo Global Brewing animato ---------- */
+.splash {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  background: radial-gradient(120% 90% at 50% 40%, #16264a 0%, #0f1a2e 55%, #080e1a 100%);
+  animation: sp-esci .45s ease 4s forwards; /* se lo script non parte, sparisce da solo */
+}
+.splash.via { animation: sp-esci .45s ease forwards; }
+@keyframes sp-esci { to { opacity: 0; visibility: hidden; } }
+.splash-logo { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.splash-mono { position: relative; width: 188px; aspect-ratio: 282 / 210; }
+.splash-mono img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sp-lettere { animation: sp-lettere .7s cubic-bezier(.2,.9,.3,1.2) both; }
+.sp-arco-su { animation: sp-arco-su .9s cubic-bezier(.2,.8,.2,1) .15s both; }
+.sp-arco-giu { animation: sp-arco-giu .9s cubic-bezier(.2,.8,.2,1) .15s both; }
+.sp-scritta { width: min(300px, 74vw); height: auto; animation: sp-scritta .6s ease-out .75s both; }
+.splash-mono::after {
+  content: ''; position: absolute; inset: -30%; border-radius: 50%; z-index: -1;
+  background: radial-gradient(closest-side, rgb(77 148 255 / .35), transparent);
+  animation: sp-alone 1.2s ease-out .4s both;
+}
+@keyframes sp-lettere { from { opacity: 0; transform: scale(.6); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes sp-arco-su { from { opacity: 0; transform: rotate(-200deg) scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes sp-arco-giu { from { opacity: 0; transform: rotate(-200deg) scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes sp-scritta { from { opacity: 0; clip-path: inset(0 100% 0 0); transform: translateY(6px); } to { opacity: 1; clip-path: inset(0 0 0 0); transform: none; } }
+@keyframes sp-alone { from { opacity: 0; transform: scale(.5); } 60% { opacity: 1; } to { opacity: .55; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .splash-mono img, .sp-scritta, .splash-mono::after { animation: none; }
+}
+@media print { .splash { display: none !important; } }
+.accesso-logo { display: block; width: min(300px, 80%); height: auto; margin: 4px auto 18px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .accesso-logo { content: url(img/gb-logo-chiaro.png); } }
+:root[data-theme="dark"] .accesso-logo { content: url(img/gb-logo-chiaro.png); }

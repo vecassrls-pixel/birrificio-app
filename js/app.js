@@ -1223,10 +1223,11 @@ async function importaBrewfather(completo) {
 
 // ---------- accesso ----------
 function schermataAccesso(messaggio = '') {
+  chiudiSplash();
   document.querySelector('.top nav').hidden = true;
   $app.innerHTML = html`
     <div class="scheda accesso">
-      <h1>Produzione</h1>
+      <img class="accesso-logo" src="img/gb-logo.png" alt="Global Brewing">
       <p class="totale">Accedi con l'email e la password del tuo account.</p>
       <form id="login" class="griglia" style="grid-template-columns:1fr">
         <label>Email <input id="login-email" name="email" type="email" autocomplete="username" required></label>
@@ -1245,6 +1246,7 @@ function schermataAccesso(messaggio = '') {
     const btn = f.querySelector('button'); btn.disabled = true; err.textContent = '';
     try {
       await auth.accedi(f.email.value, f.password.value);
+      try { sessionStorage.removeItem('gb-splash'); } catch { /* il logo animato accoglie dopo l'accesso */ }
       location.hash = '#/cotte';
       location.reload();
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
@@ -1257,6 +1259,7 @@ function schermataAccesso(messaggio = '') {
 }
 
 function schermataPassword(link) {
+  chiudiSplash();
   document.querySelector('.top nav').hidden = true;
   $app.innerHTML = html`
     <div class="scheda accesso">
@@ -1311,6 +1314,18 @@ function applicaRuolo(r, { ridisegna = true } = {}) {
 window.addEventListener('unhandledrejection', e => { if (/sola lettura/i.test(e.reason?.message || '')) toast(e.reason.message); });
 
 // ---------- avvio ----------
+// logo animato all'avvio: resta almeno il tempo dell'animazione, una volta per sessione
+const partenza = performance.now();
+function chiudiSplash() {
+  const el = document.getElementById('splash');
+  if (!el || el.classList.contains('via')) return;
+  try { sessionStorage.setItem('gb-splash', '1'); } catch { /* navigazione privata */ }
+  setTimeout(() => {
+    el.classList.add('via');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }, Math.max(0, 1700 - (performance.now() - partenza)));
+}
+
 // altezza dell'intestazione: serve alla barra fissa della scheda cotta
 const $top = document.querySelector('.top');
 const misuraTop = () => document.documentElement.style.setProperty('--top-h', `${$top.offsetHeight}px`);
@@ -1342,4 +1357,5 @@ misuraTop();
   sync.onStato(aggiornaRete);
   sync.avvia();
   render();
+  chiudiSplash();
 })();

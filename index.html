@@ -3,17 +3,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Produzione Birrificio</title>
+  <title>Global Brewing</title>
   <meta name="description" content="Schede cotta e planning dei fermentatori, funziona anche offline.">
-  <meta name="theme-color" content="#1c1917">
+  <meta name="theme-color" content="#0f1a2e">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div id="splash" class="splash" aria-hidden="true">
+    <div class="splash-logo">
+      <div class="splash-mono">
+        <img class="sp-arco-su" src="img/gb-anim-arco-su.png" alt="">
+        <img class="sp-lettere" src="img/gb-anim-lettere.png" alt="">
+        <img class="sp-arco-giu" src="img/gb-anim-arco-giu.png" alt="">
+      </div>
+      <img class="sp-scritta" src="img/gb-anim-scritta.png" alt="">
+    </div>
+  </div>
+  <script>try { if (sessionStorage.getItem('gb-splash')) document.getElementById('splash').remove(); } catch (e) {}</script>
   <header class="top">
-    <a class="brand" href="#/cotte"><img src="icon.svg" alt="" width="28" height="28"><span>Produzione</span></a>
+    <a class="brand" href="#/cotte" title="Global Brewing"><img src="img/gb-logo-chiaro.png" alt="Global Brewing" width="147" height="30"></a>
     <nav aria-label="Sezioni">
       <a href="#/cotte" data-tab="cotte"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h9v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM15 8h2a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M6 9h9"/></svg><span>Cotte</span></a>
       <a href="#/planning" data-tab="planning"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v15H3zM3 10h18M8 3v4M16 3v4M6 14h6M10 17h7"/></svg><span>Planning</span></a>
