@@ -537,3 +537,13 @@ body.cerca-attiva .cerca-top { color: var(--brand-chiaro); }
 .tab-birra tr:not(.gruppo-birra) td:first-child { padding-left: 14px; }
 .scheda.escluso > .scroll-x { opacity: .45; }
 details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+
+/* Allegati (PDF analisi) nella scheda cotta */
+.allegati { list-style: none; margin: 0 0 10px; padding: 0; }
+.allegati li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.allegati .spazio { flex: 1; }
+.allegati button.link-allegato, .allegati button.link-allegato:hover { background: none; border: 0; box-shadow: none; padding: 0; min-height: auto; color: inherit; font-weight: 600; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; word-break: break-word; }
+.bottone-file { display: inline-block; cursor: pointer; }
+.bottone-file span { display: inline-block; padding: 8px 14px; border: 1px dashed var(--accent); color: var(--accent); border-radius: 8px; font-weight: 600; }
+.bottone-file:has(input:disabled) { display: none; }
+@media print { .bottone-file, .allegati button.piccolo { display: none; } }

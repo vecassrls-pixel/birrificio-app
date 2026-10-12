@@ -2,6 +2,7 @@ import * as db from './db.js';
 import * as sync from './sync.js';
 import * as bf from './brewfather.js';
 import * as auth from './auth.js';
+import * as allegati from './allegati.js';
 import { creaXlsx } from './xlsx.js';
 import { VERSIONE_APP } from './versione.js';
 import * as magazzino from './vista-magazzino.js';
@@ -524,7 +525,7 @@ async function vistaCotta(id) {
           </span>
         </div>
         <nav class="indice" aria-label="Sezioni della scheda">
-          ${[['dati', 'Dati'], ['acqua', 'Acqua'], ['malti', 'Malti'], ['luppoli', 'Luppoli'], ['lievito', 'Lievito'], ['sali', 'Sali'], ['acido', 'Acido'], ['ferm', 'Fermentazione'], ['conf', 'Confezionamento'], ['costo', 'Costo'], ['note', 'Note']]
+          ${[['dati', 'Dati'], ['acqua', 'Acqua'], ['malti', 'Malti'], ['luppoli', 'Luppoli'], ['lievito', 'Lievito'], ['sali', 'Sali'], ['acido', 'Acido'], ['ferm', 'Fermentazione'], ['conf', 'Confezionamento'], ['costo', 'Costo'], ['analisi', 'Analisi'], ['note', 'Note']]
             .map(([k, t]) => html`<a data-vai="sez-${k}">${t}</a>`)}
         </nav>
       </div>
@@ -719,6 +720,17 @@ async function vistaCotta(id) {
       </div>
 
       ${costi.htmlCosto(c, stato.cotte.map(x => (x.id === c.id ? c : x)), datiCosto)}
+      <div class="scheda" id="sez-analisi">
+        <h2>Analisi</h2>
+        ${(c.allegati || []).length ? html`<ul class="allegati">${c.allegati.map(a => html`<li>
+          <button class="link-allegato st-libero" data-apri="${a.id}" title="Apri il PDF">📄 ${a.nome}</button>
+          <span class="totale">${dataIT(a.data)} · ${allegati.dimensione(a.byte)}${a.inviato || !auth.configurato() ? '' : ' · da inviare'}</span>
+          <span class="spazio"></span>
+          <button class="piccolo st-libero" data-scarica="${a.id}" title="Scarica">⬇</button>
+          <button class="piccolo" data-togli-allegato="${a.id}" title="Togli allegato">✕</button>
+        </li>`)}</ul>` : html`<p class="totale">Nessuna analisi allegata.</p>`}
+        <label class="bottone-file"><input type="file" id="allegato-file" accept="application/pdf,.pdf,image/*" multiple hidden><span>+ Allega analisi (PDF o foto)</span></label>
+      </div>
       <div class="scheda" id="sez-note">
         <h2>Note</h2>
         <textarea data-path="note" rows="4">${c.note || ''}</textarea>
@@ -780,7 +792,22 @@ async function vistaCotta(id) {
     if (litri > disp) { out.textContent = `servono ${numIT(litri, 0)} L ma a ${numIT(Number(da))} cm ce ne sono solo ${numIT(disp, 0)}`; return; }
     out.textContent = `→ fermati a tacca ${numIT(taccaFinale(da, litri))} cm`;
   }
-  $app.onchange = e => {
+  $app.onchange = async e => {
+    if (e.target.id === 'allegato-file') {
+      const files = [...e.target.files];
+      e.target.value = '';
+      if (!files.length) return;
+      toast(files.length > 1 ? `Carico ${files.length} allegati…` : `Carico ${files[0].name}…`);
+      c.allegati = c.allegati || [];
+      for (const f of files) {
+        try { c.allegati.push(await allegati.aggiungi(c, f)); } catch (ex) { toast(ex.message); }
+      }
+      await salvaOra();
+      const y = scrollY; disegna(); scrollTo(0, y);
+      const non = c.allegati.filter(a => !a.inviato).length;
+      toast(non ? 'Allegato salvato su questo dispositivo: si invia al cloud appena c\'è internet' : 'Allegato salvato');
+      return;
+    }
     const p = e.target.dataset.path;
     // spunte: alcuni Safari (iPad meno recenti) non mandano "input" sulle checkbox, solo "change"
     if (p && e.target.type === 'checkbox') { set(c, p, e.target.checked); salvaPresto(); }
@@ -800,6 +827,16 @@ async function vistaCotta(id) {
     if (!t) return;
     if (t.dataset.copia) {
       copia(t.dataset.copia);
+    } else if (t.dataset.apri || t.dataset.scarica) {
+      const a = (c.allegati || []).find(x => x.id === (t.dataset.apri || t.dataset.scarica));
+      try { await (t.dataset.apri ? allegati.apri(a) : allegati.scarica(a)); } catch (ex) { toast(ex.message); }
+    } else if (t.dataset.togliAllegato) {
+      const a = (c.allegati || []).find(x => x.id === t.dataset.togliAllegato);
+      if (!a || !(await chiedi(`Togliere l'allegato ${a.nome}?`, 'Togli'))) return;
+      c.allegati = c.allegati.filter(x => x !== a);
+      await salvaOra();
+      allegati.togli(a);
+      const y = scrollY; disegna(); scrollTo(0, y);
     } else if (t.dataset.add) {
       const k = t.dataset.add;
       if (k === 'fermentazione') {
@@ -1560,6 +1597,10 @@ misuraTop();
   window.addEventListener('offline', () => aggiornaRete());
   sync.onStato(aggiornaRete);
   sync.avvia();
+  // allegati aggiunti senza rete: si inviano appena c'è internet
+  const allegatiInSospeso = () => { if (!lettore) allegati.inviaInSospeso(stato.cotte.filter(x => (x.allegati || []).some(a => !a.inviato))).then(cs => cs.length && db.salvaMolti(cs)).catch(() => {}); };
+  window.addEventListener('online', allegatiInSospeso);
+  setTimeout(allegatiInSospeso, 6000);
   render();
   chiudiSplash();
   // backup settimanale (dopo un primo giro di sincronizzazione, per avere i dati aggiornati)
