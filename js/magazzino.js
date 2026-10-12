@@ -67,10 +67,59 @@ export function categoriaDa(sezione, nome) {
 // articolo che corrisponde a un nome di ingrediente (nome o alias, confrontati "puliti")
 // parole in ordine alfabetico: "Cryo Citra" e "Citra Cryo" sono lo stesso articolo
 const compatta = n => chiaveNome(n).split(' ').sort().join('');
+
+// Sali, acidi e additivi: nomi inglesi di Brewfather e sinonimi italiani dello stesso prodotto.
+// Il primo nome è quello italiano usato quando in magazzino non c'è ancora l'articolo.
+// Le parole generiche (cloruro, magnesio, sale…) valgono solo come nome intero, non dentro un nome più lungo.
+export const SINONIMI = [
+  ['Gesso (solfato di calcio)', ['gypsum', 'gesso', 'calcium sulfate', 'calcium sulphate', 'solfato di calcio', 'caso4']],
+  ['Cloruro di calcio', ['calcium chloride', 'cloruro di calcio', 'cacl2', 'cloruro', 'chlorure', 'clorure']],
+  ['Solfato di magnesio (sale inglese)', ['epsom salt', 'epsom', 'magnesium sulfate', 'magnesium sulphate', 'solfato di magnesio', 'sale inglese', 'mgso4', 'magnesio']],
+  ['Cloruro di magnesio', ['magnesium chloride', 'cloruro di magnesio', 'mgcl2']],
+  ['Bicarbonato di sodio', ['baking soda', 'sodium bicarbonate', 'bicarbonato di sodio', 'bicarbonato', 'nahco3']],
+  ['Cloruro di sodio (sale)', ['table salt', 'sodium chloride', 'non iodized salt', 'canning salt', 'cloruro di sodio', 'salt', 'sale', 'nacl']],
+  ['Carbonato di calcio', ['chalk', 'calcium carbonate', 'carbonato di calcio', 'caco3']],
+  ['Idrossido di calcio', ['slaked lime', 'pickling lime', 'calcium hydroxide', 'idrossido di calcio', 'calce']],
+  ['Acido lattico', ['lactic acid', 'acido lattico']],
+  ['Acido fosforico', ['phosphoric acid', 'acido fosforico']],
+  ['Acido citrico', ['citric acid', 'acido citrico']],
+  ['Metabisolfito', ['campden tablet', 'campden', 'potassium metabisulfite', 'sodium metabisulfite', 'metabisolfito']],
+  ['Protafloc', ['protafloc', 'whirlfloc', 'irish moss', 'muschio irlandese']],
+  ['Nutriente lievito', ['yeast nutrient', 'nutriente lievito', 'nutrienti lievito', 'yeastvit', 'yeast vit', 'vit yeast', 'servomyces', 'fermaid']],
+  ['Antifoam', ['antifoam', 'anti foam', 'antischiuma', 'fermcap']],
+];
+const GENERICI = new Set(['cloruro', 'chlorure', 'clorure', 'magnesio', 'bicarbonato', 'sale', 'salt', 'chalk', 'calce', 'epsom', 'campden']);
+const GRUPPI = SINONIMI.map(([nome, sin]) => ({ nome, esatti: new Set([nome, ...sin].map(compatta)), dentro: sin.filter(x => !GENERICI.has(x)).map(chiaveNome) }));
+const gruppoDi = nome => {
+  const k = compatta(nome);
+  if (!k) return null;
+  const c = ` ${chiaveNome(nome)} `;
+  return GRUPPI.find(g => g.esatti.has(k)) || GRUPPI.find(g => g.dentro.some(x => c.includes(` ${x} `))) || null;
+};
+// Nome italiano per un ingrediente di Brewfather (se è un sale/additivo conosciuto), altrimenti il nome com'è
+export const nomeItaliano = nome => gruppoDi(nome)?.nome || nome;
+
 export function trovaArticolo(articoli, nome) {
   const k = compatta(nome);
   if (!k) return null;
-  return articoli.find(a => compatta(a.nome) === k || (a.alias || []).some(x => compatta(x) === k)) || null;
+  const diretto = articoli.find(a => compatta(a.nome) === k || (a.alias || []).some(x => compatta(x) === k));
+  if (diretto) return diretto;
+  // stesso prodotto con un altro nome (Gypsum = Gesso, Epsom = Solfato di magnesio…)
+  const g = gruppoDi(nome);
+  if (!g) return null;
+  const nomi = a => [a.nome, ...(a.alias || [])];
+  return articoli.find(a => nomi(a).some(n => gruppoDi(n) === g)) || null;
+}
+
+// Ingredienti importati da Brewfather: nome dell'articolo di magazzino se c'è, altrimenti il nome italiano
+export function nomiDaMagazzino(c, articoli) {
+  for (const sez of ['malti', 'luppoli', 'lievito', 'sali']) {
+    c[sez] = (c[sez] || []).map(r => {
+      const art = trovaArticolo(articoli, r.nome);
+      return { ...r, nome: art ? art.nome : sez === 'sali' ? nomeItaliano(r.nome) : r.nome };
+    });
+  }
+  return c;
 }
 
 const SEZIONI = ['malti', 'luppoli', 'lievito', 'sali'];

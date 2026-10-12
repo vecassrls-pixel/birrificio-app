@@ -12,7 +12,7 @@ import * as cerca from './vista-cerca.js';
 import * as backup from './backup.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
-import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa } from './magazzino.js';
+import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
   CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
@@ -891,7 +891,7 @@ async function vistaCotta(id) {
         const proxy = (await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT;
         const r = await bf.scaricaRicetta(proxy, id);
         clearTimeout(timer);
-        Object.assign(c, bf.ricettaPerCotta(c, r));
+        Object.assign(c, nomiDaMagazzino(bf.ricettaPerCotta(c, r), (await db.tutti('articolo')).filter(a => !a.eliminato)));
         ricalcolaTacche();
         await db.salva(c);
         toast(`Ricetta ${nome} importata`);
@@ -1356,6 +1356,7 @@ async function importaBrewfather(completo) {
     const proxy = (await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT;
     const batch = await bf.scaricaBatch(proxy, { completo });
     const cotte = await db.tutti('cotta');
+    const articoliMag = (await db.tutti('articolo')).filter(a => !a.eliminato);
     const salvare = [];
     let nuove = 0, aggiornate = 0;
     for (const [i, b] of batch.entries()) {
@@ -1363,7 +1364,7 @@ async function importaBrewfather(completo) {
       const attiva = ['Brewing', 'Fermenting', 'Conditioning'].includes(b.status);
       const letture = attiva ? await bf.scaricaLetture(proxy, b._id) : [];
       const esistente = bf.cottaCorrispondente(cotte, b);
-      const c = bf.unisci(esistente, b, letture);
+      const c = nomiDaMagazzino(bf.unisci(esistente, b, letture), articoliMag);
       if (esistente) { c.id = esistente.id; aggiornate++; } else { c.id = `cotta-bf-${b._id}`; nuove++; cotte.push(c); }
       salvare.push(c);
     }
