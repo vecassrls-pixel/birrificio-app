@@ -428,7 +428,8 @@ export async function vistaInventario() {
         </tr>`)}</tbody></table></div></div>`;
     })}
     </div>
-    ${dati.articoli.length ? html`<div class="barra"><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
+    ${dati.articoli.length ? html`<div class="barra salva-inv"><span class="totale" id="inv-conta"></span><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
+  const conta = () => { const el = document.getElementById('inv-conta'); if (el) el.textContent = contati.size ? (contati.size === 1 ? "1 articolo da salvare" : `${contati.size} articoli da salvare`) : ''; };
   u.$app.oninput = e => {
     if (e.target.id === 'nascondi-zero') {
       scriviPref(e.target.checked);
@@ -437,7 +438,7 @@ export async function vistaInventario() {
     }
     if (e.target.id === 'data-inv') data.v = e.target.value;
     const id = e.target.dataset.inv;
-    if (id) { if (e.target.value === '') contati.delete(id); else contati.set(id, Number(e.target.value)); }
+    if (id) { if (e.target.value === '') contati.delete(id); else contati.set(id, Number(e.target.value)); conta(); }
     if (e.target.dataset.lotto) extra(e.target.dataset.lotto).lotto = e.target.value.trim();
     if (e.target.dataset.scad) extra(e.target.dataset.scad).scadenza = e.target.value;
   };

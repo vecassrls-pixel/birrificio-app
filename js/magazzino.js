@@ -166,8 +166,8 @@ export function giacenze({ articoli, bolle, inventari, cotte, scarichi = [] }, o
   const res = new Map(articoli.map(a => [a.id, {
     articolo: a, inventario: null, giacenza: 0, impegnato: 0, movimenti: [], nonConvertibili: 0,
   }]));
-  // ultimo inventario (fino a oggi) per articolo
-  for (const inv of [...inventari].filter(i => i.data && i.data <= oggi).sort((x, y) => x.data.localeCompare(y.data))) {
+  // ultimo inventario (fino a oggi) per articolo; due inventari nello stesso giorno: vale l'ultimo salvato
+  for (const inv of [...inventari].filter(i => i.data && i.data <= oggi).sort((x, y) => x.data.localeCompare(y.data) || String(x.aggiornato || '').localeCompare(String(y.aggiornato || '')))) {
     for (const r of inv.righe || []) {
       const g = res.get(r.articoloId);
       if (g && r.qta !== null && r.qta !== '' && r.qta !== undefined) g.inventario = { data: inv.data, qta: Number(r.qta), id: inv.id, lotto: r.lotto || '', scadenza: r.scadenza || '' };

@@ -570,3 +570,5 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
   .tab-inv .inv-calc::before { display: inline !important; margin-right: 6px; }
   .tab-inv td:last-child { grid-column: 1 / -1; }
 }
+/* Inventario: il pulsante Salva resta sempre in vista mentre si scorre l'elenco */
+.salva-inv { position: sticky; bottom: calc(12px + var(--nav-h) + env(safe-area-inset-bottom)); z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--ombra); }
