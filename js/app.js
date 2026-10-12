@@ -372,7 +372,7 @@ async function vistaCotta(id) {
   // ingredienti scelti dalle voci del magazzino (anche a zero)
   let articoli = await magazzino.articoliRicetta();
   const datiCosto = await costi.datiCosti();
-  // cotte non ancora fatte: antifoam, brewmix e antioxin già pronti negli additivi (lo storico non si tocca)
+  // cotte non ancora fatte: antifoam, brewmix, antioxin e yeastvit già pronti negli additivi (lo storico non si tocca)
   if (c.data && c.data >= oggiISO()) c.sali = conAdditiviDefault(c.sali);
 
   // cotta doppia/tripla: registro, fine, travaso e confezionamento sono del fermentatore
