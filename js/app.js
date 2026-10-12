@@ -655,7 +655,7 @@ async function vistaCotta(id) {
 
       <div class="scheda" id="sez-ferm">
         <h2>Fermentazione</h2>
-        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null))}
+        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null, ogLotto))}
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
           <tbody>${c.fermentazione.map((e, i) => (!fermTutte && !rigaFermUtile(i) ? '' : html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
@@ -728,7 +728,7 @@ async function vistaCotta(id) {
         <button class="pericolo" id="elimina">Elimina cotta</button>
       </div>
     `;
-    attivaGrafico(c, diffGiorni, dataIT);
+    attivaGrafico(c, diffGiorni, dataIT, ogLotto);
     $app.querySelector('.indice').onclick = e => {
       const a = e.target.closest('[data-vai]');
       if (a) document.getElementById(a.dataset.vai)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
