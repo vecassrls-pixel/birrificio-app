@@ -892,6 +892,7 @@ async function vistaCotta(id) {
         const r = await bf.scaricaRicetta(proxy, id);
         clearTimeout(timer);
         Object.assign(c, bf.ricettaPerCotta(c, r));
+        ricalcolaTacche();
         await db.salva(c);
         toast(`Ricetta ${nome} importata`);
         const y = scrollY; disegna(); scrollTo(0, y);

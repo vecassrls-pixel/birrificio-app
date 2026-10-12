@@ -157,18 +157,19 @@ export function unisci(esistente, b, letture = []) {
   return c;
 }
 
-// Acqua di mash e sparge, temperatura di mash e whirlpool dalla ricetta: solo se non già scritti nell'app
-function completaDaRicetta(c, r = {}) {
+// Acqua di mash e sparge, temperatura di mash e whirlpool dalla ricetta.
+// Import dei batch: solo se non già scritti nell'app; import di una ricetta scelta (forza): sempre, se la ricetta li ha.
+function completaDaRicetta(c, r = {}, forza = false) {
   const w = r.data || {};
+  const metti = (o, k, v) => { if (v !== null && (forza || o[k] == null)) o[k] = v; };
   c.acquaMash = { ...c.acquaMash };
   c.acquaSparge = { ...c.acquaSparge };
   // durata del whirlpool: il tempo più lungo dei luppoli in whirlpool/aroma della ricetta
   const wp = (r.hops || []).filter(h => h.use === 'Aroma' || h.use === 'Whirlpool').map(h => num(h.time)).filter(t => t > 0);
-  if (c.whirlpoolMin == null && wp.length) c.whirlpoolMin = Math.max(...wp);
-  if (c.acquaMash.litri == null && num(w.mashWaterAmount) !== null) c.acquaMash.litri = Math.round(num(w.mashWaterAmount));
-  if (c.acquaSparge.litri == null && num(w.spargeWaterAmount) !== null) c.acquaSparge.litri = Math.round(num(w.spargeWaterAmount));
-  const step = r.mash?.steps?.[0];
-  if (c.acquaMash.tempMash == null && step && num(step.stepTemp) !== null) c.acquaMash.tempMash = num(step.stepTemp);
+  metti(c, 'whirlpoolMin', wp.length ? Math.max(...wp) : null);
+  metti(c.acquaMash, 'litri', num(w.mashWaterAmount) !== null ? Math.round(num(w.mashWaterAmount)) : null);
+  metti(c.acquaSparge, 'litri', num(w.spargeWaterAmount) !== null ? Math.round(num(w.spargeWaterAmount)) : null);
+  metti(c.acquaMash, 'tempMash', num(r.mash?.steps?.[0]?.stepTemp));
 }
 
 // ---------- ricette ----------
@@ -194,7 +195,8 @@ export const scaricaRicetta = (proxy, id) => chiama(proxy || PROXY_DEFAULT, `/re
 export function ricettaPerCotta(c, r) {
   const b = { recipe: r };
   const nuovo = { ...c, ...ricettaDaBatch(b) };
-  completaDaRicetta(nuovo, r);
+  completaDaRicetta(nuovo, r, true);
+  if (r.og) nuovo.og = sgAPlato(num(r.og)); // OG della ricetta (°P), poi si sovrascrive con la misurata
   nuovo.dh = nuovo.luppoli.some(h => h.uso === 'dry hop');
   const misurato = (c.fermentazione || []).some(e => [e.densita, e.ph].some(v => v !== null && v !== undefined && v !== ''));
   if (!misurato && c.data && (r.fermentation?.steps || []).length) nuovo.fermentazione = profiloDaRicetta(b, c.data);
