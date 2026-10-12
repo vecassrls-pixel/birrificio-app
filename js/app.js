@@ -3,6 +3,7 @@ import * as sync from './sync.js';
 import * as bf from './brewfather.js';
 import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
+import { VERSIONE_APP } from './versione.js';
 import * as magazzino from './vista-magazzino.js';
 import * as statistiche from './vista-statistiche.js';
 import * as magBirra from './vista-birra.js';
@@ -371,7 +372,7 @@ async function vistaCotta(id) {
   // ingredienti scelti dalle voci del magazzino (anche a zero)
   let articoli = await magazzino.articoliRicetta();
   const datiCosto = await costi.datiCosti();
-  // cotte non ancora fatte: antifoam già pronto negli additivi (lo storico non si tocca)
+  // cotte non ancora fatte: antifoam, brewmix, antioxin e yeastvit già pronti negli additivi (lo storico non si tocca)
   if (c.data && c.data >= oggiISO()) c.sali = conAdditiviDefault(c.sali);
 
   // cotta doppia/tripla: registro, fine, travaso e confezionamento sono del fermentatore
@@ -504,10 +505,11 @@ async function vistaCotta(id) {
     const giornoOggi = c.data ? diffGiorni(c.data, oggiISO()) + 1 : null;
     const g = gruppo();
     const ogLotto = g.length > 1 ? ogMedia(g.map(x => (x.id === c.id ? c : x))) : c.og;
-    const a = abv(ogLotto, c.fg);
     const litriConf = litriConfezionati(c);
     const litriGruppo = g.length > 1 ? g.reduce((t, x) => t + (Number(x.id === c.id ? c.litri : x.litri) || 0), 0) : c.litri;
     const ultimaLettura = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
+    // ABV: con la FG se c'è, altrimenti con l'ultima densità misurata (stima che cresce con la fermentazione)
+    const a = abv(ogLotto, c.fg ?? (ultimaLettura ? Number(ultimaLettura.densita) : null));
     const salvPrima = document.getElementById('salv');
     $app.innerHTML = html`
       <div class="testa-scheda">
@@ -654,7 +656,7 @@ async function vistaCotta(id) {
 
       <div class="scheda" id="sez-ferm">
         <h2>Fermentazione</h2>
-        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null))}
+        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null, ogLotto))}
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
           <tbody>${c.fermentazione.map((e, i) => (!fermTutte && !rigaFermUtile(i) ? '' : html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
@@ -727,7 +729,7 @@ async function vistaCotta(id) {
         <button class="pericolo" id="elimina">Elimina cotta</button>
       </div>
     `;
-    attivaGrafico(c, diffGiorni, dataIT);
+    attivaGrafico(c, diffGiorni, dataIT, ogLotto);
     $app.querySelector('.indice').onclick = e => {
       const a = e.target.closest('[data-vai]');
       if (a) document.getElementById(a.dataset.vai)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -780,6 +782,8 @@ async function vistaCotta(id) {
   }
   $app.onchange = e => {
     const p = e.target.dataset.path;
+    // spunte: alcuni Safari (iPad meno recenti) non mandano "input" sulle checkbox, solo "change"
+    if (p && e.target.type === 'checkbox') { set(c, p, e.target.checked); salvaPresto(); }
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
     if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|scadenza|mesiScadenza|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
@@ -1473,6 +1477,8 @@ function schermataPassword(link) {
 
 // ---------- stato rete ----------
 let statoRete = {};
+document.getElementById('versione').textContent = `v${VERSIONE_APP}`;
+
 function aggiornaRete(s = statoRete) {
   statoRete = s;
   const el = document.getElementById('rete');

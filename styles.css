@@ -80,6 +80,7 @@ h3 { font-size: .8rem; margin: 1.1rem 0 .5rem; color: var(--muted); text-transfo
 .top nav svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .rete { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--top-muted); white-space: nowrap; }
 .rete.off { color: #fca5a5; }
+.versione { font-size: .68rem; color: var(--top-muted); opacity: .75; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 main { max-width: 1120px; margin: 0 auto; padding: 20px 16px 32px; }
 main.largo { max-width: none; padding-left: 12px; padding-right: 12px; }

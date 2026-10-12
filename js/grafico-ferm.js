@@ -12,12 +12,18 @@ const SERIE = [
 const pieno = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
 const fmt = (v, d) => Number(v).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: d });
 
-// punti per giorno (1 = giorno di cotta) dal registro di fermentazione
-export function puntiFermentazione(c, diffGiorni) {
-  return (c.fermentazione || [])
+// punti per giorno (1 = giorno di cotta) dal registro di fermentazione.
+// Il primo valore dei °Plato è l'OG della cotta (per le cotte doppie la media delle OG).
+export function puntiFermentazione(c, diffGiorni, og = null) {
+  const punti = (c.fermentazione || [])
     .map((e, i) => ({ g: c.data && e.data ? diffGiorni(c.data, e.data) + 1 : e.giorno || i + 1, e }))
     .filter(p => p.g > 0)
     .sort((a, b) => a.g - b.g);
+  if (!(Number(og) > 0)) return punti;
+  const primo = punti.find(p => p.g === 1);
+  if (primo) primo.e = { ...primo.e, densita: Number(og), og: true };
+  else punti.unshift({ g: 1, e: { data: c.data, densita: Number(og), og: true } });
+  return punti;
 }
 
 // limiti "tondi" della scala con un po' di margine
@@ -28,8 +34,8 @@ function scala(valori, passoMin) {
   return [lo - pad, hi + pad];
 }
 
-export function graficoFermentazione(c, diffGiorni, oggiG) {
-  const punti = puntiFermentazione(c, diffGiorni);
+export function graficoFermentazione(c, diffGiorni, oggiG, og = null) {
+  const punti = puntiFermentazione(c, diffGiorni, og);
   const usate = SERIE.filter(([k]) => punti.filter(p => pieno(p.e[k])).length >= 1);
   if (punti.length < 2 || !usate.length) return '';
   const g0 = punti[0].g, g1 = Math.max(punti[punti.length - 1].g, g0 + 1);
@@ -80,11 +86,11 @@ export function graficoFermentazione(c, diffGiorni, oggiG) {
 }
 
 // tooltip con crocino: il giorno più vicino e i suoi valori
-export function attivaGrafico(c, diffGiorni, dataIT) {
+export function attivaGrafico(c, diffGiorni, dataIT, og = null) {
   const box = document.getElementById('graf-ferm');
   if (!box) return;
   const svg = box.querySelector('svg'), croce = box.querySelector('#gf-croce'), tip = box.querySelector('#gf-tip');
-  const punti = puntiFermentazione(c, diffGiorni);
+  const punti = puntiFermentazione(c, diffGiorni, og);
   const g0 = Number(box.dataset.g0), g1 = Number(box.dataset.g1);
   const muovi = ev => {
     const r = svg.getBoundingClientRect();
@@ -93,7 +99,7 @@ export function attivaGrafico(c, diffGiorni, dataIT) {
     const p = punti.reduce((m, q) => (Math.abs(q.g - g) < Math.abs(m.g - g) ? q : m), punti[0]);
     const xs = SX + (p.g - g0) / (g1 - g0) * (W - SX - DX);
     croce.setAttribute('x1', xs); croce.setAttribute('x2', xs); croce.setAttribute('visibility', 'visible');
-    const righe = SERIE.filter(([k]) => pieno(p.e[k])).map(([k, t, u, d]) => `<div><span>${t}</span> <b>${fmt(p.e[k], d)}${u ? ` ${u}` : ''}</b></div>`);
+    const righe = SERIE.filter(([k]) => pieno(p.e[k])).map(([k, t, u, d]) => `<div><span>${k === 'densita' && p.e.og ? 'OG' : t}</span> <b>${fmt(p.e[k], d)}${u ? ` ${u}` : ''}</b></div>`);
     tip.innerHTML = `<div class="gf-tip-testa">Giorno ${p.g}${p.e.data ? ` · ${dataIT(p.e.data)}` : ''}</div>${righe.join('') || '<div>nessuna misura</div>'}${p.e.nota ? `<div class="gf-nota">${p.e.nota.replace(/</g, '&lt;')}</div>` : ''}`;
     tip.hidden = false;
     const left = xs / W * r.width;
