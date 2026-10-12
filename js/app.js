@@ -3,6 +3,7 @@ import * as sync from './sync.js';
 import * as bf from './brewfather.js';
 import * as auth from './auth.js';
 import { creaXlsx } from './xlsx.js';
+import { VERSIONE_APP } from './versione.js';
 import * as magazzino from './vista-magazzino.js';
 import * as statistiche from './vista-statistiche.js';
 import * as magBirra from './vista-birra.js';
@@ -1473,6 +1474,8 @@ function schermataPassword(link) {
 
 // ---------- stato rete ----------
 let statoRete = {};
+document.getElementById('versione').textContent = `v${VERSIONE_APP}`;
+
 function aggiornaRete(s = statoRete) {
   statoRete = s;
   const el = document.getElementById('rete');
