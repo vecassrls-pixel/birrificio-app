@@ -8,7 +8,7 @@
 //
 // Record nell'archivio:
 //   movbirra        { verso: 'carico'|'scarico', data, motivo, cliente, documento, note,
-//                     origine: 'manuale'|'fic'|'shopify', rifEsterno, ignorato,
+//                     origine: 'manuale'|'fic'|'shopify', rifEsterno, ignorato, scontrinato (solo scarichi manuali),
 //                     righe: [{ prodotto, pezzi, lotto, scadenza }] }   (prodotto = chiave del prodotto)
 //   inventariobirra { data, righe: [{ prodotto, lotto, scadenza, pezzi }] }
 //   prodottobirra   { id: 'prodottobirra-<chiave>', chiave, codici: [{ codice, x }] }
@@ -24,7 +24,12 @@ import { statoScadenza } from './magazzino.js';
 
 export const ID_IMPOSTAZIONI = 'impostazione-birra';
 export const FORMATI = { fusto: 'Fusto', 'lattina/bottiglia': 'Lattina/bottiglia' };
-export const MOTIVI_SCARICO = { vendita: 'Vendita', omaggio: 'Omaggio / degustazione', spina: 'Consumo interno / spina', scarto: 'Rottura / scarto', scadenza: 'Scaduta / distrutta', altro: 'Altro' };
+// scelte dello scarico manuale; 'vendita' è degli scarichi importati da fatture e ordini
+export const MOTIVI_SCARICO = { taproom: 'Taproom', autoconsumo: 'Autoconsumo', spaccio: 'Spaccio', eventi: 'Eventi', altro: 'Altro' };
+const NOMI_MOTIVO = { ...MOTIVI_SCARICO, vendita: 'Vendita' };
+export const nomeMotivo = (m) => (m.verso === 'carico' ? MOTIVI_CARICO[m.motivo] || 'Carico' : NOMI_MOTIVO[m.motivo] || 'Scarico');
+// scontrinato: solo per gli scarichi manuali (true / false), undefined per carichi e import
+export const testoScontrino = m => (m.verso !== 'carico' && typeof m.scontrinato === 'boolean' ? (m.scontrinato ? 'scontrinato' : 'non scontrinato') : '');
 export const MOTIVI_CARICO = { reso: 'Reso da cliente', rettifica: 'Rettifica', altro: 'Altro' };
 export const ORIGINI = { manuale: 'Manuale', fic: 'Fatture in Cloud', shopify: 'Shopify' };
 
@@ -120,8 +125,7 @@ export function giacenzeBirra(dati, oggi = oggiISO()) {
   for (const mv of dati.movimenti || []) {
     if (mv.eliminato || mv.ignorato || !mv.data) continue;
     const carico = mv.verso === 'carico';
-    const motivo = (carico ? MOTIVI_CARICO : MOTIVI_SCARICO)[mv.motivo] || (carico ? 'Carico' : 'Scarico');
-    const chi = [motivo, mv.cliente, mv.documento].filter(Boolean).join(' · ');
+    const chi = [nomeMotivo(mv), testoScontrino(mv), mv.cliente, mv.documento].filter(Boolean).join(' · ');
     for (const [i, r] of (mv.righe || []).entries()) {
       if (!r.prodotto || !(Number(r.pezzi) > 0)) continue;
       aggiungi(r.prodotto, {

@@ -441,11 +441,6 @@ label:has(> input[type="checkbox"]) { font-size: .92rem; font-weight: 400; color
   .testa-scheda .stato-salvataggio { font-size: 0; }
   .testa-scheda .stato-salvataggio::before { margin-right: 0; width: 9px; height: 9px; }
 }
-/* magazzino birra */
-.tab-birra tr.gruppo-birra td { font-weight: 700; padding-top: 14px; border-bottom: 1px solid var(--border); }
-.tab-birra tr:not(.gruppo-birra) td:first-child { padding-left: 14px; }
-.scheda.escluso > .scroll-x { opacity: .45; }
-details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 /* ---------- statistiche ---------- */
 .st-anni { margin-bottom: 14px; }
 .st-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
@@ -518,3 +513,26 @@ body.cerca-attiva .cerca-top { color: var(--brand-chiaro); }
 #cerca-q { font-size: 1.05rem; min-height: 48px; }
 /* costi e ordini */
 .kpi b.neg, td.neg, .neg > td { color: var(--warn); }
+/* ---------- tablet (iPad) ---------- */
+.nav-corto { display: none; }
+@media (max-width: 1100px) {
+  .nav-lungo { display: none; }
+  .nav-corto { display: inline; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .top { gap: 10px; }
+  .top nav a { padding: 8px 10px; gap: 6px; }
+  .rete-testo { display: none; } /* resta il pallino, il testo è nel suggerimento */
+  .rete { font-size: 1rem; }
+}
+@media (min-width: 761px) and (max-width: 900px) {
+  .brand img { content: url(img/gb-monogramma-chiaro.png); height: 30px; }
+}
+/* magazzino birra */
+.scontrino { grid-column: span 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0 18px; }
+.scontrino label.spunta { min-height: 40px; }
+.scontrino > span { font-size: .85rem; color: var(--muted); font-weight: 600; width: 100%; }
+.tab-birra tr.gruppo-birra td { font-weight: 700; padding-top: 14px; border-bottom: 1px solid var(--border); }
+.tab-birra tr:not(.gruppo-birra) td:first-child { padding-left: 14px; }
+.scheda.escluso > .scroll-x { opacity: .45; }
+details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }

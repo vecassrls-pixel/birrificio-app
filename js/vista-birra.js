@@ -3,7 +3,7 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) come vista-magazzino.js.
 
 import {
-  ID_IMPOSTAZIONI, FORMATI, confezionamenti, MOTIVI_SCARICO, MOTIVI_CARICO, ORIGINI, impostazioniDa, giacenzeBirra, elencoProdotti, nomeProdotto,
+  ID_IMPOSTAZIONI, FORMATI, confezionamenti, MOTIVI_SCARICO, MOTIVI_CARICO, ORIGINI, nomeMotivo, testoScontrino, impostazioniDa, giacenzeBirra, elencoProdotti, nomeProdotto,
   nomeFormato, registroBirra, trovaProdotto, conCodice, idProdotto,
 } from './birra.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
@@ -101,7 +101,7 @@ export async function vistaBirra() {
     ${ultimi.length ? html`<div class="scheda"><h2>Ultimi movimenti</h2><div class="lista">
       ${ultimi.map(m => html`<a class="riga-cotta" href="#/movbirra/${encodeURIComponent(m.id)}">
         <span class="lotto">${u.dataIT(m.data)}</span>
-        <span class="birra">${m.verso === 'carico' ? `+ ${MOTIVI_CARICO[m.motivo] || 'Carico'}` : `− ${MOTIVI_SCARICO[m.motivo] || 'Scarico'}`}${m.cliente ? ` · ${m.cliente}` : ''}${m.documento ? ` · ${m.documento}` : ''}</span>
+        <span class="birra">${m.verso === 'carico' ? '+' : '−'} ${nomeMotivo(m)}${testoScontrino(m) ? ` · ${testoScontrino(m)}` : ''}${m.cliente ? ` · ${m.cliente}` : ''}${m.documento ? ` · ${m.documento}` : ''}</span>
         <span class="totale" style="margin:0">${(m.righe || []).reduce((t, r) => t + (Number(r.pezzi) || 0), 0)} pz${m.origine && m.origine !== 'manuale' ? ` · ${ORIGINI[m.origine]}` : ''}</span></a>`)}
     </div></div>` : ''}
     ${imp.inizio ? html`<details class="scheda solo-editori"><summary><b>Impostazioni magazzino birra</b></summary>
@@ -205,7 +205,7 @@ export async function vistaMovimento(id) {
   if (!nuovo && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Movimento non trovato. <a href="#/birra">Torna alla birra</a></p>`; return; }
   const pre = new URLSearchParams(query || '').get('p') || '';
   const m = esistente ? JSON.parse(JSON.stringify(esistente))
-    : { tipo: 'movbirra', verso: idPuro, data: u.oggiISO(), motivo: idPuro === 'carico' ? 'reso' : 'vendita', cliente: '', documento: '', note: '', origine: 'manuale', righe: [{ prodotto: pre, pezzi: null, lotto: '', scadenza: '' }] };
+    : { tipo: 'movbirra', verso: idPuro, data: u.oggiISO(), motivo: idPuro === 'carico' ? 'reso' : 'taproom', scontrinato: idPuro === 'carico' ? undefined : false, cliente: '', documento: '', note: '', origine: 'manuale', righe: [{ prodotto: pre, pezzi: null, lotto: '', scadenza: '' }] };
   const carico = () => m.verso === 'carico';
   // giacenze senza questo movimento, per proporre i lotti disponibili
   const g = giacenzeBirra({ ...dati, movimenti: dati.movimenti.filter(x => x.id !== m.id) });
@@ -226,10 +226,14 @@ export async function vistaMovimento(id) {
         </div>
         <p class="totale">${carico()
           ? 'Per la birra che rientra senza un confezionamento: reso da un cliente, rettifica. Il confezionamento delle cotte entra da solo.'
-          : 'Per la birra che esce: vendita, omaggio, spina, rottura. Se non scegli il lotto esce quello che scade prima.'}</p>
+          : 'Per la birra che esce dalla taproom, dallo spaccio, agli eventi o in autoconsumo (le vendite con fattura o su Shopify si importano). Se non scegli il lotto esce quello che scade prima.'}</p>
         <div class="griglia">
           <label>Data <input type="date" data-m="data" value="${m.data || ''}"></label>
-          <label>Motivo <select data-m="motivo">${Object.entries(carico() ? MOTIVI_CARICO : MOTIVI_SCARICO).map(([k, v]) => html`<option value="${k}" ${k === m.motivo ? 'selected' : ''}>${v}</option>`)}</select></label>
+          <label>Motivo <select data-m="motivo">${Object.entries(carico() ? MOTIVI_CARICO : MOTIVI_SCARICO).map(([k, v]) => html`<option value="${k}" ${k === m.motivo ? 'selected' : ''}>${v}</option>`)}
+            ${(carico() ? MOTIVI_CARICO : MOTIVI_SCARICO)[m.motivo] ? '' : html`<option value="${m.motivo}" selected>${nomeMotivo(m)}</option>`}</select></label>
+          ${carico() || (m.origine && m.origine !== 'manuale') ? '' : html`<div class="scontrino"><span>Scontrino</span>
+            <label class="spunta"><input type="radio" name="scontrinato" value="si" ${m.scontrinato ? 'checked' : ''}> Scontrinato</label>
+            <label class="spunta"><input type="radio" name="scontrinato" value="no" ${m.scontrinato ? '' : 'checked'}> Non scontrinato</label></div>`}
           <label style="grid-column:span 2">Cliente <input data-m="cliente" list="dl-cli" value="${m.cliente || ''}"></label>
           <label>Documento (fattura, DDT, ordine) <input data-m="documento" value="${m.documento || ''}"></label>
           <label style="grid-column:span 2">Note <input data-m="note" value="${m.note || ''}"></label>
@@ -265,10 +269,12 @@ export async function vistaMovimento(id) {
     if (t.name === 'verso' && e.type === 'change') {
       m.verso = t.value;
       m.motivo = Object.keys(carico() ? MOTIVI_CARICO : MOTIVI_SCARICO)[0];
+      m.scontrinato = carico() ? undefined : !!m.scontrinato;
       for (const r of m.righe) { r.lotto = ''; r.scadenza = ''; }
       disegna();
       return;
     }
+    if (t.name === 'scontrinato') m.scontrinato = t.value === 'si';
     if (t.dataset.m) m[t.dataset.m] = t.value;
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
