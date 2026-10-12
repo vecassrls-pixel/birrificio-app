@@ -556,3 +556,19 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .tab-listino td:first-child { width: 1%; }
 .li-anteprima { white-space: pre-wrap; font: .85rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); padding: 10px 12px; border-radius: 8px; margin: 8px 0 0; }
 @media (max-width: 760px) { .tab-listino .li-extra { display: none; } .tab-listino td, .tab-listino th { font-size: .85rem; } .tab-listino input[type="number"] { width: 96px; padding: 5px 6px; } }
+
+/* Inventario materie prime sul telefono: ogni articolo su più righe, lotto e scadenza sempre visibili */
+@media (max-width: 760px) {
+  .tab-inv thead { display: none; }
+  .tab-inv tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .tab-inv td { padding: 0 !important; min-width: 0; }
+  .tab-inv td input { width: 100%; }
+  .tab-inv .inv-nome { grid-column: 1 / -1; font-weight: 600; }
+  .tab-inv .inv-calc { grid-column: 1 / -1; text-align: left !important; }
+  .tab-inv .inv-unita { display: none; }
+  .tab-inv td[data-et]::before { content: attr(data-et); display: block; font-size: .72rem; color: var(--muted); font-weight: 600; margin-bottom: 2px; }
+  .tab-inv .inv-calc::before { display: inline !important; margin-right: 6px; }
+  .tab-inv td:last-child { grid-column: 1 / -1; }
+}
+/* Inventario: il pulsante Salva resta sempre in vista mentre si scorre l'elenco */
+.salva-inv { position: sticky; bottom: calc(12px + var(--nav-h) + env(safe-area-inset-bottom)); z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--ombra); }

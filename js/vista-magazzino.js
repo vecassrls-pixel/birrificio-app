@@ -403,11 +403,21 @@ export async function vistaInventario() {
   const nascondi = leggiPref();
   const extre = new Map(); // lotto e scadenza facoltativi per articolo
   const extra = id => { if (!extre.has(id)) extre.set(id, {}); return extre.get(id); };
+  // lotto proposto: quello in uso (il più vecchio rimasto), altrimenti l'ultimo entrato
+  const proposto = id => {
+    const x = g.get(id);
+    const inUso = [...x.lotti].reverse().find(l => l.lotto && l.qta > 1e-9); // g.lotti: i più recenti per primi
+    const ultimo = x.movimenti.find(m => m.tipo !== 'scarico' && (m.lotto || m.scadenza));
+    const l = inUso || ultimo || {};
+    const altri = x.lotti.filter(y => y.lotto && y.qta > 1e-9 && y !== inUso).map(y => y.lotto);
+    return { lotto: l.lotto || '', scadenza: l.scadenza || '', altri };
+  };
+  for (const a of dati.articoli) { const p = proposto(a.id); if (p.lotto || p.scadenza) Object.assign(extra(a.id), { lotto: p.lotto, scadenza: p.scadenza }); }
   u.$app.innerHTML = html`
     <div class="barra"><a href="#/materie-prime" class="btn">← Materie prime</a><span class="spazio"></span></div>
     <div class="scheda">
       <h1 style="margin-top:0">Inventario</h1>
-      <p class="totale">Scrivi la quantità contata solo per gli articoli che hai controllato: da quella data la giacenza riparte da lì, poi si aggiungono le bolle e si tolgono cotte e DH. Gli articoli lasciati vuoti non cambiano.</p>
+      <p class="totale">Scrivi la quantità contata solo per gli articoli che hai controllato: da quella data la giacenza riparte da lì, poi si aggiungono le bolle e si tolgono cotte e DH. Gli articoli lasciati vuoti non cambiano. Lotto e scadenza sono già quelli in magazzino: cambiali se non corrispondono.</p>
       <div class="barra" style="margin:0;align-items:flex-end">
         <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
         <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondi ? 'checked' : ''}> Nascondi le materie prime a 0</label>
@@ -419,16 +429,17 @@ export async function vistaInventario() {
       const rr = dati.articoli.filter(a => a.categoria === cat);
       if (!rr.length) return '';
       const tuttiZero = rr.every(a => aZero(g.get(a.id).giacenza));
-      return html`<div class="scheda ${tuttiZero ? 'tutti-zero' : ''}"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit">
+      return html`<div class="scheda ${tuttiZero ? 'tutti-zero' : ''}"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit tab-inv">
         <thead><tr><th>Articolo</th><th class="n">Calcolato oggi</th><th style="width:130px">Contato</th><th style="width:50px"></th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th></tr></thead>
         <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}">
-          <td>${a.nome}</td><td class="n">${fmt(g.get(a.id).giacenza, a.unita)}</td>
-          <td><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale">${a.unita}</td>
-          <td><input data-lotto="${a.id}"></td><td><input data-scad="${a.id}" type="date"></td>
+          <td class="inv-nome">${a.nome}</td><td class="n inv-calc" data-et="Calcolato oggi">${fmt(g.get(a.id).giacenza, a.unita)}</td>
+          <td data-et="Contato (${a.unita})"><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale inv-unita">${a.unita}</td>
+          <td data-et="Lotto (facolt.)"><input data-lotto="${a.id}" value="${extre.get(a.id)?.lotto || ''}">${proposto(a.id).altri.length ? html`<span class="totale" style="display:block;font-size:.72rem">altri lotti: ${proposto(a.id).altri.join(', ')}</span>` : ''}</td><td data-et="Scadenza (facolt.)"><input data-scad="${a.id}" type="date" value="${extre.get(a.id)?.scadenza || ''}"></td>
         </tr>`)}</tbody></table></div></div>`;
     })}
     </div>
-    ${dati.articoli.length ? html`<div class="barra"><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
+    ${dati.articoli.length ? html`<div class="barra salva-inv"><span class="totale" id="inv-conta"></span><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
+  const conta = () => { const el = document.getElementById('inv-conta'); if (el) el.textContent = contati.size ? (contati.size === 1 ? "1 articolo da salvare" : `${contati.size} articoli da salvare`) : ''; };
   u.$app.oninput = e => {
     if (e.target.id === 'nascondi-zero') {
       scriviPref(e.target.checked);
@@ -437,7 +448,7 @@ export async function vistaInventario() {
     }
     if (e.target.id === 'data-inv') data.v = e.target.value;
     const id = e.target.dataset.inv;
-    if (id) { if (e.target.value === '') contati.delete(id); else contati.set(id, Number(e.target.value)); }
+    if (id) { if (e.target.value === '') contati.delete(id); else contati.set(id, Number(e.target.value)); conta(); }
     if (e.target.dataset.lotto) extra(e.target.dataset.lotto).lotto = e.target.value.trim();
     if (e.target.dataset.scad) extra(e.target.dataset.scad).scadenza = e.target.value;
   };

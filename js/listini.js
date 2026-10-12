@@ -1,24 +1,27 @@
-// Listini di vendita: dal prezzo base di ogni prodotto (birra + formato) un ricarico in % dà il prezzo del listino.
-//
-// Prezzo base = prezzo di vendita della pagina Costi (record 'impostazione-prezzi', vedi costi.js):
-// quello della birra ("BIRRA|tipo|litri") o, se manca, quello del formato ("*|tipo|litri").
-// Così listini, ricavi e margini partono dagli stessi numeri.
+// Listini di vendita: si parte dal listino base "Alpha" (prezzi scritti a mano per birra e formato);
+// gli altri listini sono Alpha + un ricarico in % (anche negativo = sconto).
 //
 // Record nell'archivio:
-//   listino { id: 'listino-…', tipo: 'listino', nome, ricarico (% sul prezzo base, anche negativo = sconto),
+//   listino { id: 'listino-…', tipo: 'listino', nome, ricarico (% sui prezzi di Alpha),
 //             arrotonda (€, 0 = al centesimo; per eccesso), iva (true = prezzi IVA inclusa),
 //             prodotti: 'magazzino' (solo con giacenza) | 'tutti', esclusi: [chiavi prodotto],
 //             fissi: { chiave: € } (prezzo scritto a mano, vince sul calcolo), note }
+//   Alpha ha id 'listino-alpha' e in più prezzi: { "BIRRA|tipo|litri" o "*|tipo|litri" (formato, vale per tutte le birre): € IVA esclusa }.
+//   I prezzi di vendita della pagina Costi restano separati (servono per ricavi e margini).
 
 import { daChiave, nomeFormato } from './birra.js';
 
 export const ALIQUOTA_IVA = 22;
 export const ARROTONDA = [[0, 'Al centesimo'], [0.05, '0,05 €'], [0.1, '0,10 €'], [0.5, '0,50 €'], [1, '1 €']];
 
+export const ID_ALPHA = 'listino-alpha';
 export const nuovoListino = (id, nome) => ({
   id, tipo: 'listino', nome, ricarico: 30, arrotonda: 0.1, iva: false, prodotti: 'magazzino', esclusi: [], fissi: {}, note: '',
 });
-export const listinoDa = rec => ({ ...nuovoListino(rec.id, rec.nome || 'Listino'), ...rec, esclusi: rec.esclusi || [], fissi: rec.fissi || {} });
+export const nuovoAlpha = () => ({ ...nuovoListino(ID_ALPHA, 'Alpha'), ricarico: 0, arrotonda: 0, prodotti: 'tutti', prezzi: {} });
+export const listinoDa = rec => ({ ...(rec.id === ID_ALPHA ? nuovoAlpha() : nuovoListino(rec.id, rec.nome || 'Listino')), ...rec, esclusi: rec.esclusi || [], fissi: rec.fissi || {} });
+// Alpha non ha ricarico né prezzi fissati: il suo prezzo è quello scritto nella colonna Base
+export const perCalcolo = l => (l.id === ID_ALPHA ? { ...l, ricarico: 0, fissi: {} } : l);
 
 const chiaveFormato = p => `*|${p.tipo}|${p.litri}`;
 export function prezzoBase(vendita, chiave) {
@@ -37,8 +40,10 @@ export function prezzoListino(base, l) {
   return arrotonda(l.iva ? netto * (1 + ALIQUOTA_IVA / 100) : netto, Number(l.arrotonda) || 0);
 }
 
-// Righe del listino. giacenze: Map chiave → { giacenza } (da giacenzeBirra), chiavi: tutti i prodotti conosciuti.
+// Righe del listino. giacenze: Map chiave → { giacenza } (da giacenzeBirra), chiavi: tutti i prodotti conosciuti,
+// vendita: i prezzi di Alpha (alpha.prezzi).
 export function righeListino(l, chiavi, giacenze, vendita) {
+  l = perCalcolo(l);
   const esclusi = new Set(l.esclusi);
   return chiavi
     .map(chiave => {

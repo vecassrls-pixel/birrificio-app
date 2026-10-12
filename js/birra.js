@@ -104,7 +104,7 @@ export function giacenzeBirra(dati, oggi = oggiISO()) {
   for (const k of elencoProdotti(dati)) di(k);
 
   // ultimo inventario (fino a oggi) di ogni prodotto: tutte le sue righe di quel giorno
-  for (const inv of [...(dati.inventari || [])].filter(i => i.data && i.data <= oggi).sort((x, y) => x.data.localeCompare(y.data))) {
+  for (const inv of [...(dati.inventari || [])].filter(i => i.data && i.data <= oggi).sort((x, y) => x.data.localeCompare(y.data) || String(x.aggiornato || '').localeCompare(String(y.aggiornato || '')))) {
     const per = new Map();
     for (const r of inv.righe || []) {
       if (!r.prodotto || r.pezzi === null || r.pezzi === '' || r.pezzi === undefined) continue;

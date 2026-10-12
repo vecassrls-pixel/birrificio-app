@@ -52,10 +52,11 @@ Servono solo per scaricare la birra dalle fatture e dagli ordini; senza, gli sca
 Le chiavi vanno in Netlify → **Site configuration → Environment variables**, poi un nuovo deploy.
 
 **Fatture in Cloud** (sola lettura dei documenti emessi)
-1. In Fatture in Cloud: **Impostazioni → Applicazioni collegate** (o developers.fattureincloud.it) crea un'app e genera un
-   **token manuale** con il permesso di lettura su fatture, DDT e ricevute (*Documenti emessi: lettura*).
-2. In Netlify aggiungi `FIC_TOKEN` = il token e `FIC_COMPANY_ID` = l'id dell'azienda
-   (il numero che compare nell'indirizzo di Fatture in Cloud o nella pagina dell'app).
+1. In Fatture in Cloud: **Impostazioni → Sviluppatore** (secure.fattureincloud.it/settings-developers) → **Nuova app**,
+   visibilità *Privata*, con la tua email tra gli utenti autorizzati; copia il **Client ID**.
+2. **Impostazioni → Applicazioni collegate** (secure.fattureincloud.it/settings-apps) → **Collega una nuova applicazione**:
+   incolla il Client ID, scegli l'azienda e il solo permesso *Documenti emessi: lettura*; copia il token.
+3. In Netlify aggiungi `FIC_TOKEN` = il token. `FIC_COMPANY_ID` (id dell'azienda) è facoltativo: se manca si usa la prima azienda del token.
 
 **Shopify** (sola lettura degli ordini)
 1. In Shopify: **Impostazioni → App → Sviluppa app** (Dev Dashboard) crea un'app con i permessi `read_orders`
