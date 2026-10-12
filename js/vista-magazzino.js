@@ -419,12 +419,12 @@ export async function vistaInventario() {
       const rr = dati.articoli.filter(a => a.categoria === cat);
       if (!rr.length) return '';
       const tuttiZero = rr.every(a => aZero(g.get(a.id).giacenza));
-      return html`<div class="scheda ${tuttiZero ? 'tutti-zero' : ''}"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit">
+      return html`<div class="scheda ${tuttiZero ? 'tutti-zero' : ''}"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit tab-inv">
         <thead><tr><th>Articolo</th><th class="n">Calcolato oggi</th><th style="width:130px">Contato</th><th style="width:50px"></th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th></tr></thead>
         <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}">
-          <td>${a.nome}</td><td class="n">${fmt(g.get(a.id).giacenza, a.unita)}</td>
-          <td><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale">${a.unita}</td>
-          <td><input data-lotto="${a.id}"></td><td><input data-scad="${a.id}" type="date"></td>
+          <td class="inv-nome">${a.nome}</td><td class="n inv-calc" data-et="Calcolato oggi">${fmt(g.get(a.id).giacenza, a.unita)}</td>
+          <td data-et="Contato (${a.unita})"><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale inv-unita">${a.unita}</td>
+          <td data-et="Lotto (facolt.)"><input data-lotto="${a.id}"></td><td data-et="Scadenza (facolt.)"><input data-scad="${a.id}" type="date"></td>
         </tr>`)}</tbody></table></div></div>`;
     })}
     </div>
