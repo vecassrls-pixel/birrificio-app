@@ -547,3 +547,12 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .bottone-file span { display: inline-block; padding: 8px 14px; border: 1px dashed var(--accent); color: var(--accent); border-radius: 8px; font-weight: 600; }
 .bottone-file:has(input:disabled) { display: none; }
 @media print { .bottone-file, .allegati button.piccolo { display: none; } }
+
+/* Listini */
+.tab-listino tr.li-gruppo td { padding: 12px 4px 2px; font-weight: 700; border-bottom: 1px solid var(--border); }
+.tab-listino input[type="number"] { width: 110px; }
+.tab-listino tr.escluso td:not(:first-child) { opacity: .45; }
+.tab-listino input.fisso { border-color: var(--accent); font-weight: 600; }
+.tab-listino td:first-child { width: 1%; }
+.li-anteprima { white-space: pre-wrap; font: .85rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); padding: 10px 12px; border-radius: 8px; margin: 8px 0 0; }
+@media (max-width: 760px) { .tab-listino .li-extra { display: none; } .tab-listino td, .tab-listino th { font-size: .85rem; } .tab-listino input[type="number"] { width: 96px; padding: 5px 6px; } }
