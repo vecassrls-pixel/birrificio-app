@@ -207,6 +207,24 @@ document.addEventListener('keydown', e => {
 // ---------- Lista cotte ----------
 const filtri = { q: '', anno: '', stato: '', limite: 60 };
 
+// Lotti e scadenze da copiare: birre in fermentatore, pianificate a breve e confezionate negli ultimi 4 mesi (una riga per lotto)
+function lottiDaCopiare() {
+  const oggi = oggiISO();
+  const lottiScad = [];
+  const visti = new Set();
+  for (const c of [...stato.cotte].filter(c => c.data && !c.eliminato).sort((a, b) => b.data.localeCompare(a.data))) {
+    const s = statoCotta(c, stato.durate);
+    const recente = s === 'tank' || (s === 'pianificata' && c.data <= addGiorni(oggi, 21)) || (s === 'confezionata' && fineCotta(c, stato.durate) >= addGiorni(oggi, -120));
+    if (!recente) continue;
+    const g = gruppoCotta(c, stato.cotte);
+    if (visti.has(g[0].id)) continue;
+    visti.add(g[0].id);
+    lottiScad.push({ c: g[0], s, testo: testoLottoScadenza(g[0], stato.cotte, stato.durate), scad: scadenzaCotta(g[0], stato.cotte, stato.durate) });
+  }
+  return lottiScad;
+}
+
+const lottiAperti = () => { try { return localStorage.getItem('gb-lotti-aperti') !== '0'; } catch { return true; } };
 function vistaCotte() {
   const anni = [...new Set(stato.cotte.map(c => c.anno).filter(Boolean))].sort((a, b) => b - a);
   const q = filtri.q.trim().toLowerCase();
@@ -226,6 +244,7 @@ function vistaCotte() {
     const g = gruppoCotta(c, stato.cotte);
     if (g.length > 1) lotti.set(c.id, lottoGruppo(g));
   }
+  const lottiScad = !q && !filtri.stato ? lottiDaCopiare() : [];
   $app.innerHTML = html`
     <div class="barra">
       <h1 style="margin:0">Cotte</h1>
@@ -241,6 +260,16 @@ function vistaCotte() {
       <button data-stato="" class="${filtri.stato ? '' : 'attivo'}" aria-pressed="${!filtri.stato}">Tutte <b>${filtrate.length}</b></button>
       ${['tank', 'pianificata', 'confezionata', 'chiusa'].map(k => [k, STATI[k]]).map(([k, v]) => html`<button data-stato="${k}" class="${k === filtri.stato ? 'attivo' : ''}" aria-pressed="${k === filtri.stato}">${v} <b>${perStato.get(k) || 0}</b></button>`)}
     </div>
+    ${lottiScad.length ? html`<details class="scheda lotti-box" ${lottiAperti() ? 'open' : ''}>
+      <summary><h2>Lotti e scadenze <span class="totale">${lottiScad.length}</span></h2></summary>
+      <p class="totale" style="margin:0 0 8px">Scadenza = mese del confezionamento (o della fine in FV) + 12 mesi, 24 per le birre forti. Si cambia nella scheda della cotta, sezione Confezionamento.</p>
+      <div class="lista-lotti">${lottiScad.map(x => html`<div class="riga-lotto">
+        <span class="chip ${x.s}">${STATI[x.s]}</span>
+        <a href="#/cotta/${encodeURIComponent(x.c.id)}" class="birra">${x.c.birra}</a>
+        <span class="num">${x.testo.replace(/^Lotto /, '')}${x.scad?.stimata ? html` <span class="totale" title="Stimata: diventa definitiva con la data di confezionamento o scrivendola nella scheda">(stimata)</span>` : ''}</span>
+        <button class="piccolo copia-lotto" data-copia="${x.testo}" title="Copia: ${x.testo}">⧉ Copia</button>
+      </div>`)}</div>
+    </details>` : ''}
     <div class="lista">
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta ${s}" href="#/cotta/${encodeURIComponent(c.id)}">
@@ -260,6 +289,9 @@ function vistaCotte() {
     if (b) { filtri.stato = b.dataset.stato; filtri.limite = 60; vistaCotte(); }
   };
   document.getElementById('nuova').onclick = () => dialogNuovaCotta();
+  $app.onclick = e => { const b = e.target.closest('[data-copia]'); if (b) { e.preventDefault(); copia(b.dataset.copia); } };
+  const box = document.querySelector('.lotti-box');
+  if (box) box.ontoggle = () => { try { localStorage.setItem('gb-lotti-aperti', box.open ? '1' : '0'); } catch {} };
   const altre = document.getElementById('altre');
   if (altre) altre.onclick = () => { filtri.limite += 100; vistaCotte(); };
 }
@@ -1146,18 +1178,6 @@ function vistaPlanning() {
     }
     barrePerFv.set(p.fv, lista);
   }
-  // lotti e scadenze: birre in fermentatore, pianificate a breve e confezionate negli ultimi 4 mesi (una riga per lotto)
-  const lottiScad = [];
-  const visti = new Set();
-  for (const c of [...stato.cotte].filter(c => c.data && !c.eliminato).sort((a, b) => b.data.localeCompare(a.data))) {
-    const s = statoCotta(c, stato.durate);
-    const recente = s === 'tank' || (s === 'pianificata' && c.data <= addGiorni(oggi, 21)) || (s === 'confezionata' && fineCotta(c, stato.durate) >= addGiorni(oggi, -120));
-    if (!recente) continue;
-    const g = gruppoCotta(c, stato.cotte);
-    if (visti.has(g[0].id)) continue;
-    visti.add(g[0].id);
-    lottiScad.push({ c: g[0], s, testo: testoLottoScadenza(g[0], stato.cotte, stato.durate), scad: scadenzaCotta(g[0], stato.cotte, stato.durate) });
-  }
   const occupazione = nomiFv.map(n => {
     const attuale = periodi.find(p => p.fv === n && p.da <= oggi && p.a >= oggi);
     return { n, attuale, cap: stato.fv.find(f => f.nome === n)?.capacita };
@@ -1234,22 +1254,11 @@ function vistaPlanning() {
       <h2>Oggi nei fermentatori</h2>
       <div class="griglia occupazione">${occupazione.map(o => html`<div>
         <b>${o.n}</b><br>
-        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a>
-          <button class="piccolo copia-lotto" data-copia="${testoLottoScadenza(o.attuale.cotta, stato.cotte, stato.durate)}" title="Copia lotto e scadenza">⧉ Lotto e scad.</button><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
+        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
           : html`<span class="fv-libero">libero</span>`}
       </div>`)}</div>
     </div>
 
-    ${lottiScad.length ? html`<div class="scheda">
-      <h2>Lotti e scadenze</h2>
-      <p class="totale" style="margin:-6px 0 8px">Scadenza = mese del confezionamento (o della fine in FV) + 12 mesi, 24 per le birre forti. Si cambia nella scheda della cotta, sezione Confezionamento.</p>
-      <div class="lista-lotti">${lottiScad.map(x => html`<div class="riga-lotto">
-        <span class="chip ${x.s}">${STATI[x.s]}</span>
-        <a href="#/cotta/${encodeURIComponent(x.c.id)}" class="birra">${x.c.birra}</a>
-        <span class="num">${x.testo.replace(/^Lotto /, '')}${x.scad?.stimata ? html` <span class="totale" title="Stimata: diventa definitiva con la data di confezionamento o scrivendola nella scheda">(stimata)</span>` : ''}</span>
-        <button class="piccolo copia-lotto" data-copia="${x.testo}" title="Copia: ${x.testo}">⧉ Copia</button>
-      </div>`)}</div>
-    </div>` : ''}
   `;
   $app.onclick = e => { const b = e.target.closest('[data-copia]'); if (b) copia(b.dataset.copia); };
   document.getElementById('prec').onclick = () => { plan.inizio = addGiorni(plan.inizio, -28); vistaPlanning(); };

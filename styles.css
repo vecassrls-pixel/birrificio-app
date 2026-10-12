@@ -572,3 +572,9 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 }
 /* Inventario: il pulsante Salva resta sempre in vista mentre si scorre l'elenco */
 .salva-inv { position: sticky; bottom: calc(12px + var(--nav-h) + env(safe-area-inset-bottom)); z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--ombra); }
+.lotti-box > summary { cursor: pointer; list-style: none; }
+.lotti-box > summary::-webkit-details-marker { display: none; }
+.lotti-box > summary h2 { margin: 0; display: flex; align-items: center; gap: 8px; }
+.lotti-box > summary h2::after { content: '▾'; margin-left: auto; color: var(--accent); font-size: .9rem; }
+.lotti-box[open] > summary h2::after { content: '▴'; }
+.lotti-box[open] > summary { margin-bottom: 10px; }
