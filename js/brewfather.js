@@ -70,7 +70,7 @@ export async function scaricaLetture(proxy, batchId) {
 }
 
 // ---------- conversione ----------
-const USO_LUPPOLO = { Boil: 'bollitura', 'Dry Hop': 'dry hop', Aroma: 'whirlpool', Whirlpool: 'whirlpool', 'First Wort': 'first wort', Mash: 'mash hop' };
+const USO_LUPPOLO = { Boil: 'bollitura', 'Dry Hop': 'dry hop', Aroma: 'dip hop', Whirlpool: 'whirlpool', 'First Wort': 'first wort', Mash: 'mash hop' };
 
 export function ricettaDaBatch(b) {
   const r = b.recipe || {};
@@ -164,8 +164,8 @@ function completaDaRicetta(c, r = {}, forza = false) {
   const metti = (o, k, v) => { if (v !== null && (forza || o[k] == null)) o[k] = v; };
   c.acquaMash = { ...c.acquaMash };
   c.acquaSparge = { ...c.acquaSparge };
-  // durata del whirlpool: il tempo più lungo dei luppoli in whirlpool/aroma della ricetta
-  const wp = (r.hops || []).filter(h => h.use === 'Aroma' || h.use === 'Whirlpool').map(h => num(h.time)).filter(t => t > 0);
+  // durata del whirlpool: il tempo più lungo dei luppoli in whirlpool (in Brewfather "Aroma" è il dip hop)
+  const wp = (r.hops || []).filter(h => h.use === 'Whirlpool').map(h => num(h.time)).filter(t => t > 0);
   metti(c, 'whirlpoolMin', wp.length ? Math.max(...wp) : null);
   metti(c.acquaMash, 'litri', num(w.mashWaterAmount) !== null ? Math.round(num(w.mashWaterAmount)) : null);
   metti(c.acquaSparge, 'litri', num(w.spargeWaterAmount) !== null ? Math.round(num(w.spargeWaterAmount)) : null);
