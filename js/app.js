@@ -781,6 +781,8 @@ async function vistaCotta(id) {
   }
   $app.onchange = e => {
     const p = e.target.dataset.path;
+    // spunte: alcuni Safari (iPad meno recenti) non mandano "input" sulle checkbox, solo "change"
+    if (p && e.target.type === 'checkbox') { set(c, p, e.target.checked); salvaPresto(); }
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
     if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|scadenza|mesiScadenza|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
