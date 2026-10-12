@@ -521,6 +521,9 @@ details.st-tabella > summary { cursor: pointer; color: var(--accent); font-weigh
   .brand img { content: url(img/gb-monogramma-chiaro.png); height: 30px; }
 }
 /* magazzino birra */
+.scontrino { grid-column: span 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0 18px; }
+.scontrino label.spunta { min-height: 40px; }
+.scontrino > span { font-size: .85rem; color: var(--muted); font-weight: 600; width: 100%; }
 .tab-birra tr.gruppo-birra td { font-weight: 700; padding-top: 14px; border-bottom: 1px solid var(--border); }
 .tab-birra tr:not(.gruppo-birra) td:first-child { padding-left: 14px; }
 .scheda.escluso > .scroll-x { opacity: .45; }
