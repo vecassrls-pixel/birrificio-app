@@ -2,7 +2,7 @@
 // Le credenziali restano sul server come variabili d'ambiente Netlify:
 //   FIC_TOKEN        token di accesso (Fatture in Cloud > Impostazioni > App collegate / sviluppatori, token manuale
 //                    con permesso di lettura sui documenti emessi: issued_documents.invoices:r e .delivery_notes:r)
-//   FIC_COMPANY_ID   id dell'azienda (si legge nell'indirizzo di Fatture in Cloud o da GET /user/companies)
+//   FIC_COMPANY_ID   id dell'azienda (facoltativo: se manca si usa la prima azienda collegata al token, da GET /user/companies)
 //   SUPABASE_URL, SUPABASE_ANON_KEY  per controllare chi chiama
 //
 // Uso dall'app:  /.netlify/functions/fattureincloud?dal=2026-10-01&tipo=invoice
@@ -16,8 +16,8 @@ const TIPI = ['invoice', 'delivery_note', 'receipt'];
 const MAX = 60; // documenti per chiamata: oltre, l'app chiede di cercare di nuovo
 
 export default async req => {
-  const token = process.env.FIC_TOKEN, azienda = process.env.FIC_COMPANY_ID;
-  if (!token || !azienda) return json({ errore: 'Fatture in Cloud non configurato sul server' }, 503);
+  const token = process.env.FIC_TOKEN;
+  if (!token) return json({ errore: 'Fatture in Cloud non configurato sul server' }, 503);
   if (req.method !== 'GET') return json({ errore: 'Solo lettura' }, 405);
   if (!(await autorizzato(req))) return json({ errore: 'Accesso non autorizzato' }, 401);
 
@@ -26,8 +26,8 @@ export default async req => {
   const tipo = TIPI.includes(url.searchParams.get('tipo')) ? url.searchParams.get('tipo') : 'invoice';
   if (!dal) return json({ errore: 'Data non valida' }, 400);
 
-  const chiama = async (path, params = {}) => {
-    const res = await fetch(`${BASE}/c/${encodeURIComponent(azienda)}${path}?${new URLSearchParams(params)}`, {
+  const chiama = async (path, params = {}, conAzienda = true) => {
+    const res = await fetch(`${BASE}${conAzienda ? `/c/${encodeURIComponent(azienda)}` : ''}${path}?${new URLSearchParams(params)}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!res.ok) {
@@ -38,7 +38,13 @@ export default async req => {
     return res.json();
   };
 
+  let azienda = process.env.FIC_COMPANY_ID;
   try {
+    if (!azienda) {
+      const u = await chiama('/user/companies', {}, false);
+      azienda = u.data?.companies?.[0]?.id;
+      if (!azienda) return json({ errore: 'Il token di Fatture in Cloud non ha accesso a nessuna azienda' }, 502);
+    }
     const docs = [];
     let altri = false;
     for (let pagina = 1; ; pagina++) {
