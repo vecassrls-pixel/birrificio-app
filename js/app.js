@@ -247,6 +247,7 @@ function vistaCotte() {
           <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<small title="Cotta doppia/tripla">${lotti.get(c.id)}</small>` : ''}</span>
           <span class="birra">${c.birra || 'Senza nome'}${c.materiePrime && ['pianificata', 'tank'].includes(s) ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
           <span class="chip ${s}">${STATI[s]}</span>
+          ${(() => { const t = testoLottoScadenza(c, stato.cotte, stato.durate); return html`<button class="piccolo copia-lotto" data-copia="${t}" title="Copia: ${t}" aria-label="Copia lotto e scadenza">⧉<span class="solo-desktop"> Lotto e scad.</span></button>`; })()}
           <span class="dett">${dataIT(c.data)}${c.stile ? ` · ${c.stile}` : ''} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
         </a>`) : html`<p class="vuoto">Nessuna cotta trovata.</p>`}
     </div>
@@ -260,6 +261,7 @@ function vistaCotte() {
     if (b) { filtri.stato = b.dataset.stato; filtri.limite = 60; vistaCotte(); }
   };
   document.getElementById('nuova').onclick = () => dialogNuovaCotta();
+  $app.onclick = e => { const b = e.target.closest('[data-copia]'); if (b) { e.preventDefault(); copia(b.dataset.copia); } };
   const altre = document.getElementById('altre');
   if (altre) altre.onclick = () => { filtri.limite += 100; vistaCotte(); };
 }
@@ -989,6 +991,33 @@ function conGiorniDh(cotte) {
 }
 const W = 30; // pixel per giorno
 
+// Colore della barra secondo la temperatura misurata: stessa tinta della fase, più scura quando è più calda.
+// Intervalli per fase (°C) dal più freddo (chiaro) al più caldo (scuro).
+const TINTE = {
+  fermentazione: { h: 27, s: 95, t: [12, 24], l: [84, 48] },
+  dh: { h: 256, s: 85, t: [8, 22], l: [89, 60] },
+  maturazione: { h: 199, s: 90, t: [-1, 10], l: [90, 55] },
+};
+function coloreFase(fase, temp) {
+  const x = TINTE[fase];
+  if (!x || temp == null) return `var(--f-${fase})`;
+  const k = Math.min(1, Math.max(0, (temp - x.t[0]) / (x.t[1] - x.t[0])));
+  return `hsl(${x.h} ${x.s}% ${(x.l[0] + (x.l[1] - x.l[0]) * k).toFixed(1)}%)`;
+}
+// Temperatura di un giorno dal registro (solo righe fino a oggi): interpolata tra due misure,
+// prima della prima misura vale la prima; dopo l'ultima niente (colore normale della fase).
+function tempMisurata(cotte, oggi) {
+  const misure = registroComune(cotte)
+    .filter(e => e.data && e.data <= oggi && e.temp !== null && e.temp !== undefined && e.temp !== '' && Number.isFinite(Number(e.temp)))
+    .map(e => ({ data: e.data, t: Number(e.temp) })).sort((x, y) => x.data.localeCompare(y.data));
+  return d => {
+    if (!misure.length || d > misure[misure.length - 1].data) return null;
+    if (d <= misure[0].data) return misure[0].t;
+    const i = misure.findIndex(m => m.data >= d), p = misure[i - 1], q = misure[i];
+    return p.t + (q.t - p.t) * diffGiorni(p.data, d) / diffGiorni(p.data, q.data);
+  };
+}
+
 // Export del planning in Excel: righe = FV, colonne = giorni, colori come nell'app.
 // Periodo: dall'inizio della vista attuale fino all'ultima cotta in programma.
 const COLORI_XLSX = { fermentazione: 'FB923C', dh: 'B39DFA', maturazione: '7DD3FC', weekend: 'F7DBE3', mp: '92D050', testa: 'E7E5E4' };
@@ -1119,18 +1148,6 @@ function vistaPlanning() {
     }
     barrePerFv.set(p.fv, lista);
   }
-  // lotti e scadenze: birre in fermentatore, pianificate a breve e confezionate negli ultimi 4 mesi (una riga per lotto)
-  const lottiScad = [];
-  const visti = new Set();
-  for (const c of [...stato.cotte].filter(c => c.data && !c.eliminato).sort((a, b) => b.data.localeCompare(a.data))) {
-    const s = statoCotta(c, stato.durate);
-    const recente = s === 'tank' || (s === 'pianificata' && c.data <= addGiorni(oggi, 21)) || (s === 'confezionata' && fineCotta(c, stato.durate) >= addGiorni(oggi, -120));
-    if (!recente) continue;
-    const g = gruppoCotta(c, stato.cotte);
-    if (visti.has(g[0].id)) continue;
-    visti.add(g[0].id);
-    lottiScad.push({ c: g[0], s, testo: testoLottoScadenza(g[0], stato.cotte, stato.durate), scad: scadenzaCotta(g[0], stato.cotte, stato.durate) });
-  }
   const occupazione = nomiFv.map(n => {
     const attuale = periodi.find(p => p.fv === n && p.da <= oggi && p.a >= oggi);
     return { n, attuale, cap: stato.fv.find(f => f.nome === n)?.capacita };
@@ -1151,6 +1168,7 @@ function vistaPlanning() {
     <details class="legenda-box">
       <summary>${Object.entries(FASI).map(([k, v]) => html`<span><span class="fase-chip" style="background:var(--f-${k})"></span> ${v}</span>`)}<span class="apri">Legenda</span></summary>
       <div class="legenda">
+      <span>Tinta più scura = temperatura misurata più alta, sfumata giorno per giorno</span>
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
@@ -1181,9 +1199,14 @@ function vistaPlanning() {
             // sfondo a fasi: arancione fermentazione, viola DH, celeste maturazione
             const da = b.da < plan.inizio ? plan.inizio : b.da, a = b.a > fineVista ? fineVista : b.a;
             const tot = diffGiorni(da, a) + 1;
-            const stops = fasiCotta(conGiorniDh(b.cotte), stato.durate).filter(f => f.a >= da && f.da <= a).map(f => {
-              const x0 = diffGiorni(da, f.da < da ? da : f.da) / tot * 100, x1 = (diffGiorni(da, f.a > a ? a : f.a) + 1) / tot * 100;
-              return `var(--f-${f.fase}) ${x0.toFixed(2)}% ${x1.toFixed(2)}%`;
+            const tempDi = tempMisurata(b.cotte, oggi);
+            const stops = fasiCotta(conGiorniDh(b.cotte), stato.durate).filter(f => f.a >= da && f.da <= a).flatMap(f => {
+              const d0 = f.da < da ? da : f.da, d1 = f.a > a ? a : f.a;
+              const pos = g => `${(g / tot * 100).toFixed(2)}%`;
+              const g0 = diffGiorni(da, d0), n = diffGiorni(d0, d1) + 1;
+              const colori = Array.from({ length: n }, (_, i) => coloreFase(f.fase, tempDi(addGiorni(d0, i))));
+              // bordo netto tra una fase e l'altra, sfumato giorno per giorno dentro la fase
+              return [`${colori[0]} ${pos(g0)}`, ...colori.map((col, i) => `${col} ${pos(g0 + i + 0.5)}`), `${colori[n - 1]} ${pos(g0 + n)}`];
             });
             const sfondoFasi = stops.length ? `background:linear-gradient(to right, ${stops.join(', ')});` : '';
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
@@ -1201,22 +1224,11 @@ function vistaPlanning() {
       <h2>Oggi nei fermentatori</h2>
       <div class="griglia occupazione">${occupazione.map(o => html`<div>
         <b>${o.n}</b><br>
-        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a>
-          <button class="piccolo copia-lotto" data-copia="${testoLottoScadenza(o.attuale.cotta, stato.cotte, stato.durate)}" title="Copia lotto e scadenza">⧉ Lotto e scad.</button><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
+        ${o.attuale ? html`<a href="#/cotta/${encodeURIComponent(o.attuale.cotta.id)}">${o.attuale.cotta.birra}</a><br><span class="totale">giorno ${diffGiorni(o.attuale.cotta.data, oggi) + 1}, libero dal ${dataIT(addGiorni(o.attuale.a, 1))}${o.attuale.a < fineCotta(o.attuale.cotta, stato.durate) ? ' (travaso)' : ''}</span>`
           : html`<span class="fv-libero">libero</span>`}
       </div>`)}</div>
     </div>
 
-    ${lottiScad.length ? html`<div class="scheda">
-      <h2>Lotti e scadenze</h2>
-      <p class="totale" style="margin:-6px 0 8px">Scadenza = mese del confezionamento (o della fine in FV) + 12 mesi, 24 per le birre forti. Si cambia nella scheda della cotta, sezione Confezionamento.</p>
-      <div class="lista-lotti">${lottiScad.map(x => html`<div class="riga-lotto">
-        <span class="chip ${x.s}">${STATI[x.s]}</span>
-        <a href="#/cotta/${encodeURIComponent(x.c.id)}" class="birra">${x.c.birra}</a>
-        <span class="num">${x.testo.replace(/^Lotto /, '')}${x.scad?.stimata ? html` <span class="totale" title="Stimata: diventa definitiva con la data di confezionamento o scrivendola nella scheda">(stimata)</span>` : ''}</span>
-        <button class="piccolo copia-lotto" data-copia="${x.testo}" title="Copia: ${x.testo}">⧉ Copia</button>
-      </div>`)}</div>
-    </div>` : ''}
   `;
   $app.onclick = e => { const b = e.target.closest('[data-copia]'); if (b) copia(b.dataset.copia); };
   document.getElementById('prec').onclick = () => { plan.inizio = addGiorni(plan.inizio, -28); vistaPlanning(); };

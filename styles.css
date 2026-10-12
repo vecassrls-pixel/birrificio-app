@@ -132,7 +132,7 @@ label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { cursor: 
 .lista { display: grid; gap: 8px; }
 .riga-cotta {
   --stato: var(--s-chiusa);
-  display: grid; grid-template-columns: 64px 1fr auto; gap: 2px 14px; align-items: center;
+  display: grid; grid-template-columns: 64px 1fr auto auto; gap: 2px 14px; align-items: center;
   background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--stato); border-radius: var(--radius);
   padding: 10px 14px 10px 12px; text-decoration: none; color: var(--text); box-shadow: var(--ombra);
   transition: border-color .12s, transform .12s;
@@ -277,7 +277,7 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
   main.largo { padding-left: 10px; padding-right: 10px; }
   .scheda { padding: 14px; }
   h1 { font-size: 1.3rem; }
-  .riga-cotta { grid-template-columns: 54px 1fr auto; gap: 2px 10px; padding: 10px 12px 10px 10px; }
+  .riga-cotta { grid-template-columns: 54px 1fr auto auto; gap: 2px 8px; padding: 10px 12px 10px 10px; }
   .riga-cotta .lotto { font-size: .95rem; }
   .riga-cotta .chip { font-size: .7rem; padding: 2px 7px; }
   .testa-scheda { margin: -14px -14px 12px; padding: 8px 14px 0; }
@@ -572,3 +572,4 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 }
 /* Inventario: il pulsante Salva resta sempre in vista mentre si scorre l'elenco */
 .salva-inv { position: sticky; bottom: calc(12px + var(--nav-h) + env(safe-area-inset-bottom)); z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--ombra); }
+.riga-cotta .copia-lotto { grid-row: 1 / 3; grid-column: 4; }
