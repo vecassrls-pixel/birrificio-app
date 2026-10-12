@@ -69,6 +69,31 @@ export function movimentiStatistiche(cotte, articoli, oggi) {
   return { prodotti, confezionati, ingredienti };
 }
 
+// Proiezione a fine anno: cotte e litri dall'inizio dell'anno a oggi, portati a 365 giorni.
+// Per confronto: lo stesso calcolo sul ritmo degli ultimi 90 giorni e le cotte già pianificate da qui a fine anno.
+const giornoNum = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000;
+export function proiezioneAnno(prodotti, cotte, oggi) {
+  const anno = oggi.slice(0, 4);
+  const inizio = giornoNum(`${anno}-01-01`), fine = giornoNum(`${anno}-12-31`), g = giornoNum(oggi);
+  const passati = g - inizio + 1, totali = fine - inizio + 1;
+  const fatte = prodotti.filter(p => p.data.startsWith(anno) && p.data <= oggi);
+  const litri = fatte.reduce((t, p) => t + p.litri, 0);
+  const conLitri = fatte.filter(p => p.litri > 0);
+  const media = conLitri.length ? conLitri.reduce((t, p) => t + p.litri, 0) / conLitri.length : 0;
+  const recenti = fatte.filter(p => g - giornoNum(p.data) < 90);
+  const giorniRecenti = Math.min(90, passati);
+  const resto = totali - passati;
+  const pianificate = cotte.filter(c => !c.eliminato && c.data && c.data > oggi && c.data.startsWith(anno));
+  return {
+    anno, passati, totali, cotte: fatte.length, litri, media,
+    stimaCotte: fatte.length / passati * totali,
+    stimaLitri: litri / passati * totali,
+    recente: { cotte: fatte.length + recenti.length / giorniRecenti * resto, litri: litri + recenti.reduce((t, p) => t + p.litri, 0) / giorniRecenti * resto },
+    pianificate: pianificate.length,
+    conPianificate: { cotte: fatte.length + pianificate.length, litri: litri + pianificate.reduce((t, c) => t + (Number(c.litri) || media), 0) },
+  };
+}
+
 function somma(lista, chiave, valore) {
   const m = new Map();
   for (const x of lista) {
@@ -140,6 +165,10 @@ export async function vistaStatistiche() {
     const pp = tutti.prodotti.filter(p => p.data.startsWith(prima) && p.data <= limite);
     confronto = { anno: prima, cotte: pp.length, litri: tot(pp, p => p.litri), finoA: filtri.anno === annoCorrente };
   }
+  // proiezione: solo sull'anno in corso, senza filtro di periodo
+  const proiez = filtri.anno === annoCorrente && !filtri.dettaglio && tutti.prodotti.some(p => p.data.startsWith(annoCorrente))
+    ? proiezioneAnno(tutti.prodotti, u.stato.cotte, oggi) : null;
+  const totPrima = confronto ? (pp => ({ cotte: pp.length, litri: tot(pp, p => p.litri) }))(tutti.prodotti.filter(p => p.data.startsWith(confronto.anno))) : null;
   const delta = (ora, prima) => {
     if (!prima) return '';
     const d = (ora - prima) / prima * 100;
@@ -203,6 +232,17 @@ export async function vistaStatistiche() {
       <div class="st-tile"><span>Malti</span><b>${qtaIngr('malto', { tot: totIngr('malto'), ml: 0 })}</b>${det.prodotti.length ? html`<small>${u.numIT(totIngr('malto') / 1000 / Math.max(1, det.prodotti.length), 0)} kg a cotta</small>` : ''}</div>
       <div class="st-tile"><span>Luppoli</span><b>${qtaIngr('luppolo', { tot: totIngr('luppolo'), ml: mlIngr('luppolo') })}</b>${litriProd ? html`<small>${u.numIT(totIngr('luppolo') / litriProd, 1)} g/L</small>` : ''}</div>
     </div>
+
+    ${proiez ? html`<div class="scheda st-proiezione">
+      <h2 style="margin:0 0 4px">Proiezione a fine ${proiez.anno}</h2>
+      <p class="totale" style="margin:0 0 10px">Al ritmo tenuto da inizio anno (${proiez.cotte} cotte in ${proiez.passati} giorni su ${proiez.totali}).</p>
+      <div class="st-kpi" style="margin:0">
+        <div class="st-tile"><span>Cotte a fine anno</span><b>≈ ${u.numIT(proiez.stimaCotte, 0)}</b><small>${confronto ? html`${delta(proiez.stimaCotte, totPrima.cotte)} vs ${totPrima.cotte} nel ${confronto.anno}` : `${u.numIT(proiez.stimaCotte - proiez.cotte, 0)} ancora da fare`}</small></div>
+        <div class="st-tile"><span>Litri a fine anno</span><b>≈ ${u.numIT(proiez.stimaLitri, 0)}</b><small>${confronto ? html`${delta(proiez.stimaLitri, totPrima.litri)} vs ${u.numIT(totPrima.litri, 0)} nel ${confronto.anno}` : `${u.numIT(proiez.stimaLitri / 100, 0)} hL`}</small></div>
+        <div class="st-tile"><span>Al ritmo degli ultimi 3 mesi</span><b>≈ ${u.numIT(proiez.recente.cotte, 0)} cotte</b><small>${u.numIT(proiez.recente.litri, 0)} L</small></div>
+        <div class="st-tile"><span>Fatte + già pianificate</span><b>${proiez.conPianificate.cotte} cotte</b><small>${proiez.pianificate} in planning · ${u.numIT(proiez.conPianificate.litri, 0)} L</small></div>
+      </div>
+    </div>` : ''}
 
     <div class="scheda">
       <div class="barra" style="margin-bottom:6px">
