@@ -505,10 +505,11 @@ async function vistaCotta(id) {
     const giornoOggi = c.data ? diffGiorni(c.data, oggiISO()) + 1 : null;
     const g = gruppo();
     const ogLotto = g.length > 1 ? ogMedia(g.map(x => (x.id === c.id ? c : x))) : c.og;
-    const a = abv(ogLotto, c.fg);
     const litriConf = litriConfezionati(c);
     const litriGruppo = g.length > 1 ? g.reduce((t, x) => t + (Number(x.id === c.id ? c.litri : x.litri) || 0), 0) : c.litri;
     const ultimaLettura = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
+    // ABV: con la FG se c'è, altrimenti con l'ultima densità misurata (stima che cresce con la fermentazione)
+    const a = abv(ogLotto, c.fg ?? (ultimaLettura ? Number(ultimaLettura.densita) : null));
     const salvPrima = document.getElementById('salv');
     $app.innerHTML = html`
       <div class="testa-scheda">
