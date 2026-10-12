@@ -207,24 +207,6 @@ document.addEventListener('keydown', e => {
 // ---------- Lista cotte ----------
 const filtri = { q: '', anno: '', stato: '', limite: 60 };
 
-// Lotti e scadenze da copiare: birre in fermentatore, pianificate a breve e confezionate negli ultimi 4 mesi (una riga per lotto)
-function lottiDaCopiare() {
-  const oggi = oggiISO();
-  const lottiScad = [];
-  const visti = new Set();
-  for (const c of [...stato.cotte].filter(c => c.data && !c.eliminato).sort((a, b) => b.data.localeCompare(a.data))) {
-    const s = statoCotta(c, stato.durate);
-    const recente = s === 'tank' || (s === 'pianificata' && c.data <= addGiorni(oggi, 21)) || (s === 'confezionata' && fineCotta(c, stato.durate) >= addGiorni(oggi, -120));
-    if (!recente) continue;
-    const g = gruppoCotta(c, stato.cotte);
-    if (visti.has(g[0].id)) continue;
-    visti.add(g[0].id);
-    lottiScad.push({ c: g[0], s, testo: testoLottoScadenza(g[0], stato.cotte, stato.durate), scad: scadenzaCotta(g[0], stato.cotte, stato.durate) });
-  }
-  return lottiScad;
-}
-
-const lottiAperti = () => { try { return localStorage.getItem('gb-lotti-aperti') !== '0'; } catch { return true; } };
 function vistaCotte() {
   const anni = [...new Set(stato.cotte.map(c => c.anno).filter(Boolean))].sort((a, b) => b - a);
   const q = filtri.q.trim().toLowerCase();
@@ -244,7 +226,6 @@ function vistaCotte() {
     const g = gruppoCotta(c, stato.cotte);
     if (g.length > 1) lotti.set(c.id, lottoGruppo(g));
   }
-  const lottiScad = !q && !filtri.stato ? lottiDaCopiare() : [];
   $app.innerHTML = html`
     <div class="barra">
       <h1 style="margin:0">Cotte</h1>
@@ -260,22 +241,13 @@ function vistaCotte() {
       <button data-stato="" class="${filtri.stato ? '' : 'attivo'}" aria-pressed="${!filtri.stato}">Tutte <b>${filtrate.length}</b></button>
       ${['tank', 'pianificata', 'confezionata', 'chiusa'].map(k => [k, STATI[k]]).map(([k, v]) => html`<button data-stato="${k}" class="${k === filtri.stato ? 'attivo' : ''}" aria-pressed="${k === filtri.stato}">${v} <b>${perStato.get(k) || 0}</b></button>`)}
     </div>
-    ${lottiScad.length ? html`<details class="scheda lotti-box" ${lottiAperti() ? 'open' : ''}>
-      <summary><h2>Lotti e scadenze <span class="totale">${lottiScad.length}</span></h2></summary>
-      <p class="totale" style="margin:0 0 8px">Scadenza = mese del confezionamento (o della fine in FV) + 12 mesi, 24 per le birre forti. Si cambia nella scheda della cotta, sezione Confezionamento.</p>
-      <div class="lista-lotti">${lottiScad.map(x => html`<div class="riga-lotto">
-        <span class="chip ${x.s}">${STATI[x.s]}</span>
-        <a href="#/cotta/${encodeURIComponent(x.c.id)}" class="birra">${x.c.birra}</a>
-        <span class="num">${x.testo.replace(/^Lotto /, '')}${x.scad?.stimata ? html` <span class="totale" title="Stimata: diventa definitiva con la data di confezionamento o scrivendola nella scheda">(stimata)</span>` : ''}</span>
-        <button class="piccolo copia-lotto" data-copia="${x.testo}" title="Copia: ${x.testo}">⧉ Copia</button>
-      </div>`)}</div>
-    </details>` : ''}
     <div class="lista">
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta ${s}" href="#/cotta/${encodeURIComponent(c.id)}">
           <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<small title="Cotta doppia/tripla">${lotti.get(c.id)}</small>` : ''}</span>
           <span class="birra">${c.birra || 'Senza nome'}${c.materiePrime && ['pianificata', 'tank'].includes(s) ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
           <span class="chip ${s}">${STATI[s]}</span>
+          ${(() => { const t = testoLottoScadenza(c, stato.cotte, stato.durate); return html`<button class="piccolo copia-lotto" data-copia="${t}" title="Copia: ${t}" aria-label="Copia lotto e scadenza">⧉<span class="solo-desktop"> Lotto e scad.</span></button>`; })()}
           <span class="dett">${dataIT(c.data)}${c.stile ? ` · ${c.stile}` : ''} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
         </a>`) : html`<p class="vuoto">Nessuna cotta trovata.</p>`}
     </div>
@@ -290,8 +262,6 @@ function vistaCotte() {
   };
   document.getElementById('nuova').onclick = () => dialogNuovaCotta();
   $app.onclick = e => { const b = e.target.closest('[data-copia]'); if (b) { e.preventDefault(); copia(b.dataset.copia); } };
-  const box = document.querySelector('.lotti-box');
-  if (box) box.ontoggle = () => { try { localStorage.setItem('gb-lotti-aperti', box.open ? '1' : '0'); } catch {} };
   const altre = document.getElementById('altre');
   if (altre) altre.onclick = () => { filtri.limite += 100; vistaCotte(); };
 }
