@@ -10,6 +10,7 @@ import * as magBirra from './vista-birra.js';
 import * as costi from './vista-costi.js';
 import * as ordine from './vista-ordine.js';
 import * as cerca from './vista-cerca.js';
+import * as listini from './vista-listini.js';
 import * as backup from './backup.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
@@ -44,7 +45,7 @@ function toast(msg) {
 }
 
 // copia negli appunti (con ripiego per i browser senza Clipboard API)
-async function copia(testo) {
+async function copia(testo, messaggio) {
   try { await navigator.clipboard.writeText(testo); }
   catch {
     const t = document.createElement('textarea');
@@ -52,7 +53,7 @@ async function copia(testo) {
     document.body.appendChild(t); t.select();
     try { document.execCommand('copy'); } finally { t.remove(); }
   }
-  toast(`Copiato: ${testo}`);
+  toast(messaggio || `Copiato: ${testo}`);
 }
 
 // conferma dentro la pagina (confirm() non è disponibile ovunque)
@@ -74,6 +75,7 @@ statistiche.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO });
 cerca.init({ $app, html, db, stato, dataIT });
 ordine.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia });
 costi.init({ $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO });
+listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
@@ -171,6 +173,7 @@ const routes = [
   [/^#\/birra-inventario$/, () => magBirra.vistaInventario()],
   [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
   [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
+  [/^#\/listini$/, () => listini.vistaListini()],
   [/^#\/statistiche$/, () => statistiche.vistaStatistiche()],
   [/^#\/costi$/, () => costi.vistaCosti()],
   [/^#\/ordine$/, () => ordine.vistaOrdine()],
@@ -185,7 +188,7 @@ async function render() {
   $app.oninput = $app.onchange = $app.onclick = null;
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro-s6|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/movbirra/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi'))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro-s6|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini)/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi'))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
