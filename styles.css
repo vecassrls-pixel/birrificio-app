@@ -576,3 +576,5 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 /* Inventario: il pulsante Salva resta sempre in vista mentre si scorre l'elenco */
 .salva-inv { position: sticky; bottom: calc(12px + var(--nav-h) + env(safe-area-inset-bottom)); z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px 10px; box-shadow: var(--ombra); }
 .riga-cotta .copia-lotto { grid-row: 1 / 3; grid-column: 4; }
+/* in stampa solo l'app: niente barre o pulsanti aggiunti da fuori (es. la barra di Netlify) */
+@media print { body > :not(#app), html > :not(head):not(body) { display: none !important; } }
