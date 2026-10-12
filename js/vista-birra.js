@@ -56,7 +56,7 @@ export async function vistaBirra() {
     <div class="barra">
       <div><h1 style="margin:0">Birra</h1><div class="kpi">
         <div><b>${u.numIT(tot('fusto'), 0)}</b>fusti</div>
-        <div><b>${u.numIT(tot('lattina/bottiglia'), 0)}</b>lattine/bottiglie</div>
+        <div><b>${u.numIT(tot('lattina/bottiglia'), 0)}</b>lattine</div>
         <div><b>${litri(g.reduce((t, x) => t + Math.max(0, x.litriTot), 0))}</b>in magazzino</div>
         <div><b>${inScadenza}</b>scaduti o in scadenza</div>
       </div></div>

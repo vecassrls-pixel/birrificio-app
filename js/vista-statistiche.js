@@ -48,7 +48,7 @@ export function movimentiStatistiche(cotte, articoli, oggi) {
       const litri = (Number(x.pezzi) || 0) * (Number(x.litri) || 0);
       if (!litri) continue;
       const data = x.data && x.data <= oggi ? x.data : c.data;
-      const formato = `${x.tipo === 'fusto' ? 'Fusti' : x.tipo === 'lattina/bottiglia' ? 'Lattine/bottiglie' : x.tipo || 'Altro'} ${u ? u.numIT(Number(x.litri), 2) : x.litri} L`;
+      const formato = `${x.tipo === 'fusto' ? 'Fusti' : x.tipo === 'lattina/bottiglia' ? 'Lattine' : x.tipo || 'Altro'} ${u ? u.numIT(Number(x.litri), 2) : x.litri} L`;
       confezionati.push({ data, litri, pezzi: Number(x.pezzi) || 0, birra, stile, formato });
     }
     for (const sez of SEZIONI) {

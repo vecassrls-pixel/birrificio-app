@@ -1,4 +1,4 @@
-// Listini di vendita: si parte dal listino base "Alpha" (prezzi scritti a mano per birra e formato);
+// Listini di vendita: si parte dal listino base "Alpha" (prezzi scritti a mano per ogni prodotto: birra + formato);
 // gli altri listini sono Alpha + un ricarico in % (anche negativo = sconto).
 //
 // Record nell'archivio:
@@ -6,7 +6,7 @@
 //             arrotonda (€, 0 = al centesimo; per eccesso), iva (true = prezzi IVA inclusa),
 //             prodotti: 'magazzino' (solo con giacenza) | 'tutti', esclusi: [chiavi prodotto],
 //             fissi: { chiave: € } (prezzo scritto a mano, vince sul calcolo), note }
-//   Alpha ha id 'listino-alpha' e in più prezzi: { "BIRRA|tipo|litri" o "*|tipo|litri" (formato, vale per tutte le birre): € IVA esclusa }.
+//   Alpha ha id 'listino-alpha' e in più prezzi: { "BIRRA|tipo|litri": € IVA esclusa }; i suoi esclusi = prodotti che non si vendono (fuori da tutti i listini).
 //   I prezzi di vendita della pagina Costi restano separati (servono per ricavi e margini).
 
 import { daChiave, nomeFormato } from './birra.js';
@@ -23,9 +23,8 @@ export const listinoDa = rec => ({ ...(rec.id === ID_ALPHA ? nuovoAlpha() : nuov
 // Alpha non ha ricarico né prezzi fissati: il suo prezzo è quello scritto nella colonna Base
 export const perCalcolo = l => (l.id === ID_ALPHA ? { ...l, ricarico: 0, fissi: {} } : l);
 
-const chiaveFormato = p => `*|${p.tipo}|${p.litri}`;
 export function prezzoBase(vendita, chiave) {
-  const v = vendita[chiave] ?? vendita[chiaveFormato(daChiave(chiave))];
+  const v = vendita[chiave];
   return Number(v) > 0 ? Number(v) : null;
 }
 // per eccesso al passo scelto (0,10 € → 4,32 diventa 4,40); i centesimi sempre
@@ -41,8 +40,11 @@ export function prezzoListino(base, l) {
 }
 
 // Righe del listino. giacenze: Map chiave → { giacenza } (da giacenzeBirra), chiavi: tutti i prodotti conosciuti,
-// vendita: i prezzi di Alpha (alpha.prezzi).
-export function righeListino(l, chiavi, giacenze, vendita) {
+// vendita: i prezzi di Alpha (alpha.prezzi); fuoriAlpha: prodotti tolti da Alpha (non si vendono).
+// Gli altri listini mostrano solo i prodotti con un prezzo in Alpha.
+export function righeListino(l, chiavi, giacenze, vendita, fuoriAlpha = []) {
+  const alpha = l.id === ID_ALPHA;
+  const fuori = new Set(alpha ? [] : fuoriAlpha);
   l = perCalcolo(l);
   const esclusi = new Set(l.esclusi);
   return chiavi
@@ -55,7 +57,7 @@ export function righeListino(l, chiavi, giacenze, vendita) {
       const prezzo = fisso ?? calcolato;
       return { ...p, formato: nomeFormato(p.tipo, p.litri), giacenza, base, baseBirra: vendita[chiave] ?? null, calcolato, fisso, prezzo, escluso: esclusi.has(chiave), alLitro: prezzo && p.litri ? prezzo / p.litri : null };
     })
-    .filter(r => l.prodotti === 'tutti' || r.giacenza > 0)
+    .filter(r => (l.prodotti === 'tutti' || r.giacenza > 0) && (alpha || (r.base && !fuori.has(r.chiave))))
     .sort((a, b) => a.birra.localeCompare(b.birra, 'it') || a.tipo.localeCompare(b.tipo) || b.litri - a.litri);
 }
 // righe che finiscono nel testo copiato

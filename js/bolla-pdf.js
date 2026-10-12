@@ -39,12 +39,18 @@ export async function estraiTesto(file) {
 
 // ---------- 2. lettura del DDT ----------
 const COLONNE = [
-  ['codice', /^(articolo|codice|cod\.?|art\.?)$/i],
+  ['codice', /^(articolo|codice|cod\.?|art\.?)(\s+articolo)?$/i],
   ['descrizione', /^descrizione/i],
   ['lotto', /^lotto/i],
   ['scadenza', /scadenza|^tmc/i],
   ['um', /^(u\.?\s?m\.?|unit)/i],
   ['qta', /^(quantit|q\.?t[aà]\.?)/i],
+  // colonne che non servono, riconosciute solo perché i loro numeri non finiscano nella quantità
+  ['prezzo', /^prezzo/i],
+  ['sconti', /^scont/i],
+  ['importo', /^importo/i],
+  ['consegna', /^data$/i],
+  ['iva', /iva$/i],
 ];
 const DATA = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/;
 export const dataISO = s => {
@@ -80,6 +86,7 @@ const FORNITORI = [
   [/birramia/i, 'Birramia'],
   [/hopsteiner/i, 'Hopsteiner'],
   [/barth\s?haas/i, 'BarthHaas'],
+  [/bioenologia/i, 'Bioenologia 2.0'],
 ];
 
 export function leggiDdt(pagine) {
@@ -88,12 +95,13 @@ export function leggiDdt(pagine) {
   out.fornitore = (FORNITORI.find(([re]) => re.test(testo)) || [])[1] || '';
   for (const pagina of pagine) {
     const righe = righeDi(pagina);
-    // numero e data del documento: la cella dopo l'etichetta
+    // numero e data del documento: la cella dopo l'etichetta, o quella sotto (intestazioni a tabella)
+    const sotto = c => pagina.filter(x => x.y < c.y && c.y - x.y <= 30 && Math.abs(x.x - c.x) <= 40).sort((a, b) => b.y - a.y);
     for (const r of righe) {
       r.celle.forEach((c, i) => {
-        const dopo = r.celle[i + 1]?.s || '';
-        if (!out.numero && /^(n\.?|num\.?|numero)\s*(doc|ddt|documento)?\.?:?$/i.test(c.s) && /\d/.test(dopo)) out.numero = dopo;
-        if (!out.data && /^data\s*(doc|ddt|documento)?\.?:?$/i.test(c.s) && dataISO(dopo)) out.data = dataISO(dopo);
+        const valori = [r.celle[i + 1]?.s || '', ...sotto(c).map(x => x.s)];
+        if (!out.numero && /^(n\.?|num\.?|numero)\s*(doc|ddt|documento)?\.?:?$/i.test(c.s)) out.numero = valori.find(v => /\d/.test(v) && !dataISO(v)) || '';
+        if (!out.data && /^data\s*(doc|ddt|documento)?\.?:?$/i.test(c.s)) out.data = dataISO(valori.find(v => dataISO(v)) || '');
       });
     }
     const iTesta = righe.findIndex(r => r.celle.some(c => COLONNE[1][1].test(c.s)) && r.celle.some(c => COLONNE[5][1].test(c.s)));
@@ -109,10 +117,19 @@ export function leggiDdt(pagine) {
       const v = {};
       for (const c of r.celle) { const k = colonnaDi(c.x); v[k] = v[k] ? `${v[k]} ${c.s}` : c.s; }
       const qta = numeroIT(v.qta);
+      // riga sotto l'articolo con "lotto: 6126B130 data scadenza: 24/11/2026" (Bioenologia)
+      const testoRiga = r.celle.map(c => c.s).join(' ');
+      const ultima = out.righe[out.righe.length - 1];
+      if (qta === null && ultima && /\blotto\b/i.test(testoRiga)) {
+        ultima.lotto ||= (/\blotto\s*:?\s*([\w/-]+)/i.exec(testoRiga) || [])[1] || '';
+        ultima.scadenza ||= dataISO((/scadenza\s*:?\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})/i.exec(testoRiga) || [])[1]);
+        continue;
+      }
       if (qta === null || !v.descrizione) continue; // note, testi di legge, totali
       out.righe.push({
         codice: v.codice || '', descrizione: v.descrizione, lotto: v.lotto || '',
         scadenza: dataISO(v.scadenza), um: (v.um || '').toUpperCase(), qta,
+        ...(numeroIT(v.prezzo) > 0 ? { prezzo: numeroIT(v.prezzo) } : {}),
       });
     }
   }
@@ -136,14 +153,15 @@ export function confezione(desc) {
 export function nomeDaDescrizione(desc) {
   return String(desc || '').replace(/®|™/g, ' ')
     .replace(/(\d+(?:[.,]\d+)?)\s*(kg|gr|g|lt|l|ml)\b/gi, ' ').replace(/\b(kg|gr|g|lt|l|ml)\s*\d+(?:[.,]\d+)?\b/gi, ' ')
+    .replace(/\bconf(ezione)?\.?(\s+da)?\b/gi, ' ')
     .replace(/\b(luppolo|hops|pellets?|t90|t45|malto|monoidratato|in grani)\b/gi, ' ')
-    .replace(/\s+\d+\s*$/, '').replace(/\s+/g, ' ').trim();
+    .replace(/\s+[1-9]\d*\s*$/, '').replace(/\s+/g, ' ').trim();
 }
 
 export function categoriaDaDescrizione(desc) {
   const d = String(desc || '').toLowerCase();
   if (/luppol|hops?\b|pellet/.test(d)) return 'luppolo';
-  if (/lievit|yeast|safale|saflager|safale|\bus-?05\b|\bw-?34|nottingham|verdant|novalager|\bwlp|wyeast/.test(d)) return 'lievito';
+  if (/lievit|yeast|atecrem|fermoale|fermolager|safale|saflager|safale|\bus-?05\b|\bw-?34|nottingham|verdant|novalager|\bwlp|wyeast/.test(d)) return 'lievito';
   if (/zucchero|destros|saccaros|maltodestr|lattosio|miele|candi/.test(d)) return 'zucchero';
   if (/malt|fiocchi|avena|frumento|wheat|oats|orzo|segale|lolla|riso|mais/.test(d)) return 'malto';
   if (/gypsum|gesso|clorur|chlorur|solfato|calcio|magnesi|bicarbonat|\bsale\b|brewmix/.test(d)) return 'sale';
@@ -162,8 +180,11 @@ export function proponiRighe(ddt, articoli) {
     let qta = pezzi && conf ? r.qta * conf.qta : r.qta;
     let unita = pezzi ? (conf?.unita || 'pz') : (UNITA_PDF[r.um.toLowerCase()] || 'pz');
     // articolo già noto: stessa descrizione vista in una bolla precedente, oppure nome uguale
+    const parole = new Set(chiaveNome(r.descrizione).split(' '));
     const art = articoli.find(a => (a.alias || []).some(x => compatta(x) === compatta(r.descrizione)))
-      || trovaArticolo(articoli, nomeDaDescrizione(r.descrizione));
+      || trovaArticolo(articoli, nomeDaDescrizione(r.descrizione))
+      // nome corto dentro la descrizione: articolo "LN3" per "ATECREM ALE LN3 Conf. da Kg 1"
+      || articoli.find(a => { const p = chiaveNome(a.nome).split(' ').filter(Boolean); return p.join('').length >= 3 && p.every(x => parole.has(x)) && /\d/.test(a.nome); });
     // senza peso nella descrizione: il peso per pezzo dell'articolo (lolla di riso: 1 sacco = 20 kg)
     if (pezzi && !conf && art?.pesoPezzo > 0) { qta = r.qta * art.pesoPezzo; unita = art.unita; }
     const categoria = art?.categoria || categoriaDaDescrizione(r.descrizione);
@@ -174,6 +195,8 @@ export function proponiRighe(ddt, articoli) {
       unita,
       lotto: r.lotto,
       scadenza: r.scadenza,
+      // prezzo per unità del magazzino (se la riga è a pezzi convertiti in kg, diviso per la confezione)
+      ...(r.prezzo > 0 ? { prezzo: Math.round((qta && r.qta ? r.prezzo * r.qta / qta : r.prezzo) * 10000) / 10000 } : {}),
       descrizione: r.descrizione,
       codice: r.codice,
       // si caricano solo le materie prime con un codice articolo: niente spese, CONAI, fusti

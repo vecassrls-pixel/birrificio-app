@@ -2,9 +2,9 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo,
 } from './magazzino.js';
-import { estraiTesto, leggiDdt, proponiRighe } from './bolla-pdf.js';
+import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -541,7 +541,9 @@ export async function vistaScarico(id) {
   const carico = () => sc.verso === 'carico';
   // le giacenze senza questo scarico, per proporre i lotti disponibili
   const g = giacenze({ ...dati, scarichi: dati.scarichi.filter(x => x.id !== sc.id) });
-  const perNome = n => dati.articoli.find(a => a.nome.toLowerCase() === String(n || '').trim().toLowerCase());
+  // nel carico si riconoscono anche i nomi simili e gli alias (Gypsum = Gesso)
+  const perNome = n => dati.articoli.find(a => a.nome.toLowerCase() === String(n || '').trim().toLowerCase())
+    || (carico() && String(n || '').trim() ? trovaArticolo(dati.articoli, n) : null);
   for (const r of sc.righe) r.nome ??= dati.articoli.find(a => a.id === r.articoloId)?.nome || '';
   const destinatari = [...new Set(dati.scarichi.map(x => x.destinatario).filter(Boolean))].sort();
 
@@ -575,7 +577,7 @@ export async function vistaScarico(id) {
             const gg = art && g.get(art.id);
             return html`<tr>
               <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px"></td>
-              <td class="n totale">${gg ? fmt(gg.giacenza, art.unita) : ''}</td>
+              <td class="n totale">${gg ? fmt(gg.giacenza, art.unita) : carico() && String(r.nome || '').trim() ? html`<select data-r="${i}.categoria" title="Articolo nuovo: si crea al salvataggio in questa categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (r.categoria || categoriaDaDescrizione(r.nome) || 'aggiunta') ? 'selected' : ''}>Nuovo · ${v}</option>`)}</select>` : ''}</td>
               <td><input data-r="${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
               <td><select data-r="${i}.unita">${UNITA.map(x => html`<option ${x === (r.unita || art?.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></td>
               ${carico() ? html`<td><input data-r="${i}.lotto" value="${r.lotto || ''}" placeholder="facoltativo"></td>
@@ -623,14 +625,22 @@ export async function vistaScarico(id) {
     } else if (t.id === 'salva') {
       const righe = sc.righe.filter(r => String(r.nome || '').trim() && Number(r.qta) > 0);
       const ignoti = righe.filter(r => !perNome(r.nome));
-      if (ignoti.length) return u.toast(`Articolo non trovato: ${ignoti.map(r => r.nome).join(', ')}`);
+      if (ignoti.length && !carico()) return u.toast(`Articolo non trovato: ${ignoti.map(r => r.nome).join(', ')}`);
       if (!sc.data || !righe.length) return u.toast('Servono la data e almeno una riga con articolo e quantità');
+      // carico: gli articoli che non esistono si creano qui
+      const nuovi = [];
+      for (const r of ignoti) {
+        const nome = String(r.nome).trim();
+        if (nuovi.some(a => a.nome.toLowerCase() === nome.toLowerCase())) continue;
+        nuovi.push({ tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: r.categoria || categoriaDaDescrizione(nome) || 'aggiunta', unita: r.unita || 'kg', scortaMin: 0, alias: [], creato: [sc.data, u.oggiISO()].sort()[0] });
+      }
+      if (nuovi.length) { await u.db.salvaMolti(nuovi); dati.articoli.push(...nuovi); }
       const out = righe.map(r => {
         const art = perNome(r.nome);
         return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: (r.lotto || '').trim(), ...(carico() ? { scadenza: r.scadenza || '' } : {}) };
       });
       await u.db.salva({ ...sc, id: sc.id || u.db.nuovoId('scarico'), righe: out });
-      u.toast(carico() ? 'Carico salvato' : 'Scarico salvato');
+      u.toast(carico() ? `Carico salvato${nuovi.length ? ` · ${nuovi.length === 1 ? '1 articolo nuovo' : `${nuovi.length} articoli nuovi`}` : ''}` : 'Scarico salvato');
       location.hash = '#/materie-prime';
     }
   };
