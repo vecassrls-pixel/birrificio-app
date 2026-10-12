@@ -439,7 +439,13 @@ export async function vistaInventario() {
     })}
     </div>
     ${dati.articoli.length ? html`<div class="barra salva-inv"><span class="totale" id="inv-conta"></span><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
-  const conta = () => { const el = document.getElementById('inv-conta'); if (el) el.textContent = contati.size ? (contati.size === 1 ? "1 articolo da salvare" : `${contati.size} articoli da salvare`) : ''; };
+  const toccati = new Set(); // articoli con lotto o scadenza cambiati a mano
+  // lotto/scadenza scritti senza quantità contata
+  const soloLotto = () => [...toccati].filter(id => !contati.has(id) && (extre.get(id)?.lotto || extre.get(id)?.scadenza));
+  const conta = () => {
+    const n = contati.size + soloLotto().length;
+    const el = document.getElementById('inv-conta'); if (el) el.textContent = n ? (n === 1 ? '1 articolo da salvare' : `${n} articoli da salvare`) : '';
+  };
   u.$app.oninput = e => {
     if (e.target.id === 'nascondi-zero') {
       scriviPref(e.target.checked);
@@ -449,16 +455,45 @@ export async function vistaInventario() {
     if (e.target.id === 'data-inv') data.v = e.target.value;
     const id = e.target.dataset.inv;
     if (id) { if (e.target.value === '') contati.delete(id); else contati.set(id, Number(e.target.value)); conta(); }
-    if (e.target.dataset.lotto) extra(e.target.dataset.lotto).lotto = e.target.value.trim();
-    if (e.target.dataset.scad) extra(e.target.dataset.scad).scadenza = e.target.value;
+    if (e.target.dataset.lotto) { extra(e.target.dataset.lotto).lotto = e.target.value.trim(); toccati.add(e.target.dataset.lotto); conta(); }
+    if (e.target.dataset.scad) { extra(e.target.dataset.scad).scadenza = e.target.value; toccati.add(e.target.dataset.scad); conta(); }
   };
   u.$app.onchange = u.$app.oninput;
   u.$app.onclick = async e => {
     if (e.target.id !== 'salva-inv') return;
-    if (!contati.size) return u.toast('Nessuna quantità inserita');
+    const solo = soloLotto();
+    if (!contati.size && !solo.length) return u.toast('Nessuna quantità, lotto o scadenza inserita');
     if (!data.v) return u.toast('Manca la data');
-    await u.db.salva({ tipo: 'inventario', id: u.db.nuovoId('inventario'), data: data.v, righe: [...contati].map(([articoloId, qta]) => ({ articoloId, qta, lotto: extre.get(articoloId)?.lotto || '', scadenza: extre.get(articoloId)?.scadenza || '' })) });
-    u.toast(`Inventario salvato: ${contati.size} articoli`);
+    // Lotto o scadenza senza quantità: vanno sulla riga d'origine (bolla, carico manuale o inventario)
+    // dei lotti in magazzino che non li hanno; se tutti li hanno già, riga d'inventario con la quantità calcolata.
+    const daAggiornare = new Map(); // id record → [{ path, lotto, scadenza }]
+    const righeInv = [...contati].map(([articoloId, qta]) => ({ articoloId, qta, lotto: extre.get(articoloId)?.lotto || '', scadenza: extre.get(articoloId)?.scadenza || '' }));
+    const gData = data.v === u.oggiISO() ? g : giacenze(dati, data.v);
+    for (const id of solo) {
+      const ex = extre.get(id);
+      const vuoti = g.get(id).lotti.filter(l => l.dove && ((ex.lotto && !l.lotto) || (ex.scadenza && !l.scadenza)));
+      if (vuoti.length) {
+        for (const l of vuoti) {
+          if (!daAggiornare.has(l.dove.id)) daAggiornare.set(l.dove.id, []);
+          daAggiornare.get(l.dove.id).push({ path: l.dove.path, lotto: ex.lotto, scadenza: ex.scadenza });
+        }
+      } else righeInv.push({ articoloId: id, qta: Math.round(gData.get(id).giacenza * 1000) / 1000, lotto: ex.lotto || '', scadenza: ex.scadenza || '' });
+    }
+    for (const [recId, mod] of daAggiornare) {
+      const rec = await u.db.leggi(recId);
+      if (!rec) continue;
+      for (const m of mod) {
+        const [k, i] = m.path.split('.');
+        const r = rec[k]?.[i];
+        if (!r) continue;
+        rec[k][i] = { ...r, lotto: r.lotto || m.lotto || '', scadenza: r.scadenza || m.scadenza || '' };
+      }
+      const { aggiornato: _a, ...daSalvare } = rec;
+      await u.db.salva(daSalvare);
+    }
+    if (righeInv.length) await u.db.salva({ tipo: 'inventario', id: u.db.nuovoId('inventario'), data: data.v, righe: righeInv });
+    const n = contati.size + solo.length;
+    u.toast(`Inventario salvato: ${n} ${n === 1 ? 'articolo' : 'articoli'}`);
     location.hash = '#/materie-prime';
   };
 }

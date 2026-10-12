@@ -168,15 +168,15 @@ export function giacenze({ articoli, bolle, inventari, cotte, scarichi = [] }, o
   }]));
   // ultimo inventario (fino a oggi) per articolo; due inventari nello stesso giorno: vale l'ultimo salvato
   for (const inv of [...inventari].filter(i => i.data && i.data <= oggi).sort((x, y) => x.data.localeCompare(y.data) || String(x.aggiornato || '').localeCompare(String(y.aggiornato || '')))) {
-    for (const r of inv.righe || []) {
+    for (const [i, r] of (inv.righe || []).entries()) {
       const g = res.get(r.articoloId);
-      if (g && r.qta !== null && r.qta !== '' && r.qta !== undefined) g.inventario = { data: inv.data, qta: Number(r.qta), id: inv.id, lotto: r.lotto || '', scadenza: r.scadenza || '' };
+      if (g && r.qta !== null && r.qta !== '' && r.qta !== undefined) g.inventario = { data: inv.data, qta: Number(r.qta), id: inv.id, lotto: r.lotto || '', scadenza: r.scadenza || '', dove: { tipo: 'inventario', id: inv.id, path: `righe.${i}` } };
     }
   }
   for (const g of res.values()) {
     if (g.inventario) {
       g.giacenza = g.inventario.qta;
-      g.movimenti.push({ data: g.inventario.data, tipo: 'inventario', qta: g.inventario.qta, rif: 'Inventario', id: g.inventario.id, lotto: g.inventario.lotto, scadenza: g.inventario.scadenza });
+      g.movimenti.push({ data: g.inventario.data, tipo: 'inventario', qta: g.inventario.qta, rif: 'Inventario', id: g.inventario.id, lotto: g.inventario.lotto, scadenza: g.inventario.scadenza, dove: g.inventario.dove });
     }
   }
   // senza inventario: tutte le bolle, ma solo gli scarichi da quando l'articolo esiste
@@ -243,7 +243,7 @@ function simulaLotti(g) {
       if (m.tipo === 'inventario') { coda.length = 0; debito = 0; }
       const copre = Math.min(debito, m.qta);
       debito -= copre;
-      coda.push({ lotto: m.lotto || '', scadenza: m.scadenza || '', data: m.data, qta: m.qta - copre, rif: m.rif, id: m.id, tipo: m.tipo });
+      coda.push({ lotto: m.lotto || '', scadenza: m.scadenza || '', data: m.data, qta: m.qta - copre, rif: m.rif, id: m.id, tipo: m.tipo, dove: m.dove });
       continue;
     }
     m.lotti = [];
