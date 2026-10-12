@@ -10,7 +10,7 @@ export function init(strumenti) { u = strumenti; }
 
 const filtri = { anno: String(new Date().getFullYear()) };
 const euro = (n, dec = 2) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : `€ ${n.toLocaleString('it-IT', { minimumFractionDigits: dec, maximumFractionDigits: dec })}`);
-const FORMATI = { fusto: 'Fusto', 'lattina/bottiglia': 'Lattina/bottiglia' };
+const FORMATI = { fusto: 'Fusto', 'lattina/bottiglia': 'Lattina' };
 const nomeFormato = (tipo, litri) => `${FORMATI[tipo] || tipo} ${u.numIT(litri, litri < 1 ? 2 : 0)} L`;
 
 export async function datiCosti() {

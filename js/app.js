@@ -688,7 +688,7 @@ async function vistaCotta(id) {
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th>Formato</th><th style="width:90px">Pezzi</th><th style="width:100px">Litri/pezzo</th><th style="width:140px">Data</th><th></th></tr></thead>
           <tbody>${c.confezionato.map((r, i) => html`<tr>
-            <td><select data-path="confezionato.${i}.tipo">${['fusto', 'lattina/bottiglia'].map(t => html`<option ${t === r.tipo ? 'selected' : ''}>${t}</option>`)}</select></td>
+            <td><select data-path="confezionato.${i}.tipo">${['fusto', 'lattina/bottiglia'].map(t => html`<option value="${t}" ${t === r.tipo ? 'selected' : ''}>${t === 'fusto' ? 'fusto' : 'lattina'}</option>`)}</select></td>
             <td><input data-path="confezionato.${i}.pezzi" type="number" step="1" inputmode="numeric" value="${r.pezzi ?? ''}"></td>
             <td><input data-path="confezionato.${i}.litri" type="number" step="any" inputmode="decimal" value="${r.litri ?? ''}"></td>
             <td><input data-path="confezionato.${i}.data" type="date" value="${r.data || ''}"></td>

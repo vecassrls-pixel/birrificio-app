@@ -23,7 +23,7 @@ import { gruppoCotta, lottoGruppo, nomeBirra, numIT, oggiISO, scadenzaCotta } fr
 import { statoScadenza } from './magazzino.js';
 
 export const ID_IMPOSTAZIONI = 'impostazione-birra';
-export const FORMATI = { fusto: 'Fusto', 'lattina/bottiglia': 'Lattina/bottiglia' };
+export const FORMATI = { fusto: 'Fusto', 'lattina/bottiglia': 'Lattina' };
 // scelte dello scarico manuale; 'vendita' è degli scarichi importati da fatture e ordini
 export const MOTIVI_SCARICO = { taproom: 'Taproom', autoconsumo: 'Autoconsumo', spaccio: 'Spaccio', eventi: 'Eventi', altro: 'Altro' };
 const NOMI_MOTIVO = { ...MOTIVI_SCARICO, vendita: 'Vendita' };
