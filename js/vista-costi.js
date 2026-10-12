@@ -116,7 +116,7 @@ export async function vistaCosti() {
       <div class="griglia"><label>Altri costi per ogni cotta (€)<input id="co-altri" type="number" step="any" inputmode="decimal" value="${dati.prezzi.altriCostiCotta || ''}" placeholder="es. energia, CO₂, pulizie"></label></div>
     </div>
     <div class="scheda"><h2>Prezzi di vendita</h2>
-      <p class="totale">Prezzo di un pezzo (fusto, lattina) senza IVA. Serve per ricavo e margine, ed è il prezzo base dei <a href="#/listini">listini</a>.</p>
+      <p class="totale">Prezzo di un pezzo (fusto, lattina) senza IVA. Serve per ricavo e margine (i <a href="#/listini">listini</a> hanno i loro prezzi, nel listino Alpha).</p>
       ${formati.size ? html`<div class="scroll-x"><table class="tab-edit"><thead><tr><th>Formato</th><th style="width:150px">€ al pezzo</th><th class="n">€ al litro</th></tr></thead>
         <tbody>${[...formati].sort((a, b) => a[1].tipo.localeCompare(b[1].tipo) || b[1].litri - a[1].litri).map(([k, f]) => html`<tr>
           <td>${nomeFormato(f.tipo, f.litri)}</td>
