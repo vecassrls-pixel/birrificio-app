@@ -505,3 +505,18 @@ details.st-tabella > summary { cursor: pointer; color: var(--accent); font-weigh
   .st-tile { box-shadow: none; }
 }
 @media (max-width: 760px) { .st-tile:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+/* ---------- tablet (iPad) ---------- */
+.nav-corto { display: none; }
+@media (max-width: 1100px) {
+  .nav-lungo { display: none; }
+  .nav-corto { display: inline; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .top { gap: 10px; }
+  .top nav a { padding: 8px 10px; gap: 6px; }
+  .rete-testo { display: none; } /* resta il pallino, il testo è nel suggerimento */
+  .rete { font-size: 1rem; }
+}
+@media (min-width: 761px) and (max-width: 900px) {
+  .brand img { content: url(img/gb-monogramma-chiaro.png); height: 30px; }
+}

@@ -1354,8 +1354,9 @@ function aggiornaRete(s = statoRete) {
   const el = document.getElementById('rete');
   const online = navigator.onLine;
   el.classList.toggle('off', !online);
-  el.textContent = !online ? '● offline' : s.errore ? '● errore sync' : s.attivo ? '● sincronizzato' : '● solo locale';
-  if (lettore) el.textContent += ' · sola lettura';
+  const testo = (!online ? 'offline' : s.errore ? 'errore sync' : s.attivo ? 'sincronizzato' : 'solo locale') + (lettore ? ' · sola lettura' : '');
+  el.innerHTML = `<span aria-hidden="true">●</span><span class="rete-testo">${testo}</span>`;
+  el.title = `Connessione: ${testo}`;
 }
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
