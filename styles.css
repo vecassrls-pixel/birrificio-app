@@ -441,6 +441,85 @@ label:has(> input[type="checkbox"]) { font-size: .92rem; font-weight: 400; color
   .testa-scheda .stato-salvataggio { font-size: 0; }
   .testa-scheda .stato-salvataggio::before { margin-right: 0; width: 9px; height: 9px; }
 }
+/* ---------- statistiche ---------- */
+.st-anni { margin-bottom: 14px; }
+.st-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.st-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--ombra); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-tile > span { font-size: .78rem; color: var(--muted); font-weight: 500; }
+.st-tile > b { font-size: 1.45rem; line-height: 1.2; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.st-tile > small { font-size: .76rem; color: var(--muted); }
+.delta { font-weight: 700; }
+.delta.su { color: var(--ok); }
+.delta.giu { color: var(--warn); }
+.segmenti { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-2); border-radius: 10px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.segmenti button { min-height: 34px; padding: 4px 12px; border: none; background: none; border-radius: 8px; font-size: .86rem; color: var(--muted); white-space: nowrap; }
+.segmenti button:hover:not(:disabled) { background: color-mix(in srgb, var(--surface) 60%, transparent); color: var(--text); }
+.segmenti button.attivo { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--ombra); }
+.segmenti button b { font-weight: 500; color: var(--muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+#st-ingr { margin-bottom: 12px; }
+/* grafico a colonne */
+.st-grafico { display: flex; align-items: stretch; gap: 6px; height: 220px; overflow-x: auto; padding: 4px 2px 0; scrollbar-width: thin; }
+.st-col {
+  flex: 1 0 34px; min-height: 0; height: 100%; padding: 0; border: none; background: none; border-radius: 8px;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px;
+}
+.st-col:hover:not(:disabled) { background: var(--surface-2); }
+.st-grafico.fitto .st-col { flex-basis: 22px; }
+.st-grafico.fitto .st-val { display: none; }
+.st-val { font-size: .72rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.st-barra { width: min(70%, 44px); min-height: 2px; border-radius: 5px 5px 2px 2px; background: var(--accent); transition: opacity .15s; }
+.st-et { font-size: .74rem; color: var(--muted); padding-bottom: 4px; }
+.st-grafico.con-scelta .st-col:not(.scelto) .st-barra { opacity: .3; }
+.st-col.scelto .st-et, .st-col.scelto .st-val { color: var(--accent); font-weight: 700; }
+.st-col.scelto { background: var(--accent-tenue); }
+details.st-tabella { margin-top: 12px; }
+details.st-tabella > summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: .9rem; padding: 6px 0; }
+/* dettagli a schede */
+.schede-tab { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
+.schede-tab button { flex: none; border: none; background: none; border-radius: 0; min-height: 42px; padding: 8px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.schede-tab button:hover:not(:disabled) { background: none; color: var(--text); }
+.schede-tab button.attivo { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.pannello { display: none; }
+.pannello.attivo { display: block; }
+.solo-stampa { display: none; }
+.filtro-attivo { background: var(--accent-tenue); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--accent); font-weight: 600; }
+.tab-quote td.nome { font-weight: 500; }
+.tab-quote th.quota, .tab-quote td.quota { width: 28%; min-width: 150px; }
+.tab-quote td.quota > div { display: flex; align-items: center; gap: 8px; }
+.tab-quote td.quota .n { width: 46px; text-align: right; font-size: .82rem; color: var(--muted); }
+.quota-barra { flex: 1; height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.quota-barra > span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+@media (max-width: 760px) {
+  .st-kpi { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .st-tile { padding: 10px 12px; }
+  .st-tile > b { font-size: 1.2rem; }
+  .st-grafico { height: 180px; gap: 4px; }
+  .st-col { flex-basis: 26px; }
+  .tab-quote th.quota, .tab-quote td.quota { min-width: 110px; }
+}
+@media print {
+  .st-anni, .segmenti, .schede-tab, .st-col:hover { display: none !important; }
+  .pannello { display: block !important; margin-bottom: 12px; }
+  .solo-stampa { display: block; }
+  details.st-tabella { display: block; } details.st-tabella > summary { display: none; }
+  .st-tile { box-shadow: none; }
+}
+@media (max-width: 760px) { .st-tile:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+/* ---------- tablet (iPad) ---------- */
+.nav-corto { display: none; }
+@media (max-width: 1100px) {
+  .nav-lungo { display: none; }
+  .nav-corto { display: inline; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .top { gap: 10px; }
+  .top nav a { padding: 8px 10px; gap: 6px; }
+  .rete-testo { display: none; } /* resta il pallino, il testo è nel suggerimento */
+  .rete { font-size: 1rem; }
+}
+@media (min-width: 761px) and (max-width: 900px) {
+  .brand img { content: url(img/gb-monogramma-chiaro.png); height: 30px; }
+}
 /* magazzino birra */
 .tab-birra tr.gruppo-birra td { font-weight: 700; padding-top: 14px; border-bottom: 1px solid var(--border); }
 .tab-birra tr:not(.gruppo-birra) td:first-child { padding-left: 14px; }

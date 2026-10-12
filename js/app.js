@@ -65,12 +65,28 @@ function chiedi(msg, ok = 'Conferma') {
 // ---------- dati in memoria ----------
 const stato = { cotte: [], fv: [], durate: new Map() };
 magazzino.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
-statistiche.init({ $app, html, db, stato, dataIT, numIT, oggiISO });
+statistiche.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
+  if (await correggiRegula()) stato.cotte = await db.tutti('cotta');
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
   stato.durate = durateTipiche(stato.cotte);
+}
+// Correzione dello storico importato (ok di Romain, 2026-10-12): nelle cotte di Regula lo Styrian era
+// 1250 kg invece di 1,25 kg e il nome era "SCHEDA COTTA REGULA". Si sistema una volta, poi non trova più nulla.
+const styrianSbagliato = r => /styrian/i.test(r.nome || '') && r.unita === 'kg' && Number(r.qta) >= 100;
+async function correggiRegula() {
+  const da = stato.cotte.filter(c => !c.eliminato && /REGULA/i.test(c.birra || '')
+    && (c.birra === 'SCHEDA COTTA REGULA' || (c.luppoli || []).some(styrianSbagliato)));
+  if (!da.length || lettore) return false;
+  const corrette = da.map(({ aggiornato, daSincronizzare, ...c }) => ({
+    ...c,
+    birra: c.birra === 'SCHEDA COTTA REGULA' ? 'REGULA' : c.birra,
+    luppoli: (c.luppoli || []).map(r => (styrianSbagliato(r) ? { ...r, qta: Number(r.qta) / 1000 } : r)),
+  }));
+  try { await db.salvaMolti(corrette); return true; }
+  catch { return false; /* sola lettura: lo sistemerà chi può modificare */ }
 }
 const birreNote = () => [...new Set(stato.cotte.map(c => nomeBirra(c.birra)).filter(Boolean))].sort();
 // Stile: quello già usato per la stessa birra, e la lista per i suggerimenti
@@ -1346,13 +1362,14 @@ function aggiornaRete(s = statoRete) {
   const el = document.getElementById('rete');
   const online = navigator.onLine;
   el.classList.toggle('off', !online);
-  el.textContent = !online ? '● offline' : s.errore ? '● errore sync' : s.attivo ? '● sincronizzato' : '● solo locale';
-  if (lettore) el.textContent += ' · sola lettura';
+  const testo = (!online ? 'offline' : s.errore ? 'errore sync' : s.attivo ? 'sincronizzato' : 'solo locale') + (lettore ? ' · sola lettura' : '');
+  el.innerHTML = `<span aria-hidden="true">●</span><span class="rete-testo">${testo}</span>`;
+  el.title = `Connessione: ${testo}`;
 }
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.copia-lotto, #b-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;
