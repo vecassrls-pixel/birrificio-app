@@ -939,6 +939,14 @@ function set(o, path, v) {
 
 // ---------- Planning ----------
 const plan = { inizio: null, giorni: 84 };
+// cotta doppia/tripla: se i giorni del dry hop sono scritti solo su un'altra cotta del gruppo, valgono per la barra
+const conDh = x => (x.luppoli || []).some(r => r.uso === 'dry hop' && Number(r.giorno) > 0);
+function conGiorniDh(cotte) {
+  const c0 = cotte[0], altra = conDh(c0) ? null : cotte.find(conDh);
+  if (!altra) return c0;
+  const sposta = diffGiorni(c0.data, altra.data);
+  return { ...c0, luppoli: altra.luppoli.map(r => (r.uso === 'dry hop' && Number(r.giorno) > 0 ? { ...r, giorno: Number(r.giorno) + sposta } : r)) };
+}
 const W = 30; // pixel per giorno
 
 // Export del planning in Excel: righe = FV, colonne = giorni, colori come nell'app.
@@ -1133,7 +1141,7 @@ function vistaPlanning() {
             // sfondo a fasi: arancione fermentazione, viola DH, celeste maturazione
             const da = b.da < plan.inizio ? plan.inizio : b.da, a = b.a > fineVista ? fineVista : b.a;
             const tot = diffGiorni(da, a) + 1;
-            const stops = fasiCotta(c0, stato.durate).filter(f => f.a >= da && f.da <= a).map(f => {
+            const stops = fasiCotta(conGiorniDh(b.cotte), stato.durate).filter(f => f.a >= da && f.da <= a).map(f => {
               const x0 = diffGiorni(da, f.da < da ? da : f.da) / tot * 100, x1 = (diffGiorni(da, f.a > a ? a : f.a) + 1) / tot * 100;
               return `var(--f-${f.fase}) ${x0.toFixed(2)}% ${x1.toFixed(2)}%`;
             });

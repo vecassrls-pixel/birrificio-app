@@ -41,6 +41,8 @@ export const conAdditiviDefault = (sali = []) => [
 // 1. note di fase nel registro (Fermentazione / DH / Maturazione): valgono fino alla nota successiva;
 // 2. altrimenti le temperature: maturazione dal primo giorno a <= 8 °C, DH nei 4 giorni prima;
 // 3. se il profilo non scende mai a freddo, le fasi di default (10 fermentazione, 4 DH, poi freddo).
+// Se sui luppoli c'è il giorno del dry hop, il DH parte da lì e dura fino al freddo del registro
+// (senza registro: 4 giorni, comunque fino all'ultima aggiunta).
 // Cotta senza dry hop (c.dh === false): i giorni di DH restano fermentazione.
 export const FASI = { fermentazione: 'Fermentazione', dh: 'DH', maturazione: 'Maturazione a freddo' };
 const faseDaNota = n => (/^\s*(dh|dry)/i.test(n) ? 'dh' : /matur|fredd|cold/i.test(n) ? 'maturazione' : /^\s*ferm/i.test(n) ? 'fermentazione' : null);
@@ -50,7 +52,7 @@ export function fasiCotta(c, durate) {
   const fine = fineCotta(c, durate);
   const log = (c.fermentazione || []).filter(e => e.data).sort((x, y) => x.data.localeCompare(y.data));
   const note = log.map(e => ({ data: e.data, fase: faseDaNota(e.nota || '') })).filter(x => x.fase);
-  let faseDi;
+  let faseDi, daDefault = false;
   if (note.length) {
     faseDi = d => { let f = 'fermentazione'; for (const n of note) if (n.data <= d) f = n.fase; return f; };
   } else {
@@ -61,9 +63,24 @@ export function fasiCotta(c, durate) {
       const inizioDh = addGiorni(freddo.data, -FASI_DEFAULT[1].giorni);
       faseDi = d => (d >= freddo.data ? 'maturazione' : d >= inizioDh ? 'dh' : 'fermentazione');
     } else {
+      daDefault = true;
       const g1 = FASI_DEFAULT[0].giorni, g2 = g1 + FASI_DEFAULT[1].giorni;
       faseDi = d => { const g = diffGiorni(c.data, d); return g < g1 ? 'fermentazione' : g < g2 ? 'dh' : 'maturazione'; };
     }
+  }
+  // giorni del dry hop scritti sui luppoli della scheda (1 = giorno di cotta): il viola parte dal primo
+  const giorniDh = (c.luppoli || []).filter(r => r.uso === 'dry hop' && Number(r.giorno) > 0).map(r => Number(r.giorno)).sort((a, b) => a - b);
+  if (giorniDh.length) {
+    const inizioDh = addGiorni(c.data, giorniDh[0] - 1);
+    const ultimoDh = addGiorni(c.data, giorniDh[giorniDh.length - 1] - 1);
+    let freddo = null;
+    if (!daDefault) for (let d = inizioDh; d <= fine; d = addGiorni(d, 1)) if (faseDi(d) === 'maturazione') { freddo = d; break; }
+    if (!freddo || freddo <= ultimoDh) {
+      const minimo = addGiorni(inizioDh, FASI_DEFAULT[1].giorni);
+      freddo = minimo > ultimoDh ? minimo : addGiorni(ultimoDh, 1);
+    }
+    const base = faseDi;
+    faseDi = d => (d < inizioDh ? (base(d) === 'dh' ? 'fermentazione' : base(d)) : d < freddo ? 'dh' : 'maturazione');
   }
   const out = [];
   for (let d = c.data; d <= fine; d = addGiorni(d, 1)) {
