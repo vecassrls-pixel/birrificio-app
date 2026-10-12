@@ -137,16 +137,7 @@ export function unisci(esistente, b, letture = []) {
   };
   for (const [k, v] of Object.entries(misurati)) if (v !== null) c[k] = v;
   if (c.og == null && b.recipe?.og) c.og = sgAPlato(num(b.recipe.og));
-  const w = b.recipe?.data || {};
-  c.acquaMash = { ...c.acquaMash };
-  c.acquaSparge = { ...c.acquaSparge };
-  // durata del whirlpool: il tempo più lungo dei luppoli in whirlpool/aroma della ricetta
-  const wp = (b.recipe?.hops || []).filter(h => h.use === 'Aroma' || h.use === 'Whirlpool').map(h => num(h.time)).filter(t => t > 0);
-  if (c.whirlpoolMin == null && wp.length) c.whirlpoolMin = Math.max(...wp);
-  if (c.acquaMash.litri == null && num(w.mashWaterAmount) !== null) c.acquaMash.litri = Math.round(num(w.mashWaterAmount));
-  if (c.acquaSparge.litri == null && num(w.spargeWaterAmount) !== null) c.acquaSparge.litri = Math.round(num(w.spargeWaterAmount));
-  const step = b.recipe?.mash?.steps?.[0];
-  if (c.acquaMash.tempMash == null && step && num(step.stepTemp) !== null) c.acquaMash.tempMash = num(step.stepTemp);
+  completaDaRicetta(c, b.recipe);
 
   // fermentazione: profilo dalla ricetta se manca, poi letture del densimetro sui giorni corrispondenti
   if (!c.fermentazione.length && data) c.fermentazione = profiloDaRicetta(b, data);
@@ -164,6 +155,51 @@ export function unisci(esistente, b, letture = []) {
   const misure = { og: misurati.og, fg: misurati.fg, litri: misurati.litri, phMash: misurati.phMash, ogRicetta: sgAPlato(num(b.recipe?.og)) };
   c.brewfather = { ...(esistente?.brewfather || {}), id: b._id, stato: b.status || null, importato: new Date().toISOString(), misure };
   return c;
+}
+
+// Acqua di mash e sparge, temperatura di mash e whirlpool dalla ricetta: solo se non già scritti nell'app
+function completaDaRicetta(c, r = {}) {
+  const w = r.data || {};
+  c.acquaMash = { ...c.acquaMash };
+  c.acquaSparge = { ...c.acquaSparge };
+  // durata del whirlpool: il tempo più lungo dei luppoli in whirlpool/aroma della ricetta
+  const wp = (r.hops || []).filter(h => h.use === 'Aroma' || h.use === 'Whirlpool').map(h => num(h.time)).filter(t => t > 0);
+  if (c.whirlpoolMin == null && wp.length) c.whirlpoolMin = Math.max(...wp);
+  if (c.acquaMash.litri == null && num(w.mashWaterAmount) !== null) c.acquaMash.litri = Math.round(num(w.mashWaterAmount));
+  if (c.acquaSparge.litri == null && num(w.spargeWaterAmount) !== null) c.acquaSparge.litri = Math.round(num(w.spargeWaterAmount));
+  const step = r.mash?.steps?.[0];
+  if (c.acquaMash.tempMash == null && step && num(step.stepTemp) !== null) c.acquaMash.tempMash = num(step.stepTemp);
+}
+
+// ---------- ricette ----------
+// Per una cotta solo pianificata (il batch in Brewfather non c'è ancora): si sceglie la ricetta
+// e la scheda prende ingredienti, acqua, whirlpool e profilo di fermentazione.
+export async function elencoRicette(proxy = PROXY_DEFAULT) {
+  const out = [];
+  let dopo;
+  for (;;) {
+    const pagina = await chiama(proxy, '/recipes', { limit: '50', ...(dopo ? { start_after: dopo } : {}) });
+    out.push(...pagina);
+    if (pagina.length < 50) break;
+    dopo = pagina[pagina.length - 1]._id;
+  }
+  return out.map(r => ({ id: r._id, nome: r.name || '', stile: r.style?.name || '' }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
+}
+
+export const scaricaRicetta = (proxy, id) => chiama(proxy || PROXY_DEFAULT, `/recipes/${id}`);
+
+// Campi della cotta da una ricetta Brewfather. Il profilo di fermentazione si sostituisce solo se
+// nel registro non c'è ancora nessuna misura (densità o pH).
+export function ricettaPerCotta(c, r) {
+  const b = { recipe: r };
+  const nuovo = { ...c, ...ricettaDaBatch(b) };
+  completaDaRicetta(nuovo, r);
+  nuovo.dh = nuovo.luppoli.some(h => h.uso === 'dry hop');
+  const misurato = (c.fermentazione || []).some(e => [e.densita, e.ph].some(v => v !== null && v !== undefined && v !== ''));
+  if (!misurato && c.data && (r.fermentation?.steps || []).length) nuovo.fermentazione = profiloDaRicetta(b, c.data);
+  nuovo.ricettaBf = { id: r._id, nome: r.name || '', importata: new Date().toISOString() };
+  return nuovo;
 }
 
 // Nomi "simili": LAMORTESUA ~ "La Morte Sua DIPA", ignorando spazi e punteggiatura

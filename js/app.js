@@ -579,8 +579,11 @@ async function vistaCotta(id) {
               ${voci.length ? html`<button class="piccolo" id="bf-invia">Invia a Brewfather</button>` : ''}</div>`;
           }
           const da = stato.cotte.filter(x => x.id !== c.id && x.brewfather && x.id.startsWith('cotta-bf-') && x.data && c.data && Math.abs(diffGiorni(c.data, x.data)) <= 30);
-          if (!da.length) return '';
-          return html`<div class="calc-hlt"><b>Collega a Brewfather</b>
+          const ricetta = html`<div class="calc-hlt solo-editori" id="bf-ricetta-box"><b>Ricetta da Brewfather</b>
+            ${c.ricettaBf ? html`<span class="totale">${c.ricettaBf.nome}, importata il ${dataIT(c.ricettaBf.importata.slice(0, 10))}</span>` : ''}
+            <span id="bf-ricetta-scelta" style="display:contents"><button class="piccolo" id="bf-ricette">${c.ricettaBf ? 'Cambia o aggiorna' : 'Scegli la ricetta…'}</button></span></div>`;
+          if (!da.length) return ricetta;
+          return html`${ricetta}<div class="calc-hlt"><b>Collega a Brewfather</b>
             <select id="bf-collega" style="width:auto;flex:1;min-width:200px"><option value="">Scegli la cotta creata in Brewfather…</option>
               ${da.map(x => html`<option value="${x.id}">${x.birra} · ${x.lotto} · ${dataIT(x.data)}</option>`)}</select>
             <button class="piccolo" id="bf-collega-ok">Collega</button></div>`;
@@ -863,6 +866,39 @@ async function vistaCotta(id) {
         toast(ex.message.includes('Failed to fetch') ? 'Brewfather non raggiungibile: serve internet' : ex.message);
       }
       const y = scrollY; disegna(); scrollTo(0, y);
+    } else if (t.id === 'bf-ricette') {
+      const box = document.getElementById('bf-ricetta-scelta');
+      t.disabled = true; t.textContent = 'Carico le ricette…';
+      try {
+        const proxy = (await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT;
+        const ricette = await bf.elencoRicette(proxy);
+        const pre = c.ricettaBf?.id || ricette.find(r => bf.nomiSimili(r.nome, c.birra))?.id || '';
+        box.innerHTML = html`<select id="bf-ricetta" style="width:auto;flex:1;min-width:200px"><option value="">Scegli la ricetta…</option>
+          ${ricette.map(r => html`<option value="${r.id}" ${r.id === pre ? 'selected' : ''}>${r.nome}${r.stile ? ` · ${r.stile}` : ''}</option>`)}</select>
+          <button class="piccolo primario" id="bf-ricetta-ok">Importa</button>`.s;
+      } catch (err) {
+        t.disabled = false; t.textContent = 'Riprova';
+        toast(/fetch|Failed/i.test(err.message) ? 'Brewfather non raggiungibile: serve l\'app online sul suo server.' : err.message);
+      }
+    } else if (t.id === 'bf-ricetta-ok') {
+      const id = document.getElementById('bf-ricetta').value;
+      if (!id) return toast('Scegli prima la ricetta');
+      const nome = document.getElementById('bf-ricetta').selectedOptions[0].textContent.split(' · ')[0];
+      const piena = ['malti', 'luppoli', 'lievito'].some(k => (c[k] || []).length);
+      if (piena && !(await chiedi(`Sostituire malti, luppoli, lievito e sali di questa scheda con la ricetta ${nome}? FV, tacche, note e misure restano.`, 'Importa'))) return;
+      t.disabled = true; t.textContent = 'Importo…';
+      try {
+        const proxy = (await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT;
+        const r = await bf.scaricaRicetta(proxy, id);
+        clearTimeout(timer);
+        Object.assign(c, bf.ricettaPerCotta(c, r));
+        await db.salva(c);
+        toast(`Ricetta ${nome} importata`);
+        const y = scrollY; disegna(); scrollTo(0, y);
+      } catch (err) {
+        t.disabled = false; t.textContent = 'Importa';
+        toast(err.message);
+      }
     } else if (t.id === 'bf-collega-ok') {
       const altroId = document.getElementById('bf-collega').value;
       const altro = stato.cotte.find(x => x.id === altroId);
