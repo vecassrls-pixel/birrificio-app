@@ -2,7 +2,8 @@
 // Tre pannelli piccoli uno sopra l'altro con lo stesso asse dei giorni (niente doppio asse):
 // ogni misura ha la sua scala. Passando col dito o il mouse compaiono i valori di quel giorno.
 
-const W = 760, SX = 44, DX = 12, H = 92, GAP = 22, TOP = 8;
+// su telefono il disegno è più stretto, così testi e punti restano leggibili
+const W = typeof innerWidth === 'number' && innerWidth < 600 ? 400 : 760, SX = 44, DX = 12, H = 92, GAP = 22, TOP = 8;
 const SERIE = [
   ['temp', 'Temperatura', '°C', 1],
   ['densita', 'Densità', '°P', 1],

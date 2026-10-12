@@ -8,7 +8,7 @@
 // lievito, sali/additivi), OG/FG/litri/pH misurati, letture del densimetro.
 // Cosa resta dell'app: FV, fine in FV, tacche, confezionamento, note, letture scritte a mano.
 
-import { addGiorni, conAdditiviDefault, toISO } from './dominio.js';
+import { addGiorni, conAdditiviDefault, toISO, fasiCotta, gruppoCotta, litriConfezionati, oggiISO, platoASG, statoCotta } from './dominio.js';
 
 export const PROXY_DEFAULT = '/.netlify/functions/brewfather';
 const STATI_ATTIVI = ['Planning', 'Brewing', 'Fermenting', 'Conditioning'];
@@ -26,18 +26,24 @@ const num = v => (v === undefined || v === null || v === '' || Number.isNaN(Numb
 let tokenFn = async () => null;
 export const usaToken = fn => { tokenFn = fn; };
 
-async function chiama(proxy, path, params = {}) {
+async function chiama(proxy, path, params = {}, corpo = null) {
   const q = new URLSearchParams({ path, ...params });
   const t = await tokenFn();
-  const res = await fetch(`${proxy}?${q}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+  const res = await fetch(`${proxy}?${q}`, {
+    method: corpo ? 'PATCH' : 'GET',
+    headers: { ...(t ? { Authorization: `Bearer ${t}` } : {}), ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+    ...(corpo ? { body: JSON.stringify(corpo) } : {}),
+  });
   if (res.status === 401) throw new Error('Brewfather: accesso scaduto, rientra nell\'app');
   if (res.status === 429) throw new Error('Brewfather: troppe richieste, riprova tra qualche minuto');
+  if (res.status === 403 && corpo) throw new Error('Brewfather: la chiave API non può modificare le cotte. Crea in Brewfather una chiave con il permesso "Edit Batches" e aggiornala su Netlify.');
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = (await res.json()).errore || msg; } catch { /* risposta non JSON */ }
     throw new Error(`Brewfather: ${msg} (${res.status})`);
   }
-  return res.json();
+  const testo = await res.text();
+  try { return JSON.parse(testo); } catch { return testo; } // PATCH risponde "Updated"
 }
 
 async function tuttiIBatch(proxy, extra = {}) {
@@ -154,7 +160,9 @@ export function unisci(esistente, b, letture = []) {
   }
   c.fermentazione.sort((x, y) => (x.data || '').localeCompare(y.data || ''));
 
-  c.brewfather = { id: b._id, stato: b.status || null, importato: new Date().toISOString() };
+  // valori misurati come arrivano da Brewfather: servono per capire cosa è cambiato nell'app
+  const misure = { og: misurati.og, fg: misurati.fg, litri: misurati.litri, phMash: misurati.phMash, ogRicetta: sgAPlato(num(b.recipe?.og)) };
+  c.brewfather = { ...(esistente?.brewfather || {}), id: b._id, stato: b.status || null, importato: new Date().toISOString(), misure };
   return c;
 }
 
@@ -204,4 +212,67 @@ export function uniscaManuale(pianificata, daBf) {
   }
   if (!(c.fermentazione || []).length) c.fermentazione = daBf.fermentazione || [];
   return c;
+}
+
+// ---------- invio dei valori misurati a Brewfather ----------
+// L'API permette di cambiare solo stato e valori misurati della cotta (non ricetta né letture).
+// Si inviano OG, FG (in SG), litri in FV, pH mash, litri confezionati (cotte singole) e lo stato,
+// che va solo avanti (Planning → Fermenting → Conditioning → Completed), mai indietro.
+const ORDINE_STATI = ['Planning', 'Brewing', 'Fermenting', 'Conditioning', 'Completed', 'Archived'];
+const sg = p => (p === null || p === undefined || p === '' ? null : Math.round(platoASG(Number(p)) * 10000) / 10000);
+export const ETICHETTE_BF = { og: 'OG', fg: 'FG', litri: 'Litri in FV', phMash: 'pH mash', litriConf: 'Litri confezionati', stato: 'Stato' };
+
+export function statoBrewfather(c, durate, oggi = oggiISO()) {
+  const s = statoCotta(c, durate, oggi);
+  if (s === 'pianificata') return 'Planning';
+  if (s === 'tank') {
+    const f = fasiCotta(c, durate).find(x => x.da <= oggi && x.a >= oggi);
+    return f?.fase === 'maturazione' ? 'Conditioning' : 'Fermenting';
+  }
+  return 'Completed';
+}
+
+// Valori dell'app (in °P e litri) e cosa è diverso da quanto Brewfather ha già
+export function daInviare(c, cotte, durate) {
+  if (!c.brewfather?.id) return null;
+  const g = gruppoCotta(c, cotte);
+  const app = { og: c.og ?? null, fg: c.fg ?? null, litri: c.litri ?? null, phMash: c.phMash ?? null, litriConf: g.length === 1 && litriConfezionati(c) ? litriConfezionati(c) : null };
+  const noti = { ...(c.brewfather.misure || {}), ...(c.brewfather.inviato?.valori || {}) };
+  const diversi = {};
+  for (const [k, v] of Object.entries(app)) {
+    if (v === null || v === '' || Number.isNaN(Number(v))) continue;
+    if (k === 'og' && noti.og == null && noti.ogRicetta != null && Math.abs(noti.ogRicetta - v) < 0.05) continue; // OG stimato dalla ricetta, non misurato
+    if (noti[k] === undefined || noti[k] === null || Math.abs(Number(noti[k]) - Number(v)) > (k === 'og' || k === 'fg' || k === 'phMash' ? 0.05 : 0.5)) diversi[k] = Number(v);
+  }
+  const stato = statoBrewfather(c, durate);
+  if (ORDINE_STATI.indexOf(stato) > ORDINE_STATI.indexOf(c.brewfather.stato || 'Planning')) diversi.stato = stato;
+  return diversi;
+}
+
+// Corpo della richiesta PATCH /batches/:id
+export function corpoBrewfather(diversi) {
+  const corpo = {};
+  if (diversi.og !== undefined) corpo.measuredOg = sg(diversi.og);
+  if (diversi.fg !== undefined) corpo.measuredFg = sg(diversi.fg);
+  if (diversi.litri !== undefined) corpo.measuredBatchSize = diversi.litri;
+  if (diversi.phMash !== undefined) corpo.measuredMashPh = diversi.phMash;
+  if (diversi.litriConf !== undefined) corpo.measuredBottlingSize = diversi.litriConf;
+  if (diversi.stato !== undefined) corpo.status = diversi.stato;
+  return corpo;
+}
+
+// Invia e restituisce la cotta aggiornata (da salvare) con quanto inviato
+export async function inviaMisure(proxy, c, diversi) {
+  const corpo = corpoBrewfather(diversi);
+  if (!Object.keys(corpo).length) return c;
+  await chiama(proxy, `/batches/${c.brewfather.id}`, {}, corpo);
+  const { stato, ...valori } = diversi;
+  return {
+    ...c,
+    brewfather: {
+      ...c.brewfather,
+      ...(stato ? { stato } : {}),
+      inviato: { data: new Date().toISOString(), valori: { ...(c.brewfather.inviato?.valori || {}), ...valori } },
+    },
+  };
 }

@@ -46,3 +46,20 @@ Il codice dell'app va in un repository privato su GitHub, da cui Netlify pubblic
 - **Aggiungere**: `insert into utenti_autorizzati ...` (punto 1.4) e poi *Invite user* (punto 4.2).
 - **Togliere**: `delete from utenti_autorizzati where email = '...';` e in *Authentication → Users* elimina l'utente.
   Da quel momento non legge più nulla, nemmeno se ha l'app aperta.
+
+## Collegare Fatture in Cloud e Shopify (magazzino Birra)
+Servono solo per scaricare la birra dalle fatture e dagli ordini; senza, gli scarichi si fanno a mano.
+Le chiavi vanno in Netlify → **Site configuration → Environment variables**, poi un nuovo deploy.
+
+**Fatture in Cloud** (sola lettura dei documenti emessi)
+1. In Fatture in Cloud: **Impostazioni → Applicazioni collegate** (o developers.fattureincloud.it) crea un'app e genera un
+   **token manuale** con il permesso di lettura su fatture, DDT e ricevute (*Documenti emessi: lettura*).
+2. In Netlify aggiungi `FIC_TOKEN` = il token e `FIC_COMPANY_ID` = l'id dell'azienda
+   (il numero che compare nell'indirizzo di Fatture in Cloud o nella pagina dell'app).
+
+**Shopify** (sola lettura degli ordini)
+1. In Shopify: **Impostazioni → App → Sviluppa app** (Dev Dashboard) crea un'app con i permessi `read_orders`
+   (e `read_all_orders` per gli ordini più vecchi di 60 giorni), rilasciala e installala sul negozio.
+2. In Netlify aggiungi `SHOPIFY_SHOP` = il nome del negozio (es. `kashmir-brewing`, quello di `kashmir-brewing.myshopify.com`),
+   `SHOPIFY_CLIENT_ID` e `SHOPIFY_CLIENT_SECRET` = le credenziali dell'app.
+   Se hai già una vecchia app personalizzata con un token `shpat_…`, basta `SHOPIFY_TOKEN` al posto di client id e secret.

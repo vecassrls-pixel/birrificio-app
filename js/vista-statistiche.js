@@ -7,7 +7,7 @@ import { categoriaDa, chiaveNome, converti, lievitoRecuperato, trovaArticolo } f
 let u; // { $app, html, db, stato, dataIT, numIT, oggiISO }
 export function init(strumenti) { u = strumenti; }
 
-const filtri = { gruppo: 'mese', anno: '', dettaglio: '' };
+const filtri = { gruppo: 'mese', anno: '', dettaglio: '', scheda: 'birre', ingr: 'malto' };
 
 const MESI = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
 // settimana ISO (lunedì-domenica): "2026-S41"
@@ -83,21 +83,24 @@ function somma(lista, chiave, valore) {
   return [...m.values()].sort((a, b) => b.tot - a.tot);
 }
 
+// elenco cronologico dei periodi da mostrare nel grafico (mesi vuoti compresi se si guarda un anno)
+function periodiGrafico(chiavi, gruppo, anno) {
+  if (gruppo === 'mese' && anno !== 'tutti') return MESI.map((_, i) => `${anno}-${String(i + 1).padStart(2, '0')}`);
+  return [...chiavi].sort();
+}
+const etichettaBreve = k => (/^\d{4}$/.test(k) ? k : /^\d{4}-\d{2}$/.test(k) ? MESI[Number(k.slice(5)) - 1] : `S${Number(k.slice(6))}`);
+
 export async function vistaStatistiche() {
-  const { html } = u;
+  const { html, raw } = u;
   const oggi = u.oggiISO();
   const articoli = (await u.db.tutti('articolo')).filter(a => !a.eliminato);
   const tutti = movimentiStatistiche(u.stato.cotte, articoli, oggi);
   const anni = [...new Set(tutti.prodotti.map(p => p.data.slice(0, 4)))].sort().reverse();
   const annoCorrente = oggi.slice(0, 4);
-  if (filtri.anno === '') filtri.anno = annoCorrente;
+  if (filtri.anno === '') filtri.anno = anni.includes(annoCorrente) ? annoCorrente : anni[0] || 'tutti';
   const nelPeriodo = x => filtri.anno === 'tutti' || x.data.startsWith(filtri.anno);
-  const nelDettaglio = x => nelPeriodo(x) && (!filtri.dettaglio || chiavePeriodo(x.data, filtri.gruppo) === filtri.dettaglio);
   const sel = {
     prodotti: tutti.prodotti.filter(nelPeriodo), confezionati: tutti.confezionati.filter(nelPeriodo), ingredienti: tutti.ingredienti.filter(nelPeriodo),
-  };
-  const det = {
-    prodotti: tutti.prodotti.filter(nelDettaglio), confezionati: tutti.confezionati.filter(nelDettaglio), ingredienti: tutti.ingredienti.filter(nelDettaglio),
   };
 
   // andamento per periodo
@@ -106,9 +109,14 @@ export async function vistaStatistiche() {
   for (const p of sel.prodotti) { const r = riga(chiavePeriodo(p.data, filtri.gruppo)); r.cotte++; r.prodotti += p.litri; }
   for (const p of sel.confezionati) riga(chiavePeriodo(p.data, filtri.gruppo)).confezionati += p.litri;
   for (const i of sel.ingredienti) riga(chiavePeriodo(i.data, filtri.gruppo))[i.cat] += i.g;
-  const andamento = [...periodi.values()].sort((a, b) => b.k.localeCompare(a.k));
-  const maxLitri = Math.max(1, ...andamento.map(r => r.prodotti));
   if (filtri.dettaglio && !periodi.has(filtri.dettaglio)) filtri.dettaglio = '';
+  const nelDettaglio = x => !filtri.dettaglio || chiavePeriodo(x.data, filtri.gruppo) === filtri.dettaglio;
+  const det = {
+    prodotti: sel.prodotti.filter(nelDettaglio), confezionati: sel.confezionati.filter(nelDettaglio), ingredienti: sel.ingredienti.filter(nelDettaglio),
+  };
+  const andamento = [...periodi.values()].sort((a, b) => b.k.localeCompare(a.k));
+  const barre = periodiGrafico(periodi.keys(), filtri.gruppo, filtri.anno).map(k => periodi.get(k) || { k, cotte: 0, prodotti: 0 });
+  const maxLitri = Math.max(1, ...barre.map(r => r.prodotti));
 
   const kg = g => u.numIT(g / 1000, g >= 100000 ? 0 : 1);
   const qtaIngr = (cat, x) => {
@@ -119,87 +127,137 @@ export async function vistaStatistiche() {
   };
   const tot = (lista, f) => lista.reduce((t, x) => t + f(x), 0);
   const totIngr = cat => tot(det.ingredienti.filter(i => i.cat === cat), i => i.g);
+  const mlIngr = cat => tot(det.ingredienti.filter(i => i.cat === cat), i => i.ml);
   const litriProd = tot(det.prodotti, p => p.litri), litriConf = tot(det.confezionati, p => p.litri);
-  const titoloDet = filtri.dettaglio ? nomePeriodo(filtri.dettaglio) : filtri.anno === 'tutti' ? 'tutti gli anni' : filtri.anno;
+  const nomeAnno = filtri.anno === 'tutti' ? 'tutti gli anni' : filtri.anno;
+  const titoloDet = filtri.dettaglio ? nomePeriodo(filtri.dettaglio) : nomeAnno;
 
-  const tabBirre = (titolo, chiave) => {
+  // confronto con lo stesso periodo dell'anno prima (fino allo stesso giorno, se è l'anno in corso)
+  let confronto = null;
+  if (filtri.anno !== 'tutti' && !filtri.dettaglio && anni.includes(String(Number(filtri.anno) - 1))) {
+    const prima = String(Number(filtri.anno) - 1);
+    const limite = filtri.anno === annoCorrente ? `${prima}${oggi.slice(4)}` : `${prima}-12-31`;
+    const pp = tutti.prodotti.filter(p => p.data.startsWith(prima) && p.data <= limite);
+    confronto = { anno: prima, cotte: pp.length, litri: tot(pp, p => p.litri), finoA: filtri.anno === annoCorrente };
+  }
+  const delta = (ora, prima) => {
+    if (!prima) return '';
+    const d = (ora - prima) / prima * 100;
+    return html`<span class="delta ${d >= 0 ? 'su' : 'giu'}">${d >= 0 ? '▲' : '▼'} ${u.numIT(Math.abs(d), 0)}%</span>`;
+  };
+
+  // tabella con barra della percentuale: righe [{ nome, valore (testo), quota (0-1), extra: [testi] }]
+  // la barra è lunga rispetto alla riga più grande, il numero è la quota sul totale; oltre 12 righe si apre a richiesta
+  const tabella = (colonne, righe, vuoto) => {
+    if (!righe.length) return html`<p class="vuoto">${vuoto}</p>`;
+    const max = Math.max(...righe.map(r => r.quota)) || 1;
+    const aperta = filtri.tutte === filtri.scheda + filtri.ingr;
+    const mostrate = aperta ? righe : righe.slice(0, 12);
+    return html`<div class="scroll-x"><table class="tab-mag tab-quote">
+      <thead><tr>${colonne.map((c, i) => html`<th class="${i ? 'n' : ''}">${c}</th>`)}<th class="quota">Quota</th></tr></thead>
+      <tbody>${mostrate.map(r => html`<tr><td class="nome">${r.nome}</td>${r.celle.map(x => html`<td class="n">${x}</td>`)}
+        <td class="quota"><div><span class="quota-barra"><span style="width:${Math.max(1, Math.round(r.quota / max * 100))}%"></span></span><span class="n">${u.numIT(r.quota * 100, 1)}%</span></div></td></tr>`)}</tbody>
+    </table></div>
+    ${righe.length > 12 ? html`<p style="text-align:center;margin:10px 0 0"><button class="piccolo st-libero" data-tutte="${aperta ? '' : filtri.scheda + filtri.ingr}">${aperta ? 'Mostra solo le prime 12' : `Mostra tutte (${righe.length})`}</button></p>` : ''}`;
+  };
+
+  const perChiave = chiave => {
     const prod = somma(det.prodotti, chiave, p => p.litri);
     const conf = new Map(somma(det.confezionati, chiave, p => p.litri).map(x => [x.chiave, x.tot]));
     for (const k of conf.keys()) if (!prod.some(x => x.chiave === k)) prod.push({ chiave: k, tot: 0, cotte: new Set() });
-    return html`<div class="scheda"><h2>${titolo}</h2>${prod.length ? html`<div class="scroll-x"><table class="tab-mag">
-      <thead><tr><th></th><th class="n">Cotte</th><th class="n">Litri prodotti</th><th class="n">Litri confezionati</th><th class="n">% del totale</th></tr></thead>
-      <tbody>${prod.map(x => html`<tr><td>${x.chiave}</td><td class="n">${x.cotte.size || '—'}</td><td class="n">${u.numIT(x.tot, 0)}</td>
-        <td class="n">${conf.has(x.chiave) ? u.numIT(conf.get(x.chiave), 0) : '—'}</td><td class="n">${litriProd ? `${u.numIT(x.tot / litriProd * 100, 1)}%` : '—'}</td></tr>`)}</tbody>
-    </table></div>` : html`<p class="totale">Nessuna cotta in questo periodo.</p>`}</div>`;
-  };
-  const tabIngr = (cat, titolo) => {
-    const righe = somma(det.ingredienti.filter(i => i.cat === cat), i => i.nome, i => i.g);
-    const t = totIngr(cat);
-    return html`<div class="scheda"><h2>${titolo} <span class="totale" style="font-weight:400">· totale ${qtaIngr(cat, { tot: t, ml: tot(det.ingredienti.filter(i => i.cat === cat), i => i.ml) })}</span></h2>
-      ${righe.length ? html`<div class="scroll-x"><table class="tab-mag">
-        <thead><tr><th>Tipo</th><th class="n">Cotte</th><th class="n">Quantità</th><th class="n">% del totale</th></tr></thead>
-        <tbody>${righe.map(x => html`<tr><td>${x.chiave}</td><td class="n">${x.cotte.size}</td><td class="n">${qtaIngr(cat, x)}</td>
-          <td class="n">${t && x.tot ? `${u.numIT(x.tot / t * 100, 1)}%` : '—'}</td></tr>`)}</tbody>
-      </table></div>` : html`<p class="totale">Niente in questo periodo.</p>`}</div>`;
+    return tabella(['', 'Cotte', 'Litri prodotti', 'Litri confez.'],
+      prod.map(x => ({ nome: x.chiave, quota: litriProd ? x.tot / litriProd : 0, celle: [x.cotte.size || '—', u.numIT(x.tot, 0), conf.has(x.chiave) ? u.numIT(conf.get(x.chiave), 0) : '—'] })),
+      'Nessuna cotta in questo periodo.');
   };
   const formati = somma(det.confezionati, p => p.formato, p => p.litri);
+  const SCHEDE = [['birre', 'Birre'], ['stili', 'Stili'], ['formati', 'Formati'], ['ingredienti', 'Ingredienti']];
+  const pannello = k => {
+    if (k === 'birre') return perChiave(p => p.birra);
+    if (k === 'stili') return perChiave(p => p.stile);
+    if (k === 'formati') return tabella(['Formato', 'Pezzi', 'Litri'],
+      formati.map(x => ({ nome: x.chiave, quota: litriConf ? x.tot / litriConf : 0, celle: [u.numIT(x.pezzi, 0), u.numIT(x.tot, 0)] })), 'Niente confezionato in questo periodo.');
+    const cat = filtri.ingr;
+    const t = totIngr(cat);
+    const righe = somma(det.ingredienti.filter(i => i.cat === cat), i => i.nome, i => i.g);
+    return html`<div class="segmenti st-libero" id="st-ingr" role="group" aria-label="Tipo di ingrediente">
+        ${GRUPPI_INGR.map(([c, n]) => html`<button class="st-libero ${c === cat ? 'attivo' : ''}" data-ingr="${c}" aria-pressed="${c === cat}">${n} <b>${qtaIngr(c, { tot: totIngr(c), ml: mlIngr(c) })}</b></button>`)}
+      </div>
+      ${tabella(['', 'Cotte', 'Quantità'], righe.map(x => ({ nome: x.chiave, quota: t ? x.tot / t : 0, celle: [x.cotte.size, qtaIngr(cat, x)] })), 'Niente in questo periodo.')}`;
+  };
 
   u.$app.innerHTML = html`
-    <div class="barra">
+    <div class="barra st-testa">
       <h1 style="margin:0">Statistiche</h1><span class="spazio"></span>
-      <label class="in-linea">Raggruppa per <select id="st-gruppo">
-        ${[['settimana', 'settimana'], ['mese', 'mese'], ['anno', 'anno']].map(([v, t]) => html`<option value="${v}" ${v === filtri.gruppo ? 'selected' : ''}>${t}</option>`)}</select></label>
-      <label class="in-linea">Periodo <select id="st-anno">
-        ${anni.map(a => html`<option value="${a}" ${a === filtri.anno ? 'selected' : ''}>${a === annoCorrente ? `${a} (anno corrente)` : a}</option>`)}
-        <option value="tutti" ${filtri.anno === 'tutti' ? 'selected' : ''}>Tutti gli anni</option></select></label>
-      <button id="stampa">Stampa</button>
+      <a class="btn" href="#/costi" title="Costo delle cotte, costo al litro e margine">€<span class="solo-desktop"> Costi</span></a>
+      <button id="stampa" class="st-libero" title="Stampa o salva in PDF">⎙<span class="solo-desktop"> Stampa</span></button>
+    </div>
+    <div class="filtri-stato st-anni" id="st-anno" role="group" aria-label="Anno">
+      ${anni.map(a => html`<button class="st-libero ${a === filtri.anno ? 'attivo' : ''}" data-anno="${a}" aria-pressed="${a === filtri.anno}">${a}</button>`)}
+      <button class="st-libero ${filtri.anno === 'tutti' ? 'attivo' : ''}" data-anno="tutti" aria-pressed="${filtri.anno === 'tutti'}">Tutti gli anni</button>
+    </div>
+
+    <div class="st-kpi">
+      <div class="st-tile"><span>Cotte</span><b>${det.prodotti.length}</b>${confronto ? html`<small>${delta(det.prodotti.length, confronto.cotte)} vs ${confronto.cotte} nel ${confronto.anno}${confronto.finoA ? ' a oggi' : ''}</small>` : ''}</div>
+      <div class="st-tile"><span>Litri prodotti</span><b>${u.numIT(litriProd, 0)}</b>${confronto ? html`<small>${delta(litriProd, confronto.litri)} vs ${u.numIT(confronto.litri, 0)} nel ${confronto.anno}</small>` : ''}</div>
+      <div class="st-tile"><span>Litri confezionati</span><b>${u.numIT(litriConf, 0)}</b>${litriProd && litriConf ? html`<small>${u.numIT(litriConf / litriProd * 100, 0)}% del prodotto</small>` : html`<small>registrati nelle schede cotta</small>`}</div>
+      <div class="st-tile"><span>Malti</span><b>${qtaIngr('malto', { tot: totIngr('malto'), ml: 0 })}</b>${det.prodotti.length ? html`<small>${u.numIT(totIngr('malto') / 1000 / Math.max(1, det.prodotti.length), 0)} kg a cotta</small>` : ''}</div>
+      <div class="st-tile"><span>Luppoli</span><b>${qtaIngr('luppolo', { tot: totIngr('luppolo'), ml: mlIngr('luppolo') })}</b>${litriProd ? html`<small>${u.numIT(totIngr('luppolo') / litriProd, 1)} g/L</small>` : ''}</div>
     </div>
 
     <div class="scheda">
-      <h2>Totali · ${titoloDet}${filtri.dettaglio ? html` <button class="piccolo" id="st-tutto">Mostra tutto il periodo</button>` : ''}</h2>
-      <div class="kpi">
-        <div><b>${det.prodotti.length}</b>cotte</div>
-        <div><b>${u.numIT(litriProd, 0)} L</b>prodotti</div>
-        <div><b>${u.numIT(litriConf, 0)} L</b>confezionati</div>
-        ${GRUPPI_INGR.map(([k, t]) => html`<div><b>${qtaIngr(k, { tot: totIngr(k), ml: tot(det.ingredienti.filter(i => i.cat === k), i => i.ml) })}</b>${t.toLowerCase()}</div>`)}
+      <div class="barra" style="margin-bottom:6px">
+        <h2 style="margin:0">Produzione per ${filtri.gruppo} <span class="totale" style="font-weight:400">· ettolitri</span></h2><span class="spazio"></span>
+        <div class="segmenti" id="st-gruppo" role="group" aria-label="Raggruppa per">
+          ${[['settimana', 'Settimana'], ['mese', 'Mese'], ['anno', 'Anno']].map(([v, t]) => html`<button class="st-libero ${v === filtri.gruppo ? 'attivo' : ''}" data-gruppo="${v}" aria-pressed="${v === filtri.gruppo}">${t}</button>`)}
+        </div>
       </div>
+      <p class="totale" style="margin:0 0 10px">Tocca una colonna per vedere solo quel periodo nei dettagli sotto.</p>
+      ${andamento.length ? html`<div class="st-grafico ${barre.length > 16 ? 'fitto' : ''} ${filtri.dettaglio ? 'con-scelta' : ''}">
+        ${barre.map(r => html`<button class="st-col st-libero ${r.k === filtri.dettaglio ? 'scelto' : ''}" data-periodo="${r.k}" ${r.prodotti ? '' : raw('tabindex="-1"')}
+          title="${nomePeriodo(r.k)}: ${u.numIT(r.prodotti, 0)} L, ${r.cotte} cotte">
+          <span class="st-val">${r.prodotti ? u.numIT(r.prodotti / 100, 0) : ''}</span>
+          <span class="st-barra" style="height:${Math.round(r.prodotti / maxLitri * 100)}%"></span>
+          <span class="st-et">${etichettaBreve(r.k)}</span>
+        </button>`)}
+      </div>
+      <details class="st-tabella">
+        <summary>Vedi la tabella completa</summary>
+        <div class="scroll-x"><table class="tab-mag tab-stat">
+          <thead><tr><th>Periodo</th><th class="n">Cotte</th><th class="n">Litri prodotti</th><th class="n">Litri confez.</th><th class="n">Malti kg</th><th class="n">Luppoli kg</th><th class="n">Lieviti kg</th><th class="n">Zuccheri kg</th></tr></thead>
+          <tbody>${andamento.map(r => html`<tr data-periodo="${r.k}" class="${r.k === filtri.dettaglio ? 'scelto' : ''}">
+            <td>${nomePeriodo(r.k)}</td><td class="n">${r.cotte || '—'}</td><td class="n">${u.numIT(r.prodotti, 0)}</td>
+            <td class="n">${r.confezionati ? u.numIT(r.confezionati, 0) : '—'}</td>
+            <td class="n">${r.malto ? kg(r.malto) : '—'}</td><td class="n">${r.luppolo ? kg(r.luppolo) : '—'}</td>
+            <td class="n">${r.lievito ? kg(r.lievito) : '—'}</td><td class="n">${r.zucchero ? kg(r.zucchero) : '—'}</td>
+          </tr>`)}</tbody></table></div>
+      </details>` : html`<p class="vuoto">Nessuna cotta in questo periodo.</p>`}
     </div>
 
-    <div class="scheda">
-      <h2>Andamento per ${filtri.gruppo}</h2>
-      <p class="totale">Tocca una riga per vedere il dettaglio di quel periodo qui sotto.</p>
-      ${andamento.length ? html`<div class="scroll-x"><table class="tab-mag tab-stat">
-        <thead><tr><th>Periodo</th><th class="n">Cotte</th><th class="n">Litri prodotti</th><th></th><th class="n">Litri confez.</th><th class="n">Malti kg</th><th class="n">Luppoli kg</th><th class="n">Lieviti kg</th><th class="n">Zuccheri kg</th></tr></thead>
-        <tbody>${andamento.map(r => html`<tr data-periodo="${r.k}" class="${r.k === filtri.dettaglio ? 'scelto' : ''}">
-          <td>${nomePeriodo(r.k)}</td><td class="n">${r.cotte || '—'}</td><td class="n">${u.numIT(r.prodotti, 0)}</td>
-          <td style="width:30%"><span class="barra-stat" style="width:${Math.round(r.prodotti / maxLitri * 100)}%"></span></td>
-          <td class="n">${r.confezionati ? u.numIT(r.confezionati, 0) : '—'}</td>
-          <td class="n">${r.malto ? kg(r.malto) : '—'}</td><td class="n">${r.luppolo ? kg(r.luppolo) : '—'}</td>
-          <td class="n">${r.lievito ? kg(r.lievito) : '—'}</td><td class="n">${r.zucchero ? kg(r.zucchero) : '—'}</td>
-        </tr>`)}</tbody></table></div>` : html`<p class="totale">Nessuna cotta in questo periodo.</p>`}
+    <div class="scheda st-dettagli">
+      <div class="barra" style="margin-bottom:10px">
+        <h2 style="margin:0">Dettagli · ${titoloDet}</h2>
+        ${filtri.dettaglio ? html`<button class="piccolo st-libero filtro-attivo" id="st-tutto" title="Togli il filtro sul periodo">${nomePeriodo(filtri.dettaglio)} ✕</button>` : ''}
+      </div>
+      <div class="schede-tab" id="st-schede" role="tablist">
+        ${SCHEDE.map(([k, t]) => html`<button class="st-libero ${k === filtri.scheda ? 'attivo' : ''}" data-scheda="${k}" role="tab" aria-selected="${k === filtri.scheda}">${t}</button>`)}
+      </div>
+      ${SCHEDE.map(([k, t]) => html`<div class="pannello ${k === filtri.scheda ? 'attivo' : ''}" data-pannello="${k}"><h3 class="solo-stampa">${t}</h3>${pannello(k)}</div>`)}
     </div>
-
-    ${tabBirre(`Per birra · ${titoloDet}`, p => p.birra)}
-    ${tabBirre(`Per stile · ${titoloDet}`, p => p.stile)}
-    <div class="scheda"><h2>Confezionato per formato · ${titoloDet}</h2>
-      ${formati.length ? html`<div class="scroll-x"><table class="tab-mag">
-        <thead><tr><th>Formato</th><th class="n">Pezzi</th><th class="n">Litri</th><th class="n">% del totale</th></tr></thead>
-        <tbody>${formati.map(x => html`<tr><td>${x.chiave}</td><td class="n">${u.numIT(x.pezzi, 0)}</td><td class="n">${u.numIT(x.tot, 0)}</td>
-          <td class="n">${litriConf ? `${u.numIT(x.tot / litriConf * 100, 1)}%` : '—'}</td></tr>`)}</tbody>
-      </table></div>` : html`<p class="totale">Niente confezionato in questo periodo.</p>`}</div>
-    ${GRUPPI_INGR.map(([k, t]) => tabIngr(k, `${t} · ${titoloDet}`))}
   `;
-  const $ = id => document.getElementById(id);
-  $('st-gruppo').onchange = e => { filtri.gruppo = e.target.value; filtri.dettaglio = ''; vistaStatistiche(); };
-  $('st-anno').onchange = e => { filtri.anno = e.target.value; filtri.dettaglio = ''; vistaStatistiche(); };
-  $('stampa').onclick = () => window.print();
-  const tutto = $('st-tutto');
-  if (tutto) tutto.onclick = () => { filtri.dettaglio = ''; vistaStatistiche(); };
-  u.$app.querySelectorAll('tr[data-periodo]').forEach(tr => {
-    tr.onclick = () => {
-      filtri.dettaglio = filtri.dettaglio === tr.dataset.periodo ? '' : tr.dataset.periodo;
-      const y = scrollY;
-      vistaStatistiche().then(() => scrollTo(0, y));
-    };
-  });
+  const ridisegna = () => { const y = scrollY; return vistaStatistiche().then(() => scrollTo(0, y)); };
+  u.$app.onclick = e => {
+    const b = e.target.closest('button, tr[data-periodo]');
+    if (!b) return;
+    if (b.id === 'stampa') { u.$app.querySelectorAll('details.st-tabella').forEach(d => { d.open = true; }); return window.print(); }
+    if (b.id === 'st-tutto') { filtri.dettaglio = ''; return ridisegna(); }
+    if (b.dataset.anno) { filtri.anno = b.dataset.anno; filtri.dettaglio = ''; return ridisegna(); }
+    if (b.dataset.gruppo) { filtri.gruppo = b.dataset.gruppo; filtri.dettaglio = ''; return ridisegna(); }
+    if (b.dataset.periodo) { filtri.dettaglio = filtri.dettaglio === b.dataset.periodo ? '' : b.dataset.periodo; return ridisegna(); }
+    if (b.dataset.scheda) { filtri.scheda = b.dataset.scheda; return ridisegna(); }
+    if (b.dataset.ingr) { filtri.ingr = b.dataset.ingr; return ridisegna(); }
+    if (b.dataset.tutte !== undefined) { filtri.tutte = b.dataset.tutte; return ridisegna(); }
+  };
+  // il grafico parte dal periodo più recente
+  const g = u.$app.querySelector('.st-grafico');
+  if (g && !filtri.dettaglio) g.scrollLeft = g.scrollWidth;
 }
