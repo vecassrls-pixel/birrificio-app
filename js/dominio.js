@@ -19,11 +19,16 @@ export function eventiGiorno(e) {
 }
 
 // Additivi sempre presenti in una cotta nuova (aggiunti solo se mancano)
-export const ADDITIVI_DEFAULT = [{ nome: 'Antifoam', qta: 50, unita: 'g' }];
+export const ADDITIVI_DEFAULT = [
+  { nome: 'Antifoam', qta: 50, unita: 'g' },
+  { nome: 'Brewmix', qta: 100, unita: 'g' },
+  { nome: 'Antioxin', qta: 100, unita: 'g' },
+];
 const chiaveAdditivo = n => String(n || '').toLowerCase().replace(/[^a-z]/g, '');
+// già presente anche con un nome più lungo ("Antioxin SBT", "Brewmix Mr Malt")
 export const conAdditiviDefault = (sali = []) => [
   ...sali,
-  ...ADDITIVI_DEFAULT.filter(d => !sali.some(x => chiaveAdditivo(x?.nome) === chiaveAdditivo(d.nome))).map(d => ({ ...d })),
+  ...ADDITIVI_DEFAULT.filter(d => !sali.some(x => chiaveAdditivo(x?.nome).includes(chiaveAdditivo(d.nome)))).map(d => ({ ...d })),
 ];
 
 // Fase di ogni giorno in fermentatore, per i colori del planning.
