@@ -502,9 +502,11 @@ export async function vistaInventario() {
 const s6 = { da: null, a: null, categoria: '' };
 export async function vistaRegistroS6() {
   const { html } = u;
-  const anno = u.oggiISO().slice(0, 4);
-  s6.da ||= `${anno}-01-01`;
-  s6.a ||= u.oggiISO();
+  // date di default ricalcolate a ogni apertura (l'app può restare aperta per giorni); quelle scelte a mano restano
+  // default: la settimana in corso, da lunedì a domenica (Romain 2026-10-12)
+  const oggi = u.oggiISO(), lun = u.addGiorni(oggi, -((new Date(oggi + 'T12:00:00').getDay() + 6) % 7));
+  if (!s6.daScelto) s6.da = lun;
+  if (!s6.aScelto) s6.a = u.addGiorni(lun, 6);
   const dati = await datiMagazzino();
   const righe = registroS6(dati, s6.da, s6.a).filter(r => !s6.categoria || r.categoria === s6.categoria);
   u.$app.innerHTML = html`
@@ -534,8 +536,12 @@ export async function vistaRegistroS6() {
         </tr>`)}</tbody></table>` : html`<p class="vuoto">Nessun movimento nel periodo.</p>`}
     </div>`;
   const $ = s => document.getElementById(s);
-  $('s6-da').onchange = e => { s6.da = e.target.value; vistaRegistroS6(); };
-  $('s6-a').onchange = e => { s6.a = e.target.value; vistaRegistroS6(); };
+  $('s6-da').onchange = e => { s6.da = e.target.value; s6.daScelto = !!e.target.value; vistaRegistroS6(); };
+  $('s6-a').onchange = e => { s6.a = e.target.value; s6.aScelto = !!e.target.value; vistaRegistroS6(); };
+  // logo: se non arriva al primo colpo (rete lenta o cache vecchia) si riprova senza cache
+  const logo = u.$app.querySelector('.s6-testa img');
+  logo.onerror = () => { if (!logo.dataset.riprova) { logo.dataset.riprova = '1'; logo.src = `img/logo-kashmir.png?r=${Date.now()}`; } };
+  if (logo.complete && !logo.naturalWidth) logo.onerror();
   $('s6-cat').onchange = e => { s6.categoria = e.target.value; vistaRegistroS6(); };
   // lotto mancante scritto qui: va sulla riga di origine (ingrediente della cotta, riga della bolla o del movimento manuale)
   u.$app.querySelectorAll('.s6-lotto').forEach(el => {
@@ -554,7 +560,8 @@ export async function vistaRegistroS6() {
       vistaRegistroS6().then(() => scrollTo(0, y));
     };
   });
-  $('stampa').onclick = () => {
+  $('stampa').onclick = async () => {
+    await logo.decode().catch(() => {}); // stampa col logo già caricato
     const titolo = document.title;
     document.title = `S6 carico scarico ${s6.da} ${s6.a}`;
     addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
