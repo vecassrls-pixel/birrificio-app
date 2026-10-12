@@ -137,6 +137,7 @@ export function unisci(esistente, b, letture = []) {
   };
   for (const [k, v] of Object.entries(misurati)) if (v !== null) c[k] = v;
   if (c.og == null && b.recipe?.og) c.og = sgAPlato(num(b.recipe.og));
+  if (c.litri == null && num(b.recipe?.batchSize) > 0) c.litri = Math.round(num(b.recipe.batchSize)); // litri previsti in FV
   completaDaRicetta(c, b.recipe);
 
   // fermentazione: profilo dalla ricetta se manca, poi letture del densimetro sui giorni corrispondenti
@@ -197,6 +198,8 @@ export function ricettaPerCotta(c, r) {
   const nuovo = { ...c, ...ricettaDaBatch(b) };
   completaDaRicetta(nuovo, r, true);
   if (r.og) nuovo.og = sgAPlato(num(r.og)); // OG della ricetta (°P), poi si sovrascrive con la misurata
+  // litri finali previsti (volume in fermentatore della ricetta), se non c'è già quello misurato
+  if (num(r.batchSize) > 0 && c.brewfather?.misure?.litri == null) nuovo.litri = Math.round(num(r.batchSize));
   nuovo.dh = nuovo.luppoli.some(h => h.uso === 'dry hop');
   const misurato = (c.fermentazione || []).some(e => [e.densita, e.ph].some(v => v !== null && v !== undefined && v !== ''));
   if (!misurato && c.data && (r.fermentation?.steps || []).length) nuovo.fermentazione = profiloDaRicetta(b, c.data);

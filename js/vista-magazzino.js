@@ -403,11 +403,21 @@ export async function vistaInventario() {
   const nascondi = leggiPref();
   const extre = new Map(); // lotto e scadenza facoltativi per articolo
   const extra = id => { if (!extre.has(id)) extre.set(id, {}); return extre.get(id); };
+  // lotto proposto: quello in uso (il più vecchio rimasto), altrimenti l'ultimo entrato
+  const proposto = id => {
+    const x = g.get(id);
+    const inUso = [...x.lotti].reverse().find(l => l.lotto && l.qta > 1e-9); // g.lotti: i più recenti per primi
+    const ultimo = x.movimenti.find(m => m.tipo !== 'scarico' && (m.lotto || m.scadenza));
+    const l = inUso || ultimo || {};
+    const altri = x.lotti.filter(y => y.lotto && y.qta > 1e-9 && y !== inUso).map(y => y.lotto);
+    return { lotto: l.lotto || '', scadenza: l.scadenza || '', altri };
+  };
+  for (const a of dati.articoli) { const p = proposto(a.id); if (p.lotto || p.scadenza) Object.assign(extra(a.id), { lotto: p.lotto, scadenza: p.scadenza }); }
   u.$app.innerHTML = html`
     <div class="barra"><a href="#/materie-prime" class="btn">← Materie prime</a><span class="spazio"></span></div>
     <div class="scheda">
       <h1 style="margin-top:0">Inventario</h1>
-      <p class="totale">Scrivi la quantità contata solo per gli articoli che hai controllato: da quella data la giacenza riparte da lì, poi si aggiungono le bolle e si tolgono cotte e DH. Gli articoli lasciati vuoti non cambiano.</p>
+      <p class="totale">Scrivi la quantità contata solo per gli articoli che hai controllato: da quella data la giacenza riparte da lì, poi si aggiungono le bolle e si tolgono cotte e DH. Gli articoli lasciati vuoti non cambiano. Lotto e scadenza sono già quelli in magazzino: cambiali se non corrispondono.</p>
       <div class="barra" style="margin:0;align-items:flex-end">
         <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
         <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondi ? 'checked' : ''}> Nascondi le materie prime a 0</label>
@@ -424,7 +434,7 @@ export async function vistaInventario() {
         <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}">
           <td class="inv-nome">${a.nome}</td><td class="n inv-calc" data-et="Calcolato oggi">${fmt(g.get(a.id).giacenza, a.unita)}</td>
           <td data-et="Contato (${a.unita})"><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale inv-unita">${a.unita}</td>
-          <td data-et="Lotto (facolt.)"><input data-lotto="${a.id}"></td><td data-et="Scadenza (facolt.)"><input data-scad="${a.id}" type="date"></td>
+          <td data-et="Lotto (facolt.)"><input data-lotto="${a.id}" value="${extre.get(a.id)?.lotto || ''}">${proposto(a.id).altri.length ? html`<span class="totale" style="display:block;font-size:.72rem">altri lotti: ${proposto(a.id).altri.join(', ')}</span>` : ''}</td><td data-et="Scadenza (facolt.)"><input data-scad="${a.id}" type="date" value="${extre.get(a.id)?.scadenza || ''}"></td>
         </tr>`)}</tbody></table></div></div>`;
     })}
     </div>
