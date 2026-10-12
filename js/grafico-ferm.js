@@ -1,9 +1,10 @@
 // Grafico riassuntivo della fermentazione: temperatura, °Plato e pH giorno per giorno.
-// Tre pannelli piccoli uno sopra l'altro con lo stesso asse dei giorni (niente doppio asse):
-// ogni misura ha la sua scala. Passando col dito o il mouse compaiono i valori di quel giorno.
+// Un solo grafico (Romain 2026-10-12): le tre linee sulla stessa griglia, ognuna col suo colore
+// e la sua scala (T° a sinistra, °P a destra, pH con i valori sulla linea).
+// Passando col dito o il mouse compaiono i valori di quel giorno.
 
 // su telefono il disegno è più stretto, così testi e punti restano leggibili
-const W = typeof innerWidth === 'number' && innerWidth < 600 ? 400 : 760, SX = 44, DX = 12, H = 92, GAP = 22, TOP = 8;
+const W = typeof innerWidth === 'number' && innerWidth < 600 ? 400 : 760, SX = 40, DX = 40, H = 200, TOP = 30;
 const SERIE = [
   ['temp', 'Temperatura', '°C', 1],
   ['densita', 'Densità', '°P', 1],
@@ -13,16 +14,18 @@ const pieno = v => v !== null && v !== undefined && v !== '' && Number.isFinite(
 const fmt = (v, d) => Number(v).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: d });
 
 // punti per giorno (1 = giorno di cotta) dal registro di fermentazione.
-// Il primo valore dei °Plato è l'OG della cotta (per le cotte doppie la media delle OG).
-export function puntiFermentazione(c, diffGiorni, og = null) {
+// Il giorno 1 prende i valori della scheda cotta: OG (per le cotte doppie la media), T° d'inoculo e pH.
+export function puntiFermentazione(c, diffGiorni, cotta = {}) {
   const punti = (c.fermentazione || [])
     .map((e, i) => ({ g: c.data && e.data ? diffGiorni(c.data, e.data) + 1 : e.giorno || i + 1, e }))
     .filter(p => p.g > 0)
     .sort((a, b) => a.g - b.g);
-  if (!(Number(og) > 0)) return punti;
+  const v = Object.fromEntries(Object.entries(cotta).filter(([, x]) => pieno(x)).map(([k, x]) => [k, Number(x)]));
+  if (!Object.keys(v).length) return punti;
+  const daCotta = Object.keys(v);
   const primo = punti.find(p => p.g === 1);
-  if (primo) primo.e = { ...primo.e, densita: Number(og), og: true };
-  else punti.unshift({ g: 1, e: { data: c.data, densita: Number(og), og: true } });
+  if (primo) primo.e = { ...primo.e, ...v, daCotta };
+  else punti.unshift({ g: 1, e: { data: c.data, ...v, daCotta } });
   return punti;
 }
 
@@ -34,51 +37,53 @@ function scala(valori, passoMin) {
   return [lo - pad, hi + pad];
 }
 
-export function graficoFermentazione(c, diffGiorni, oggiG, og = null) {
-  const punti = puntiFermentazione(c, diffGiorni, og);
+export function graficoFermentazione(c, diffGiorni, oggiG, cotta = {}) {
+  const punti = puntiFermentazione(c, diffGiorni, cotta);
   const usate = SERIE.filter(([k]) => punti.filter(p => pieno(p.e[k])).length >= 1);
   if (punti.length < 2 || !usate.length) return '';
   const g0 = punti[0].g, g1 = Math.max(punti[punti.length - 1].g, g0 + 1);
   const x = g => SX + (g - g0) / (g1 - g0) * (W - SX - DX);
-  const altezza = TOP + usate.length * (H + GAP);
+  const fondo = TOP + H, altezza = fondo + 22;
   // tacche dei giorni: ogni 7 giorni
   const tacche = [];
   for (let g = g0; g <= g1; g++) if (g === g0 || g % 7 === 0) tacche.push(g);
+  // griglia comune: 5 righe orizzontali + giorni
   let svg = '';
-  usate.forEach(([k, titolo, unita, dec], n) => {
-    const y0 = TOP + n * (H + GAP) + 14;
+  for (let i = 0; i <= 4; i++) { const yy = TOP + i * H / 4; svg += `<line x1="${SX}" x2="${W - DX}" y1="${yy}" y2="${yy}" class="gf-griglia"/>`; }
+  for (const g of tacche) svg += `<line x1="${x(g)}" x2="${x(g)}" y1="${TOP}" y2="${fondo}" class="gf-griglia"/><text x="${x(g)}" y="${fondo + 16}" class="gf-asse" text-anchor="middle">g${g}</text>`;
+  if (oggiG >= g0 && oggiG <= g1) svg += `<line x1="${x(oggiG)}" x2="${x(oggiG)}" y1="${TOP}" y2="${fondo}" class="gf-oggi"/>`;
+  // legenda in alto con l'ultimo valore di ogni misura
+  let lx = 0;
+  usate.forEach(([k, titolo, unita, dec]) => {
     const pts = punti.filter(p => pieno(p.e[k])).map(p => ({ g: p.g, v: Number(p.e[k]) }));
     const [lo, hi] = scala(pts.map(p => p.v), k === 'ph' ? 0.4 : 2);
-    const y = v => y0 + H - 14 - (v - lo) / (hi - lo) * (H - 14);
-    svg += `<text x="0" y="${y0 - 4}" class="gf-titolo">${titolo}${unita ? ` (${unita})` : ''}</text>`;
-    // griglia orizzontale al valore minimo e massimo misurati
-    const vv = pts.map(p => p.v);
-    for (const v of [...new Set([Math.min(...vv), Math.max(...vv)])]) {
-      svg += `<line x1="${SX}" x2="${W - DX}" y1="${y(v)}" y2="${y(v)}" class="gf-griglia"/><text x="${SX - 6}" y="${y(v) + 4}" class="gf-asse" text-anchor="end">${fmt(v, dec)}</text>`;
-    }
-    for (const g of tacche) svg += `<line x1="${x(g)}" x2="${x(g)}" y1="${y0}" y2="${y0 + H - 14}" class="gf-griglia"/>`;
-    if (oggiG >= g0 && oggiG <= g1) svg += `<line x1="${x(oggiG)}" x2="${x(oggiG)}" y1="${y0}" y2="${y0 + H - 14}" class="gf-oggi"/>`;
+    const y = v => fondo - (v - lo) / (hi - lo) * H;
+    const ult = pts[pts.length - 1];
+    const testo = `${titolo} ${fmt(ult.v, dec)}${unita ? ` ${unita}` : ''}`;
+    svg += `<g class="gf-${k}"><circle cx="${lx + 5}" cy="12" r="5" class="gf-punto"/><text x="${lx + 14}" y="16" class="gf-titolo">${testo}</text></g>`;
+    lx += 26 + testo.length * 6.6;
+    // scala: T° a sinistra, °P a destra (min e max misurati), pH scritto sulla linea
+    const vv = [...new Set([Math.min(...pts.map(p => p.v)), Math.max(...pts.map(p => p.v))])];
+    if (k === 'temp') for (const v of vv) svg += `<text x="${SX - 5}" y="${y(v) + 4}" class="gf-asse gf-${k}" text-anchor="end">${fmt(v, dec)}°</text>`;
+    if (k === 'densita') for (const v of vv) svg += `<text x="${W - DX + 5}" y="${y(v) + 4}" class="gf-asse gf-${k}">${fmt(v, dec)}</text>`;
     // temperatura: impostata e mantenuta, quindi a gradini; °P e pH: misure collegate
     let d = '';
     pts.forEach((p, i) => {
       if (i === 0) d = `M${x(p.g)},${y(p.v)}`;
       else d += k === 'temp' ? `H${x(p.g)}V${y(p.v)}` : `L${x(p.g)},${y(p.v)}`;
     });
-    svg += `<path d="${d}" class="gf-linea"/>`;
+    svg += `<g class="gf-${k}"><path d="${d}" class="gf-linea"/>`;
     // punti solo dove c'è una misura (per la temperatura: dove cambia)
     pts.forEach((p, i) => {
       if (k === 'temp' && i > 0 && i < pts.length - 1 && pts[i - 1].v === p.v) return;
-      svg += `<circle cx="${x(p.g)}" cy="${y(p.v)}" r="4" class="gf-punto"/>`;
+      svg += `<circle cx="${x(p.g)}" cy="${y(p.v)}" r="3.5" class="gf-punto"/>`;
     });
-    // etichetta diretta sull'ultimo valore
-    const ult = pts[pts.length - 1];
-    svg += `<text x="${Math.min(x(ult.g) + 7, W - DX)}" y="${y(ult.v) - 8}" class="gf-val" text-anchor="${x(ult.g) > W - 60 ? 'end' : 'start'}">${fmt(ult.v, dec)}${unita === '°C' ? '°' : ''}</text>`;
+    if (k === 'ph') for (const p of [pts[0], ...(pts.length > 1 ? [ult] : [])]) svg += `<text x="${x(p.g)}" y="${y(p.v) - 8}" class="gf-val" text-anchor="${p === ult && x(p.g) > W - 60 ? 'end' : 'middle'}">${fmt(p.v, dec)}</text>`;
+    svg += '</g>';
   });
-  const yAsse = altezza - GAP + 14;
-  for (const g of tacche) svg += `<text x="${x(g)}" y="${yAsse}" class="gf-asse" text-anchor="middle">g${g}</text>`;
   return `<div class="graf-ferm" id="graf-ferm" data-g0="${g0}" data-g1="${g1}">
     <svg viewBox="0 0 ${W} ${altezza}" role="img" aria-label="Grafico della fermentazione: ${usate.map(s => s[1]).join(', ')}">
-      ${svg}<line id="gf-croce" x1="0" x2="0" y1="${TOP}" y2="${altezza - GAP}" class="gf-croce" visibility="hidden"/>
+      ${svg}<line id="gf-croce" x1="0" x2="0" y1="${TOP}" y2="${fondo}" class="gf-croce" visibility="hidden"/>
       <rect x="${SX}" y="0" width="${W - SX - DX}" height="${altezza}" fill="transparent" id="gf-area"/>
     </svg>
     <div class="gf-tip" id="gf-tip" hidden></div>
@@ -86,11 +91,11 @@ export function graficoFermentazione(c, diffGiorni, oggiG, og = null) {
 }
 
 // tooltip con crocino: il giorno più vicino e i suoi valori
-export function attivaGrafico(c, diffGiorni, dataIT, og = null) {
+export function attivaGrafico(c, diffGiorni, dataIT, cotta = {}) {
   const box = document.getElementById('graf-ferm');
   if (!box) return;
   const svg = box.querySelector('svg'), croce = box.querySelector('#gf-croce'), tip = box.querySelector('#gf-tip');
-  const punti = puntiFermentazione(c, diffGiorni, og);
+  const punti = puntiFermentazione(c, diffGiorni, cotta);
   const g0 = Number(box.dataset.g0), g1 = Number(box.dataset.g1);
   const muovi = ev => {
     const r = svg.getBoundingClientRect();
@@ -99,7 +104,7 @@ export function attivaGrafico(c, diffGiorni, dataIT, og = null) {
     const p = punti.reduce((m, q) => (Math.abs(q.g - g) < Math.abs(m.g - g) ? q : m), punti[0]);
     const xs = SX + (p.g - g0) / (g1 - g0) * (W - SX - DX);
     croce.setAttribute('x1', xs); croce.setAttribute('x2', xs); croce.setAttribute('visibility', 'visible');
-    const righe = SERIE.filter(([k]) => pieno(p.e[k])).map(([k, t, u, d]) => `<div><span>${k === 'densita' && p.e.og ? 'OG' : t}</span> <b>${fmt(p.e[k], d)}${u ? ` ${u}` : ''}</b></div>`);
+    const righe = SERIE.filter(([k]) => pieno(p.e[k])).map(([k, t, u, d]) => `<div class="gf-${k}"><i class="gf-pallino"></i><span>${p.e.daCotta?.includes(k) ? { densita: 'OG', temp: 'T° inoculo', ph: 'pH cotta' }[k] : t}</span> <b>${fmt(p.e[k], d)}${u ? ` ${u}` : ''}</b></div>`);
     tip.innerHTML = `<div class="gf-tip-testa">Giorno ${p.g}${p.e.data ? ` · ${dataIT(p.e.data)}` : ''}</div>${righe.join('') || '<div>nessuna misura</div>'}${p.e.nota ? `<div class="gf-nota">${p.e.nota.replace(/</g, '&lt;')}</div>` : ''}`;
     tip.hidden = false;
     const left = xs / W * r.width;
