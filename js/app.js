@@ -511,6 +511,7 @@ async function vistaCotta(id) {
     const giornoOggi = c.data ? diffGiorni(c.data, oggiISO()) + 1 : null;
     const g = gruppo();
     const ogLotto = g.length > 1 ? ogMedia(g.map(x => (x.id === c.id ? c : x))) : c.og;
+    const valoriCotta = { densita: ogLotto, temp: c.tempInoculo, ph: c.phMash }; // giorno 1 del grafico
     const litriConf = litriConfezionati(c);
     const litriGruppo = g.length > 1 ? g.reduce((t, x) => t + (Number(x.id === c.id ? c.litri : x.litri) || 0), 0) : c.litri;
     const ultimaLettura = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
@@ -569,6 +570,7 @@ async function vistaCotta(id) {
           ${campo('og', 'OG (°P)')}
           ${campo('fg', 'FG (°P)')}
           ${campo('phMash', 'pH')}
+          ${campo('tempInoculo', 'T° inoculo (°C)')}
         </div>
         <div class="spunte">
           <label><input type="checkbox" data-path="dh" ${c.dh !== false ? 'checked' : ''}> Con dry hop (DH)</label>
@@ -662,7 +664,7 @@ async function vistaCotta(id) {
 
       <div class="scheda" id="sez-ferm">
         <h2>Fermentazione</h2>
-        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null, ogLotto))}
+        ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null, valoriCotta))}
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
           <tbody>${c.fermentazione.map((e, i) => (!fermTutte && !rigaFermUtile(i) ? '' : html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
@@ -746,7 +748,7 @@ async function vistaCotta(id) {
         <button class="pericolo" id="elimina">Elimina cotta</button>
       </div>
     `;
-    attivaGrafico(c, diffGiorni, dataIT, ogLotto);
+    attivaGrafico(c, diffGiorni, dataIT, valoriCotta);
     $app.querySelector('.indice').onclick = e => {
       const a = e.target.closest('[data-vai]');
       if (a) document.getElementById(a.dataset.vai)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
