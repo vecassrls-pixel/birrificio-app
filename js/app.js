@@ -989,6 +989,33 @@ function conGiorniDh(cotte) {
 }
 const W = 30; // pixel per giorno
 
+// Colore della barra secondo la temperatura misurata: stessa tinta della fase, più scura quando è più calda.
+// Intervalli per fase (°C) dal più freddo (chiaro) al più caldo (scuro).
+const TINTE = {
+  fermentazione: { h: 27, s: 95, t: [12, 24], l: [84, 48] },
+  dh: { h: 256, s: 85, t: [8, 22], l: [89, 60] },
+  maturazione: { h: 199, s: 90, t: [-1, 10], l: [90, 55] },
+};
+function coloreFase(fase, temp) {
+  const x = TINTE[fase];
+  if (!x || temp == null) return `var(--f-${fase})`;
+  const k = Math.min(1, Math.max(0, (temp - x.t[0]) / (x.t[1] - x.t[0])));
+  return `hsl(${x.h} ${x.s}% ${(x.l[0] + (x.l[1] - x.l[0]) * k).toFixed(1)}%)`;
+}
+// Temperatura di un giorno dal registro (solo righe fino a oggi): interpolata tra due misure,
+// prima della prima misura vale la prima; dopo l'ultima niente (colore normale della fase).
+function tempMisurata(cotte, oggi) {
+  const misure = registroComune(cotte)
+    .filter(e => e.data && e.data <= oggi && e.temp !== null && e.temp !== undefined && e.temp !== '' && Number.isFinite(Number(e.temp)))
+    .map(e => ({ data: e.data, t: Number(e.temp) })).sort((x, y) => x.data.localeCompare(y.data));
+  return d => {
+    if (!misure.length || d > misure[misure.length - 1].data) return null;
+    if (d <= misure[0].data) return misure[0].t;
+    const i = misure.findIndex(m => m.data >= d), p = misure[i - 1], q = misure[i];
+    return p.t + (q.t - p.t) * diffGiorni(p.data, d) / diffGiorni(p.data, q.data);
+  };
+}
+
 // Export del planning in Excel: righe = FV, colonne = giorni, colori come nell'app.
 // Periodo: dall'inizio della vista attuale fino all'ultima cotta in programma.
 const COLORI_XLSX = { fermentazione: 'FB923C', dh: 'B39DFA', maturazione: '7DD3FC', weekend: 'F7DBE3', mp: '92D050', testa: 'E7E5E4' };
@@ -1151,6 +1178,7 @@ function vistaPlanning() {
     <details class="legenda-box">
       <summary>${Object.entries(FASI).map(([k, v]) => html`<span><span class="fase-chip" style="background:var(--f-${k})"></span> ${v}</span>`)}<span class="apri">Legenda</span></summary>
       <div class="legenda">
+      <span>Tinta più scura = temperatura misurata più alta, sfumata giorno per giorno</span>
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
@@ -1181,9 +1209,14 @@ function vistaPlanning() {
             // sfondo a fasi: arancione fermentazione, viola DH, celeste maturazione
             const da = b.da < plan.inizio ? plan.inizio : b.da, a = b.a > fineVista ? fineVista : b.a;
             const tot = diffGiorni(da, a) + 1;
-            const stops = fasiCotta(conGiorniDh(b.cotte), stato.durate).filter(f => f.a >= da && f.da <= a).map(f => {
-              const x0 = diffGiorni(da, f.da < da ? da : f.da) / tot * 100, x1 = (diffGiorni(da, f.a > a ? a : f.a) + 1) / tot * 100;
-              return `var(--f-${f.fase}) ${x0.toFixed(2)}% ${x1.toFixed(2)}%`;
+            const tempDi = tempMisurata(b.cotte, oggi);
+            const stops = fasiCotta(conGiorniDh(b.cotte), stato.durate).filter(f => f.a >= da && f.da <= a).flatMap(f => {
+              const d0 = f.da < da ? da : f.da, d1 = f.a > a ? a : f.a;
+              const pos = g => `${(g / tot * 100).toFixed(2)}%`;
+              const g0 = diffGiorni(da, d0), n = diffGiorni(d0, d1) + 1;
+              const colori = Array.from({ length: n }, (_, i) => coloreFase(f.fase, tempDi(addGiorni(d0, i))));
+              // bordo netto tra una fase e l'altra, sfumato giorno per giorno dentro la fase
+              return [`${colori[0]} ${pos(g0)}`, ...colori.map((col, i) => `${col} ${pos(g0 + i + 0.5)}`), `${colori[n - 1]} ${pos(g0 + n)}`];
             });
             const sfondoFasi = stops.length ? `background:linear-gradient(to right, ${stops.join(', ')});` : '';
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
