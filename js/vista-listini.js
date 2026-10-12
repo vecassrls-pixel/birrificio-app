@@ -1,7 +1,7 @@
 // Pagina "Listini": listino base Alpha (prezzi scritti a mano) + ricarico = altri listini con nome, da copiare e incollare.
 // Calcoli in listini.js.
 
-import { ID_IMPOSTAZIONI, elencoProdotti, giacenzeBirra, nomeFormato } from './birra.js';
+import { ID_IMPOSTAZIONI, elencoProdotti, giacenzeBirra } from './birra.js';
 import { ARROTONDA, ALIQUOTA_IVA, ID_ALPHA, nuovoAlpha, perCalcolo, nuovoListino, listinoDa, prezzoListino, righeListino, righeDaCopiare, testoListino, tabellaListino, soldi } from './listini.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia }
@@ -36,13 +36,10 @@ export async function vistaListini() {
   const l = D.listini.find(x => x.id === leggiScelto()) || D.listini[0];
   const eAlpha = l.id === ID_ALPHA;
   const vendita = D.alpha.prezzi || {};
-  const righe = l ? righeListino(l, D.chiavi, D.giacenze, vendita) : [];
+  const righe = l ? righeListino(l, D.chiavi, D.giacenze, vendita, D.alpha.esclusi) : [];
   const daCopiare = righeDaCopiare(righe);
   const senzaBase = righe.filter(r => !r.escluso && !r.base && !r.fisso).length;
   const oggi = u.dataIT(u.oggiISO());
-  // formati conosciuti, per il prezzo base di formato
-  const formati = new Map();
-  for (const k of D.chiavi) { const [, tipo, litri] = k.split('|'); formati.set(`*|${tipo}|${litri}`, { tipo, litri: Number(litri) }); }
   let birraPrima = '';
 
   u.$app.innerHTML = html`
@@ -74,9 +71,9 @@ export async function vistaListini() {
       </div>
       <label class="solo-editori" style="margin-top:10px"><input type="checkbox" data-campo="iva" ${l.iva ? 'checked' : ''}> Prezzi IVA inclusa (${ALIQUOTA_IVA}%)</label>
       <label class="solo-editori" style="margin-top:10px">Note in fondo al titolo (consegna, minimo d'ordine…)<textarea data-campo="note" rows="2">${l.note || ''}</textarea></label>
-      ${eAlpha ? html`<p class="totale"><b>Alpha è il listino base</b>: scrivi a mano il prezzo di ogni birra e formato (IVA esclusa) nella colonna Base, o un prezzo per formato più sotto. Gli altri listini sono Alpha + il loro ricarico.</p>` : ''}
+      ${eAlpha ? html`<p class="totale"><b>Alpha è il listino base</b>: scrivi a mano il prezzo (IVA esclusa) dei prodotti che vendi; togli la spunta a quelli che non vendi. Gli altri listini contengono solo i prodotti con un prezzo in Alpha, più il loro ricarico.</p>` : ''}
       <p class="totale">${daCopiare.length} prodotti nel listino · prezzo = ${eAlpha ? 'prezzo Alpha' : `Alpha ${l.ricarico >= 0 ? '+' : '−'} ${u.numIT(Math.abs(l.ricarico), 1)}%`}${l.iva ? ` + IVA ${ALIQUOTA_IVA}%` : ', IVA esclusa'}${Number(l.arrotonda) ? `, arrotondato per eccesso a ${soldi(l.arrotonda)} €` : ''}.
-        ${senzaBase ? html`<b>⚠ ${senzaBase} senza prezzo in Alpha</b>: ${eAlpha ? 'scrivilo nella colonna Base o nei prezzi per formato qui sotto' : html`scrivilo nel listino <button class="link st-libero" data-scegli="${ID_ALPHA}">Alpha</button>`}.` : ''}</p>
+        ${senzaBase ? html`<b>⚠ ${senzaBase} senza prezzo in Alpha</b>: ${eAlpha ? 'scrivilo nella colonna Base o togli la spunta se non lo vendi' : html`scrivilo nel listino <button class="link st-libero" data-scegli="${ID_ALPHA}">Alpha</button>`}.` : ''}</p>
       ${righe.length ? html`<div class="scroll-x"><table class="tab-edit tab-listino">
         <thead><tr><th title="Nel listino">✓</th><th>Formato</th><th class="n li-extra">Giacenza</th><th>${eAlpha ? 'Base €' : 'Alpha €'}</th><th>${eAlpha ? 'Prezzo €' : 'Prezzo listino €'}</th><th class="n li-extra">€/L</th></tr></thead>
         <tbody>${righe.map(r => {
@@ -86,12 +83,12 @@ export async function vistaListini() {
             <td><input type="checkbox" data-includi="${r.chiave}" ${r.escluso ? '' : 'checked'} title="Nel listino"></td>
             <td>${r.formato}</td>
             <td class="n li-extra">${r.giacenza ? u.numIT(r.giacenza, 0) : '—'}</td>
-            <td>${eAlpha ? html`<input data-base="${r.chiave}" type="number" step="any" inputmode="decimal" value="${r.baseBirra ?? ''}" placeholder="${r.base ? soldi(r.base) : 'manca'}" title="${r.baseBirra === null ? 'Prezzo del formato (vale per tutte le birre): scrivi qui per un prezzo diverso per questa birra' : 'Prezzo Alpha di questa birra'}">` : euro(r.base)}</td>
+            <td>${eAlpha ? html`<input data-base="${r.chiave}" type="number" step="any" inputmode="decimal" value="${r.baseBirra ?? ''}" placeholder="manca" title="Prezzo Alpha di questo prodotto, IVA esclusa">` : euro(r.base)}</td>
             <td>${eAlpha ? euro(r.prezzo) : html`<input data-fisso="${r.chiave}" type="number" step="any" inputmode="decimal" value="${r.fisso ?? ''}" placeholder="${r.calcolato ? soldi(r.calcolato) : '—'}" class="${r.fisso ? 'fisso' : ''}" title="${r.fisso ? `Prezzo scritto a mano (calcolato: ${euro(r.calcolato)}). Cancella per tornare al calcolo.` : 'Prezzo calcolato: scrivi qui per fissarlo a mano'}">`}</td>
             <td class="n li-extra">${r.alLitro ? soldi(r.alLitro) : '—'}</td>
           </tr>`;
         })}</tbody></table></div>
-        <p class="totale">${eAlpha ? 'La colonna Base, se vuota, usa il prezzo del formato. ' : 'Un prezzo scritto a mano nella colonna del listino vince sul calcolo (cancellalo per tornare al ricarico). '}Senza spunta il prodotto non va nel testo copiato.</p>`
+        <p class="totale">${eAlpha ? '' : 'Un prezzo scritto a mano nella colonna del listino vince sul calcolo (cancellalo per tornare al ricarico). '}Senza spunta il prodotto non va nel testo copiato.</p>`
       : html`<p class="totale">${l.prodotti === 'magazzino' ? 'Nessuna birra in magazzino: scegli "Tutti i prodotti" oppure registra confezionamenti e inventario nella pagina Birra.' : 'Nessun prodotto: compaiono quando scrivi il confezionamento nelle schede cotta.'}</p>`}
       ${daCopiare.length ? html`<details class="st-tabella"><summary>Anteprima del testo</summary><pre class="li-anteprima">${testoListino(l, righe, oggi)}</pre></details>` : ''}
       <div class="barra solo-editori">
@@ -100,18 +97,11 @@ export async function vistaListini() {
         <button class="piccolo" id="li-elimina">Elimina listino</button>`}
       </div>
     </div>
-    ${eAlpha ? html`<div class="scheda"><h2>Prezzi Alpha per formato</h2>
-      <p class="totale">Prezzo di un pezzo senza IVA, uguale per tutte le birre se la birra non ha un prezzo suo in Alpha.</p>
-      ${formati.size ? html`<div class="scroll-x"><table class="tab-edit"><thead><tr><th>Formato</th><th style="width:150px">Base € al pezzo</th><th class="n">Nel listino</th></tr></thead>
-        <tbody>${[...formati].sort((a, b) => a[1].tipo.localeCompare(b[1].tipo) || b[1].litri - a[1].litri).map(([k, f]) => html`<tr>
-          <td>${nomeFormato(f.tipo, f.litri)}</td>
-          <td><input data-base="${k}" type="number" step="any" inputmode="decimal" value="${vendita[k] ?? ''}"></td>
-          <td class="n">${euro(prezzoListino(vendita[k], perCalcolo(l)))}</td></tr>`)}</tbody></table></div>`
-      : html`<p class="totale">Nessun formato: compaiono quando scrivi il confezionamento nelle schede cotta.</p>`}
-    </div>` : ''}
     ${D.listini.length > 1 ? (() => {
-      const tutte = D.listini.map(x => righeListino({ ...x, prodotti: 'tutti' }, D.chiavi, D.giacenze, vendita));
-      const usate = tutte[0].map((r, i) => ({ r, prezzi: tutte.map(t => (t[i].escluso ? null : t[i].prezzo)) })).filter(x => x.prezzi.some(Boolean));
+      // per prodotto: gli altri listini hanno solo i prodotti con prezzo in Alpha
+      const tutte = D.listini.map(x => new Map(righeListino({ ...x, prodotti: 'tutti' }, D.chiavi, D.giacenze, vendita, D.alpha.esclusi).map(r => [r.chiave, r])));
+      const usate = [...tutte[0].values()].filter(r => !r.escluso)
+        .map(r => ({ r, prezzi: tutte.map(t => (t.get(r.chiave) && !t.get(r.chiave).escluso ? t.get(r.chiave).prezzo : null)) })).filter(x => x.prezzi.some(Boolean));
       return html`<details class="scheda st-tabella"><summary><b>Tutti i listini a confronto</b></summary>
         <div class="scroll-x"><table class="tab-mag"><thead><tr><th>Prodotto</th>${D.listini.map(x => html`<th class="n">${x.nome}${x.iva ? ' (IVA incl.)' : ''}</th>`)}</tr></thead>
         <tbody>${usate.map(({ r, prezzi }) => html`<tr><td>${r.birra} · ${r.formato}</td>${prezzi.map(p => html`<td class="n">${euro(p)}</td>`)}</tr>`)}</tbody></table></div></details>`;
