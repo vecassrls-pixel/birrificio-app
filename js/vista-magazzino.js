@@ -101,7 +101,7 @@ export async function vistaMagazzino() {
     </div>
     ${dati.scarichi.length ? html`<div class="scheda"><h2>Ultimi carichi e scarichi manuali</h2><div class="lista">
       ${[...dati.scarichi].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 8).map(x => html`<a class="riga-cotta" href="#/scarico/${encodeURIComponent(x.id)}">
-        <span class="lotto">${u.dataIT(x.data)}</span><span class="birra">${x.verso === 'carico' ? `+ ${MOTIVI_CARICO[x.motivo] || 'Carico'}` : `− ${MOTIVI_SCARICO[x.motivo] || 'Scarico'}`}${x.destinatario ? ` · ${x.destinatario}` : ''}</span>
+        <span class="lotto">${u.dataIT(x.data)}</span><span class="birra">${x.verso === 'carico' ? `+ ${MOTIVI_CARICO[x.motivo] || 'Carico'}${x.documento ? ` ${x.documento}` : ''}` : `− ${MOTIVI_SCARICO[x.motivo] || 'Scarico'}`}${x.destinatario ? ` · ${x.destinatario}` : ''}</span>
         <span class="totale" style="margin:0">${(x.righe || []).length} righe</span></a>`)}</div></div>` : ''}
   `;
   const $ = s => document.getElementById(s);
@@ -576,7 +576,7 @@ export async function vistaScarico(id) {
   if (!nuovo && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Movimento non trovato. <a href="#/materie-prime">Torna alle materie prime</a></p>`; return; }
   // stesso record per carichi e scarichi manuali: verso = 'carico' | 'scarico'
   const sc = esistente ? JSON.parse(JSON.stringify(esistente))
-    : { tipo: 'scarico', verso: id === 'carico' ? 'carico' : 'scarico', data: u.oggiISO(), motivo: id === 'carico' ? 'acquisto' : 'vendita', destinatario: '', note: '', righe: [{ articoloId: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
+    : { tipo: 'scarico', verso: id === 'carico' ? 'carico' : 'scarico', data: u.oggiISO(), motivo: id === 'carico' ? 'ddt' : 'vendita', documento: '', destinatario: '', note: '', righe: [{ articoloId: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
   sc.verso ||= 'scarico';
   const carico = () => sc.verso === 'carico';
   // le giacenze senza questo scarico, per proporre i lotti disponibili
@@ -598,13 +598,14 @@ export async function vistaScarico(id) {
           <label class="spunta"><input type="radio" name="verso" value="scarico" ${carico() ? '' : 'checked'}> − Scarico (esce)</label>
         </div>
         <p class="totale">${carico()
-          ? 'Per la materia prima che entra senza una bolla: reso da un cliente, prestito o scambio con un altro birrificio, campione, rettifica. Lotto e scadenza sono facoltativi.'
+          ? 'Per la materia prima che entra a mano: con DDT o fattura del fornitore, oppure reso da un cliente, prestito o scambio, campione, rettifica. Lotto e scadenza sono facoltativi.'
           : 'Per la materia prima che esce dal magazzino senza andare in una cotta: vendita, reso al fornitore, scarto. Se non scegli il lotto esce quello caricato da più tempo.'}</p>
         <div class="griglia">
           <label>Data <input type="date" data-s="data" value="${sc.data || ''}"></label>
           <label>Motivo <select data-s="motivo">${Object.entries(carico() ? MOTIVI_CARICO : MOTIVI_SCARICO).map(([k, v]) => html`<option value="${k}" ${k === sc.motivo ? 'selected' : ''}>${v}</option>`)}</select></label>
+          ${carico() ? html`<label>N° documento <input data-s="documento" value="${sc.documento || ''}" placeholder="${sc.motivo === 'fattura' ? 'n° fattura' : sc.motivo === 'ddt' ? 'n° DDT' : 'facoltativo'}"></label>` : ''}
           <label style="grid-column:span 2">${carico() ? 'Provenienza / fornitore' : 'Destinatario / cliente'} <input data-s="destinatario" list="dl-dest" value="${sc.destinatario || ''}"></label>
-          <label style="grid-column:1/-1">Note (n° fattura, DDT…) <input data-s="note" value="${sc.note || ''}"></label>
+          <label style="grid-column:1/-1">Note <input data-s="note" value="${sc.note || ''}"></label>
         </div>
         <datalist id="dl-dest">${destinatari.map(x => html`<option value="${x}">`)}</datalist>
         <datalist id="dl-art">${dati.articoli.map(a => html`<option value="${a.nome}">`)}</datalist>

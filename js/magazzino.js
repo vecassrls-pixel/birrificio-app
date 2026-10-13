@@ -203,7 +203,7 @@ export function giacenze({ articoli, bolle, inventari, cotte, scarichi = [] }, o
   // Carichi (reso da cliente, prestito, rettifica…): entrano con il loro lotto e scadenza, come una bolla.
   for (const sc of scarichi) {
     const carico = sc.verso === 'carico';
-    const chi = [(carico ? MOTIVI_CARICO : MOTIVI_SCARICO)[sc.motivo] || (carico ? 'Carico' : 'Scarico'), sc.destinatario].filter(Boolean).join(' · ');
+    const chi = [[(carico ? MOTIVI_CARICO : MOTIVI_SCARICO)[sc.motivo] || (carico ? 'Carico' : 'Scarico'), sc.documento].filter(Boolean).join(' '), sc.destinatario].filter(Boolean).join(' · ');
     for (const [i, r] of (sc.righe || []).entries()) {
       const g = res.get(r.articoloId);
       if (!g || !sc.data) continue;
@@ -259,7 +259,7 @@ function simulaLotti(g) {
 const ORDINE_MOV = { inventario: 0, carico: 1, scarico: 2 };
 
 export const MOTIVI_SCARICO = { vendita: 'Vendita', reso: 'Reso al fornitore', scarto: 'Scarto / rottura', altro: 'Altro' };
-export const MOTIVI_CARICO = { acquisto: 'Acquisto senza bolla', reso_cliente: 'Reso da cliente', prestito: 'Prestito / scambio', omaggio: 'Campione / omaggio', rettifica: 'Rettifica', altro: 'Altro' };
+export const MOTIVI_CARICO = { ddt: 'DDT', fattura: 'Fattura', acquisto: 'Acquisto senza documento', reso_cliente: 'Reso da cliente', prestito: 'Prestito / scambio', omaggio: 'Campione / omaggio', rettifica: 'Rettifica', altro: 'Altro' };
 const destinoCotta = s => `${s.sezione === 'acido' ? 'Correzione pH' : s.data !== s.cotta.data || /\b(dh|dry ?hop)\b/i.test(s.nome) ? 'Dry hop' : 'Cotta'} ${s.cotta.lotto || ''} ${s.cotta.birra || ''}`.replace(/\s+/g, ' ').trim();
 
 // Ingredienti delle cotte (da una data in poi) che non corrispondono a nessun articolo
