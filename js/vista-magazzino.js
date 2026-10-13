@@ -1,6 +1,7 @@
 // Pagine "Materie prime": giacenze, scheda articolo, bolla di carico, inventario.
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
+import { LOGO_KASHMIR } from './logo-kashmir.js';
 import {
   CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo,
 } from './magazzino.js';
@@ -521,7 +522,7 @@ export async function vistaRegistroS6() {
     </div>
     <div class="s6">
       <div class="s6-testa">
-        <img src="img/logo-kashmir.png" alt="Kashmir Brewing Company">
+        <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
         <div><h1>S6 - CARICO - SCARICO /// VECAS SRLS</h1>
           <div>Periodo: dal ${u.dataIT(s6.da)} al ${u.dataIT(s6.a)}${s6.categoria ? ` · ${CATEGORIE[s6.categoria]}` : ''} · stampato il ${u.dataIT(u.oggiISO())}</div></div>
       </div>
@@ -538,10 +539,7 @@ export async function vistaRegistroS6() {
   const $ = s => document.getElementById(s);
   $('s6-da').onchange = e => { s6.da = e.target.value; s6.daScelto = !!e.target.value; vistaRegistroS6(); };
   $('s6-a').onchange = e => { s6.a = e.target.value; s6.aScelto = !!e.target.value; vistaRegistroS6(); };
-  // logo: se non arriva al primo colpo (rete lenta o cache vecchia) si riprova senza cache
   const logo = u.$app.querySelector('.s6-testa img');
-  logo.onerror = () => { if (!logo.dataset.riprova) { logo.dataset.riprova = '1'; logo.src = `img/logo-kashmir.png?r=${Date.now()}`; } };
-  if (logo.complete && !logo.naturalWidth) logo.onerror();
   $('s6-cat').onchange = e => { s6.categoria = e.target.value; vistaRegistroS6(); };
   // lotto mancante scritto qui: va sulla riga di origine (ingrediente della cotta, riga della bolla o del movimento manuale)
   u.$app.querySelectorAll('.s6-lotto').forEach(el => {

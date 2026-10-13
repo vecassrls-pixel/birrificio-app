@@ -2,6 +2,7 @@
 // Carico dal confezionamento delle cotte; scarico manuale o importato da Fatture in Cloud e Shopify.
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) come vista-magazzino.js.
 
+import { LOGO_KASHMIR } from './logo-kashmir.js';
 import {
   ID_IMPOSTAZIONI, FORMATI, confezionamenti, MOTIVI_SCARICO, MOTIVI_CARICO, ORIGINI, nomeMotivo, testoScontrino, impostazioniDa, giacenzeBirra, elencoProdotti, nomeProdotto,
   nomeFormato, registroBirra, trovaProdotto, conCodice, idProdotto,
@@ -430,7 +431,7 @@ export async function vistaRegistro() {
     </div>
     <div class="s6">
       <div class="s6-testa">
-        <img src="img/logo-kashmir.png" alt="Kashmir Brewing Company">
+        <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
         <div><h1>CARICO - SCARICO BIRRA /// VECAS SRLS</h1>
           <div>Periodo: dal ${u.dataIT(reg.da)} al ${u.dataIT(reg.a)} · caricati ${u.numIT(somma('C'), 1)} L · scaricati ${u.numIT(somma('S'), 1)} L · stampato il ${u.dataIT(u.oggiISO())}</div></div>
       </div>
