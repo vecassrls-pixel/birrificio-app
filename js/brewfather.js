@@ -263,8 +263,8 @@ const ORDINE_STATI = ['Planning', 'Brewing', 'Fermenting', 'Conditioning', 'Comp
 const sg = p => (p === null || p === undefined || p === '' ? null : Math.round(platoASG(Number(p)) * 10000) / 10000);
 export const ETICHETTE_BF = { og: 'OG', fg: 'FG', litri: 'Litri in FV', phMash: 'pH mash', litriConf: 'Litri confezionati', stato: 'Stato' };
 
-export function statoBrewfather(c, durate, oggi = oggiISO()) {
-  const s = statoCotta(c, durate, oggi);
+export function statoBrewfather(c, durate, oggi = oggiISO(), cotte = null) {
+  const s = statoCotta(c, durate, oggi, cotte);
   if (s === 'pianificata') return 'Planning';
   if (s === 'tank') {
     const f = fasiCotta(c, durate).find(x => x.da <= oggi && x.a >= oggi);
@@ -285,7 +285,7 @@ export function daInviare(c, cotte, durate) {
     if (k === 'og' && noti.og == null && noti.ogRicetta != null && Math.abs(noti.ogRicetta - v) < 0.05) continue; // OG stimato dalla ricetta, non misurato
     if (noti[k] === undefined || noti[k] === null || Math.abs(Number(noti[k]) - Number(v)) > (k === 'og' || k === 'fg' || k === 'phMash' ? 0.05 : 0.5)) diversi[k] = Number(v);
   }
-  const stato = statoBrewfather(c, durate);
+  const stato = statoBrewfather(c, durate, undefined, cotte);
   if (ORDINE_STATI.indexOf(stato) > ORDINE_STATI.indexOf(c.brewfather.stato || 'Planning')) diversi.stato = stato;
   return diversi;
 }

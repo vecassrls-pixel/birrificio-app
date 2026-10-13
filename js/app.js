@@ -110,7 +110,7 @@ const stileDi = birra => stato.cotte
   .sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0]?.stile || '';
 const stiliNoti = () => [...new Set([...stato.cotte.map(c => c.stile).filter(Boolean), ...STILI_COMUNI])].sort((a, b) => a.localeCompare(b));
 // 🧫 🏷️ finché la birra non è confezionata
-const simboliPronti = (c, s = statoCotta(c, stato.durate)) => (['pianificata', 'tank'].includes(s)
+const simboliPronti = (c, s = statoCotta(c, stato.durate, undefined, stato.cotte)) => (['pianificata', 'tank'].includes(s)
   ? (c.lievitoOk ? ' ' + SIMBOLI.lievito : '') + (c.etichetteOk ? ' ' + SIMBOLI.etichette : '') : '');
 const ultimaCottaDi = birra => stato.cotte
   .filter(c => nomeBirra(c.birra) === nomeBirra(birra) && (c.malti || []).length)
@@ -212,7 +212,7 @@ function vistaCotte() {
   const anni = [...new Set(stato.cotte.map(c => c.anno).filter(Boolean))].sort((a, b) => b - a);
   const q = filtri.q.trim().toLowerCase();
   const filtrate = stato.cotte
-    .map(c => ({ c, s: statoCotta(c, stato.durate) }))
+    .map(c => ({ c, s: statoCotta(c, stato.durate, undefined, stato.cotte) }))
     .filter(({ c }) =>
       (!q || `${c.birra} ${c.lotto} ${c.fv}`.toLowerCase().includes(q)) &&
       (!filtri.anno || String(c.anno) === filtri.anno));
@@ -517,7 +517,7 @@ async function vistaCotta(id) {
   }
 
   function disegna() {
-    const s = statoCotta(c, stato.durate);
+    const s = statoCotta(c, stato.durate, undefined, stato.cotte);
     const fine = c.data ? fineCotta(c, stato.durate) : null;
     const giorniTank = c.data && fine ? diffGiorni(c.data, fine) + 1 : null;
     const giornoOggi = c.data ? diffGiorni(c.data, oggiISO()) + 1 : null;
@@ -1099,7 +1099,7 @@ function esportaPlanning() {
       if (scritti.has(chiave)) continue;
       scritti.add(chiave);
       const inizio = p.da < da ? da : p.da;
-      const mp = ['pianificata', 'tank'].includes(statoCotta(c, stato.durate)) && g.some(x => x.materiePrime);
+      const mp = ['pianificata', 'tank'].includes(statoCotta(c, stato.durate, undefined, stato.cotte)) && g.some(x => x.materiePrime);
       const pronti = simboliPronti({ ...c, lievitoOk: g.every(x => x.lievitoOk), etichetteOk: g.every(x => x.etichetteOk) });
       riga[diffGiorni(da, inizio) + 1] = { v: `${p.travaso ? '↳ ' : ''}${lottoGruppo(g) || c.lotto || ''} ${c.birra || ''}${pronti}`.trim(), grassetto: true, sfondo: mp ? COLORI_XLSX.mp : riga[diffGiorni(da, inizio) + 1]?.sfondo };
     }
@@ -1118,7 +1118,7 @@ function esportaPlanning() {
     ...elenco.map(c => {
       const g = gruppoCotta(c, stato.cotte);
       return [c.lotto || '', g.length > 1 ? lottoGruppo(g) : '', c.birra || '', c.stile || '', c.fv || '', dataIT(c.data), dataIT(fineCotta(c, stato.durate)),
-        c.travaso?.fv || '', c.travaso?.data ? dataIT(c.travaso.data) : '', c.litri ?? '', c.og ?? '', STATI[statoCotta(c, stato.durate)] || '',
+        c.travaso?.fv || '', c.travaso?.data ? dataIT(c.travaso.data) : '', c.litri ?? '', c.og ?? '', STATI[statoCotta(c, stato.durate, undefined, stato.cotte)] || '',
         c.materiePrime ? { v: 'sì', sfondo: COLORI_XLSX.mp } : ''];
     }),
   ];
@@ -1233,7 +1233,7 @@ function vistaPlanning() {
         <div class="g-days" style="width:${larghezza}px">${sfondo}
           ${(barrePerFv.get(n) || []).map(b => {
             const c0 = b.cotte[0];
-            const s = statoCotta(c0, stato.durate);
+            const s = statoCotta(c0, stato.durate, undefined, stato.cotte);
             const left = Math.max(0, diffGiorni(plan.inizio, b.da)) * W;
             const right = (Math.min(plan.giorni - 1, diffGiorni(plan.inizio, b.a)) + 1) * W;
             const lotti = (b.travaso ? '↳ ' : '') + (b.cotte.length > 1 ? b.cotte.map(c => c.numero).join('/') : c0.lotto || '');
