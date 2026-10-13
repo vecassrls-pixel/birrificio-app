@@ -271,6 +271,7 @@ function dialogNuovaCotta(pre = {}) {
   const anno = new Date().getFullYear();
   const dlg = document.createElement('dialog');
   const birre = birreNote();
+  const cotteDaCopiare = stato.cotte.filter(c => c.data && !c.eliminato).sort((a, b) => b.data.localeCompare(a.data) || (b.numero || 0) - (a.numero || 0));
   dlg.innerHTML = html`
     <form method="dialog">
       <h2>${pre.titolo || 'Nuova cotta'}</h2>
@@ -281,9 +282,14 @@ function dialogNuovaCotta(pre = {}) {
         <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}"></label>
         <label>Anno <input name="anno" type="number" value="${anno}"></label>
       </div>
+      <label style="margin-top:12px;display:block">Copia da <select name="copiaDa">
+        <option value="">Ultima cotta della stessa birra</option>
+        <option value="no">Nessuna: ricetta vuota</option>
+        <optgroup label="Una cotta a scelta">${cotteDaCopiare.map(c => html`<option value="${c.id}" ${c.id === pre.copiaDa ? 'selected' : ''}>${c.lotto || '—'} · ${c.birra} · ${dataIT(c.data)}${c.fv ? ` · ${c.fv}` : ''}</option>`)}</optgroup>
+      </select></label>
+      <p class="totale" style="margin:4px 0 0">Si copiano ingredienti, litri, OG prevista, acqua, profilo di temperatura, giorni del DH e durata in FV.</p>
       <h3>Fermentatore</h3>
       <div id="fv-scelta" class="griglia" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
-      <label style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="copia" checked style="width:auto;min-height:auto"> Copia ricetta e profilo dall'ultima cotta della stessa birra</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="dh" checked style="width:auto;min-height:auto"> Con dry hop (DH)</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="materiePrime" style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="lievitoOk" style="width:auto;min-height:auto"> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
@@ -297,11 +303,12 @@ function dialogNuovaCotta(pre = {}) {
     <datalist id="dl-birre">${birre.map(b => html`<option value="${b}">`)}</datalist>`;
   document.body.appendChild(dlg);
   const f = dlg.querySelector('form');
+  const srcScelta = () => (f.copiaDa.value === 'no' ? null : f.copiaDa.value ? stato.cotte.find(c => c.id === f.copiaDa.value) : ultimaCottaDi(f.birra.value));
   const aggiornaFv = () => {
     const birra = f.birra.value;
     // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
-    const src0 = f.copia.checked ? ultimaCottaDi(birra) : null;
-    const durata = Number(f.durata.value) || (src0?.fermentazione?.length) || DURATA_DEFAULT;
+    const src0 = srcScelta();
+    const durata = Number(f.durata.value) || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
     if (!f.durata.value || f.durata.dataset.auto) { f.durata.value = durata; f.durata.dataset.auto = '1'; }
     const da = f.data.value || oggiISO();
     const a = addGiorni(da, durata - 1);
@@ -319,15 +326,19 @@ function dialogNuovaCotta(pre = {}) {
     const target = scelto || primoLibero;
     const r = dlg.querySelector(`input[name=fv][value="${target}"]`);
     if (r) r.checked = true;
-    const src = ultimaCottaDi(birra);
     if (!f.dh.dataset.toccato) f.dh.checked = !(src0 && src0.dh === false);
-    dlg.querySelector('#origine').textContent = src ? `Ultima cotta di ${nomeBirra(birra)}: lotto ${src.lotto} del ${dataIT(src.data)}` : (birra ? 'Nessuna cotta precedente con ricetta per questa birra.' : '');
+    dlg.querySelector('#origine').textContent = src0 ? `Copia da ${src0.birra}, lotto ${src0.lotto} del ${dataIT(src0.data)}: ${durata} giorni in FV` : f.copiaDa.value === 'no' ? 'Ricetta vuota, profilo standard.' : (birra ? 'Nessuna cotta precedente con ricetta per questa birra: ricetta vuota.' : '');
   };
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); });
   f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
   f.data.addEventListener('change', aggiornaFv);
-  f.copia.addEventListener('change', () => { if (f.durata.dataset.auto) f.durata.value = ''; aggiornaFv(); });
+  f.copiaDa.addEventListener('change', () => {
+    // cotta scelta senza birra scritta: la birra è quella della cotta
+    const x = stato.cotte.find(c => c.id === f.copiaDa.value);
+    if (x && !f.birra.value) f.birra.value = x.birra;
+    f.durata.dataset.auto = '1'; f.durata.value = ''; delete f.dh.dataset.toccato; aggiornaFv();
+  });
   aggiornaFv();
   dlg.addEventListener('close', async () => {
     dlg.remove();
@@ -336,7 +347,7 @@ function dialogNuovaCotta(pre = {}) {
     const numero = Number(fd.get('numero')), annoC = Number(fd.get('anno'));
     const data = fd.get('data'), fv = fd.get('fv') || '';
     const birra = nomeBirra(fd.get('birra'));
-    const src = fd.get('copia') ? ultimaCottaDi(birra) : null;
+    const src = srcScelta();
     const base = src ? copiaDa(src, { data, numero, anno: annoC, fv }) : {
       tipo: 'cotta', birra, numero, anno: annoC, lotto: lottoDi(numero, annoC), data, fv,
       og: null, fg: null, phMash: null, litri: null, sali: conAdditiviDefault(), malti: [], luppoli: [], lievito: [],
@@ -917,7 +928,7 @@ async function vistaCotta(id) {
       toast(`Ricetta copiata su ${altre.map(x => x.lotto).join(', ')}`);
     } else if (t.id === 'duplica') {
       await salvaOra();
-      dialogNuovaCotta({ birra: c.birra, titolo: `Nuova cotta da ${c.lotto}` });
+      dialogNuovaCotta({ birra: c.birra, titolo: `Nuova cotta da ${c.lotto}`, copiaDa: c.id });
     } else if (t.id === 'bf-invia') {
       t.disabled = true;
       try {
