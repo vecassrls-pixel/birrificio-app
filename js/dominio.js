@@ -223,6 +223,42 @@ export function prossimoNumero(cotte, anno) {
 }
 export const lottoDi = (numero, anno) => `${numero}/${String(anno).slice(2)}`;
 
+// Numerazione cronologica (Romain, 2026-10-13): fa fede la data della cotta, niente doppioni.
+// Le cotte già fatte (data fino a oggi) o collegate a Brewfather tengono il loro numero.
+// Le cotte pianificate si rinumerano in ordine di data dopo l'ultimo numero già usato nell'anno,
+// saltando i numeri occupati. Restituisce id → { numero, anno, lotto } solo per quelle da cambiare.
+const fissa = (c, oggi) => c.data <= oggi || !!c.brewfather;
+export function numeriCronologici(cotte, oggi = oggiISO()) {
+  const vive = cotte.filter(c => !c.eliminato && c.data);
+  const out = new Map();
+  for (const anno of new Set(vive.map(c => Number(c.data.slice(0, 4))))) {
+    const fisse = vive.filter(c => fissa(c, oggi) && (c.anno || Number(c.data.slice(0, 4))) === anno);
+    const usati = new Set(fisse.map(c => c.numero).filter(Boolean));
+    let n = Math.max(0, ...usati);
+    const pianificate = vive.filter(c => !fissa(c, oggi) && Number(c.data.slice(0, 4)) === anno)
+      .sort((a, b) => a.data.localeCompare(b.data) || (a.numero || 0) - (b.numero || 0) || String(a.id).localeCompare(String(b.id)));
+    for (const c of pianificate) {
+      do n++; while (usati.has(n));
+      const lotto = lottoDi(n, anno);
+      if (c.numero !== n || c.anno !== anno || c.lotto !== lotto) out.set(c.id, { numero: n, anno, lotto });
+    }
+  }
+  return out;
+}
+
+// Cotte già fatte con lo stesso numero nello stesso anno, o con numeri fuori ordine di data: si segnalano, non si toccano
+export function problemiNumeri(cotte, anno, oggi = oggiISO()) {
+  const fatte = cotte.filter(c => !c.eliminato && c.data && c.data <= oggi && c.anno === anno && c.numero)
+    .sort((a, b) => a.data.localeCompare(b.data) || a.numero - b.numero);
+  const perNumero = new Map();
+  for (const c of fatte) perNumero.set(c.numero, [...(perNumero.get(c.numero) || []), c]);
+  const doppi = [...perNumero.values()].filter(g => g.length > 1);
+  const fuoriOrdine = [];
+  let max = 0;
+  for (const c of fatte) { if (c.numero < max) fuoriOrdine.push(c); max = Math.max(max, c.numero); }
+  return { doppi, fuoriOrdine };
+}
+
 export function litriConfezionati(c) {
   return (c.confezionato || []).reduce((t, x) => t + (Number(x.pezzi) || 0) * (Number(x.litri) || 0), 0);
 }
