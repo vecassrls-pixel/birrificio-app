@@ -301,7 +301,8 @@ export function copiaDa(src, { data, numero, anno, fv }) {
     .filter(e => e.giorno || e.data)
     .map((e, i) => {
       const giorno = e.giorno || i + 1;
-      return { data: addGiorni(data, giorno - 1), giorno, temp: e.temp ?? null };
+      // le note che segnano la fase (DH, maturazione…) restano: il planning le usa per i colori
+      return { data: addGiorni(data, giorno - 1), giorno, temp: e.temp ?? null, ...(e.nota && faseDaNota(e.nota) ? { nota: e.nota } : {}) };
     });
   return {
     tipo: 'cotta',
@@ -309,6 +310,7 @@ export function copiaDa(src, { data, numero, anno, fv }) {
     ...(src.stile ? { stile: src.stile } : {}),
     numero, anno, lotto: lottoDi(numero, anno), data, fv: fv || src.fv,
     og: src.og ?? null, fg: null, phMash: null, litri: src.litri ?? null,
+    ...(src.dh === false ? { dh: false } : {}),
     sali: conAdditiviDefault(clone.sali || []), malti: clone.malti || [], luppoli: clone.luppoli || [], lievito: clone.lievito || [],
     acquaMash: { tempMash: src.acquaMash?.tempMash ?? null, litri: src.acquaMash?.litri ?? null, tempAcqua: src.acquaMash?.tempAcqua ?? null },
     acquaSparge: { temp: src.acquaSparge?.temp ?? null, litri: src.acquaSparge?.litri ?? null },
