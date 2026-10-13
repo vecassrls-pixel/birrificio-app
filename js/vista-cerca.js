@@ -46,7 +46,7 @@ function esiti({ articoli, bolle, inventari, scarichi, movbirra }) {
     // dove ha trovato: se non è nel nome/lotto, mostra l'ingrediente o la nota
     const dettaglio = trova(parole, c.birra, c.lotto, lottoLungo, c.stile, c.fv) ? ''
       : ingredienti.find(x => parole.some(p => norm(x).includes(p))) || (parole.some(p => norm(c.note).includes(p)) ? `nota: ${String(c.note).slice(0, 80)}` : '');
-    cotte.push({ c, dettaglio, s: statoCotta(c, u.stato.durate) });
+    cotte.push({ c, dettaglio, s: statoCotta(c, u.stato.durate, undefined, u.stato.cotte) });
   }
   const art = articoli.filter(a => trova(parole, a.nome, a.alias || [], CATEGORIE[a.categoria] || ''));
   // lotti delle materie prime: dove sono entrati e usciti

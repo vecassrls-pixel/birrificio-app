@@ -209,9 +209,10 @@ export const STATI = {
   chiusa: 'Chiusa',
 };
 
-export function statoCotta(c, durate, oggi = oggiISO()) {
+// cotte: tutte le cotte, per le doppie/triple il confezionamento è del lotto (sta su una sola cotta)
+export function statoCotta(c, durate, oggi = oggiISO(), cotte = null) {
   if (!c.data || c.data > oggi) return 'pianificata';
-  if ((c.confezionato || []).length) return 'confezionata';
+  if ((cotte ? gruppoCotta(c, cotte) : [c]).some(x => (x.confezionato || []).length)) return 'confezionata';
   if (fineCotta(c, durate) >= oggi) return 'tank';
   return 'chiusa';
 }

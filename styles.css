@@ -439,7 +439,7 @@ label:has(> input[type="checkbox"]) { font-size: .92rem; font-weight: 400; color
   .riga-lotto .copia-lotto { grid-column: 2; grid-row: 2 / 4; }
   .riga-scadenza label { width: calc(50% - 7px); }
 }
-@media print { .riga-scadenza .copia-lotto { display: none; } }
+@media print { .riga-scadenza .copia-lotto, #etichetta-fusto { display: none; } }
 @media (max-width: 760px) {
   /* su telefono resta solo il pallino (verde salvato, arancio in corso), così il titolo si legge */
   .testa-scheda .stato-salvataggio { font-size: 0; }
@@ -578,3 +578,11 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .riga-cotta .copia-lotto { grid-row: 1 / 3; grid-column: 4; }
 /* in stampa solo l'app: niente barre o pulsanti aggiunti da fuori (es. la barra di Netlify) */
 @media print { body > :not(#app), html > :not(head):not(body) { display: none !important; } }
+
+/* Etichetta fusto (Brother QL-700, rotolo 62 mm) */
+.dlg-etichetta { width: min(860px, calc(100vw - 24px)); }
+.dlg-etichetta .et-corpo { display: grid; grid-template-columns: 1fr 250px; gap: 16px; align-items: start; }
+.dlg-etichetta textarea { width: 100%; font: inherit; }
+.dlg-etichetta .et-anteprima { background: var(--surface-2); padding: 8px; border-radius: 8px; display: flex; justify-content: center; max-height: 70vh; overflow: auto; }
+.dlg-etichetta .et-anteprima iframe { width: 238px; border: 1px solid #bbb; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+@media (max-width: 700px) { .dlg-etichetta .et-corpo { grid-template-columns: 1fr; } }
