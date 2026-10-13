@@ -538,7 +538,8 @@ async function vistaCotta(id) {
       <div class="scheda">
         <div class="barra" style="margin:0">
           <div><h1>${c.birra || 'Nuova cotta'} <span style="color:var(--muted);font-weight:400">· lotto ${c.lotto || '—'}</span></h1>
-          ${g.length > 1 ? html`<p class="totale" style="margin:2px 0">Cotta ${g.length === 2 ? 'doppia' : g.length === 3 ? 'tripla' : 'multipla'} <b>${lottoGruppo(g)}</b> in ${c.fv}: ${g.filter(x => x.id !== c.id).map((x, i) => html`${i ? ', ' : ''}<a href="#/cotta/${encodeURIComponent(x.id)}">${x.lotto}</a>`)}. Registro di fermentazione, FG, fine in FV, travaso e confezionamento sono comuni; OG, pH e dati del giorno di cotta restano di ogni cotta. Il grado alcolico usa la media degli OG.</p>` : ''}
+          ${g.length > 1 ? html`<p class="totale" style="margin:2px 0">Cotta ${g.length === 2 ? 'doppia' : g.length === 3 ? 'tripla' : 'multipla'} <b>${lottoGruppo(g)}</b> in ${c.fv}: ${g.filter(x => x.id !== c.id).map((x, i) => html`${i ? ', ' : ''}<a href="#/cotta/${encodeURIComponent(x.id)}">${x.lotto}</a>`)}. Registro di fermentazione, FG, fine in FV, travaso e confezionamento sono comuni; OG, pH e dati del giorno di cotta restano di ogni cotta. Il grado alcolico usa la media degli OG.</p>
+          <button class="piccolo solo-editori" id="copia-ricetta" title="Malti, luppoli, lievito, sali, acqua e whirlpool di questa scheda vanno anche ${g.length === 2 ? 'nell\'altra cotta' : 'nelle altre cotte'} del lotto">⧉ Copia la ricetta ${g.length === 2 ? 'nell\'altra cotta' : 'nelle altre cotte'}</button>` : ''}
           <span class="chip ${s}">${STATI[s]}</span>
           ${s === 'tank' && giornoOggi > 0 ? html` <span class="totale">giorno ${giornoOggi} di ${giorniTank}</span>` : ''}
           ${c.origine ? html` <span class="totale">· ricetta da lotto ${c.origine}</span>` : ''}</div>
@@ -898,6 +899,22 @@ async function vistaCotta(id) {
       await db.elimina(c.id);
       toast('Cotta eliminata');
       location.hash = '#/cotte';
+    } else if (t.id === 'copia-ricetta') {
+      // cotta doppia/tripla: stessa ricetta sulle altre cotte del lotto (OG, pH, litri e misure restano di ognuna)
+      const altre = gruppo().filter(x => x.id !== c.id);
+      if (!altre.length) return;
+      if (!(await chiedi(`Copiare la ricetta di ${c.lotto} (malti, luppoli, lievito, sali, acqua, whirlpool) su ${altre.map(x => x.lotto).join(', ')}? La ricetta che c'è adesso ${altre.length === 1 ? 'in quella cotta' : 'in quelle cotte'} viene sostituita.`, 'Copia'))) return;
+      await salvaOra();
+      const clona = v => JSON.parse(JSON.stringify(v ?? null));
+      await db.salvaMolti(altre.map(x => {
+        // giorni del dry hop: stesso giorno di calendario anche se le cotte sono a giorni diversi
+        const sposta = x.data && c.data ? diffGiorni(x.data, c.data) : 0;
+        const luppoli = (clona(c.luppoli) || []).map(r => (r.uso === 'dry hop' && Number(r.giorno) > 0 ? { ...r, giorno: Number(r.giorno) + sposta } : r));
+        return { ...x, malti: clona(c.malti) || [], luppoli, lievito: clona(c.lievito) || [], sali: clona(c.sali) || [],
+          acquaMash: clona(c.acquaMash) || {}, acquaSparge: clona(c.acquaSparge) || {}, acquaDip: clona(c.acquaDip) || {},
+          whirlpoolMin: c.whirlpoolMin ?? null, ...(c.ricettaBf ? { ricettaBf: clona(c.ricettaBf) } : {}) };
+      }));
+      toast(`Ricetta copiata su ${altre.map(x => x.lotto).join(', ')}`);
     } else if (t.id === 'duplica') {
       await salvaOra();
       dialogNuovaCotta({ birra: c.birra, titolo: `Nuova cotta da ${c.lotto}` });
