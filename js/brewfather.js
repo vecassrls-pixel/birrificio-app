@@ -72,14 +72,22 @@ export async function scaricaLetture(proxy, batchId) {
 // ---------- conversione ----------
 const USO_LUPPOLO = { Boil: 'bollitura', 'Dry Hop': 'dry hop', Aroma: 'dip hop', Whirlpool: 'whirlpool', 'First Wort': 'first wort', Mash: 'mash hop' };
 
+// Nome del malto con la marca (supplier), che in magazzino distingue "Pils Dingemans" da "Pils Soufflet"
+const conMarca = (nome, marca) => {
+  const m = String(marca || '').trim();
+  return m && !String(nome || '').toLowerCase().includes(m.toLowerCase().split(/\s+/)[0]) ? `${nome} ${m}` : nome;
+};
+// Luppolo in forma cryo/lupulina (tipo in Brewfather): "Mosaic" → "Mosaic Cryo"
+const conCryo = (nome, tipo) => (/cryo|lupulin|powder|lupomax/i.test(tipo || '') && !/cryo|lupulin|lupomax/i.test(nome || '') ? `${nome} Cryo` : nome);
+
 export function ricettaDaBatch(b) {
   const r = b.recipe || {};
   const unita = u => ({ g: 'g', kg: 'kg', ml: 'ml', l: 'L', pkg: '' }[(u || '').toLowerCase()] ?? (u || ''));
   return {
     ...(r.style?.name ? { stile: r.style.name } : {}),
-    malti: (r.fermentables || []).map(f => ({ nome: f.name, qta: num(f.amount), unita: 'kg' })),
+    malti: (r.fermentables || []).map(f => ({ nome: conMarca(f.name, f.supplier), qta: num(f.amount), unita: 'kg' })),
     luppoli: (r.hops || []).map(h => ({
-      nome: h.name, qta: num(h.amount), unita: 'g',
+      nome: conCryo(h.name, h.type), qta: num(h.amount), unita: 'g',
       ...(num(h.time) !== null && h.use !== 'Dry Hop' ? { minuti: num(h.time) } : {}),
       uso: USO_LUPPOLO[h.use] ?? '',
       ...(h.use === 'Dry Hop' && num(h.day) !== null ? { giorno: num(h.day) } : {}),
