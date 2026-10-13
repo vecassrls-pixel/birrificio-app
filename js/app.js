@@ -13,6 +13,7 @@ import * as ordine from './vista-ordine.js';
 import * as cerca from './vista-cerca.js';
 import * as listini from './vista-listini.js';
 import * as backup from './backup.js';
+import { apriEtichetta } from './etichetta.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino } from './magazzino.js';
@@ -726,6 +727,7 @@ async function vistaCotta(id) {
             <label>Durata (mesi) <input data-path="mesiScadenza" type="number" min="1" step="1" inputmode="numeric" value="${c.mesiScadenza ?? ''}" placeholder="${mesiScadenza({ ...c, mesiScadenza: null }, stato.cotte)}"></label>
             <div class="scad-testo"><b class="num">${testo}</b>${sc?.stimata ? html`<span class="totale"> stimata ${c.confezionato.some(r => r.data) ? 'dal confezionamento' : 'dalla fine in FV'}</span>` : ''}</div>
             <button class="piccolo copia-lotto" data-copia="${testo}" title="Copia lotto e scadenza">⧉ Copia</button>
+            <button class="piccolo" id="etichetta-fusto" title="Stampa l'etichetta per i fusti sulla Brother QL-700 (rotolo 62 mm)">🏷 Etichetta fusto</button>
           </div>`;
         })()}
         ${litriConf ? (litriGruppo > 0 ? html`<div class="kpi resa">
@@ -910,6 +912,17 @@ async function vistaCotta(id) {
       await db.elimina(c.id);
       toast('Cotta eliminata');
       location.hash = '#/cotte';
+    } else if (t.id === 'etichetta-fusto') {
+      const cotte = stato.cotte.map(x => (x.id === c.id ? c : x));
+      const g = gruppoCotta(c, cotte);
+      const ogL = g.length > 1 ? ogMedia(g) : c.og;
+      const ult = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
+      const lotto = (testoLottoScadenza(c, cotte, stato.durate).match(/^Lotto (\S+)/) || [])[1] || c.lotto || '';
+      apriEtichetta(c, {
+        html, raw, numIT, lotto,
+        abv: abv(ogL, c.fg ?? (ult ? Number(ult.densita) : null)),
+        scadenzaMese: scadenzaCotta(c, cotte, stato.durate)?.mese,
+      });
     } else if (t.id === 'copia-ricetta') {
       // cotta doppia/tripla: stessa ricetta sulle altre cotte del lotto (OG, pH, litri e misure restano di ognuna)
       const altre = gruppo().filter(x => x.id !== c.id);
