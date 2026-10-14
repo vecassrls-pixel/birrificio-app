@@ -4,7 +4,7 @@
 
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 
-const PREF = 'gb-etichetta';
+const PREF = 'gb-etichetta-2'; // -2: nuovi testi di default (Romain, 2026-10-13)
 const ALLERGENI = /\b(ORZO|FRUMENTO|AVENA|SEGALE|FARRO|KAMUT|GLUTINE|LATTOSIO|LATTE|SOLFITI)\b/g;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
@@ -86,8 +86,8 @@ export function apriEtichetta(c, ctx) {
     ingredienti: ingredientiDa(c),
     lotto: ctx.lotto,
     scadenza: meseAnno(ctx.scadenzaMese),
-    conservazione: pref.conservazione ?? 'Conservare in luogo fresco e al riparo dalla luce.',
-    produttore: pref.produttore ?? 'Prodotto da VECAS SRLS\nKashmir Brewing Company',
+    conservazione: pref.conservazione ?? 'Conservare a una temperatura compresa tra 3 e 6 gradi Celsius.',
+    produttore: pref.produttore ?? 'Prodotto e confezionato da VECAS SRLS\nvia Milano snc\n86074 Filignano (IS)',
     lunghezza: pref.lunghezza || 80,
   };
   const { html } = ctx;

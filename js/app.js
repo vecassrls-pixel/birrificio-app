@@ -13,13 +13,14 @@ import * as ordine from './vista-ordine.js';
 import * as cerca from './vista-cerca.js';
 import * as listini from './vista-listini.js';
 import * as backup from './backup.js';
+import * as home from './vista-home.js';
 import { apriEtichetta } from './etichetta.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
-  CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, statoCotta,
+  CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, numeriCronologici, problemiNumeri, statoCotta,
 } from './dominio.js';
 
 const $app = document.getElementById('app');
@@ -78,10 +79,12 @@ cerca.init({ $app, html, db, stato, dataIT });
 ordine.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia });
 costi.init({ $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO });
 listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia });
+home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   if (await correggiRegula()) stato.cotte = await db.tutti('cotta');
+  if (await allineaNumeri()) stato.cotte = await db.tutti('cotta');
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
   stato.durate = durateTipiche(stato.cotte);
 }
@@ -99,6 +102,14 @@ async function correggiRegula() {
   }));
   try { await db.salvaMolti(corrette); return true; }
   catch { return false; /* sola lettura: lo sistemerà chi può modificare */ }
+}
+// Lotti delle cotte pianificate in ordine di data (vedi numeriCronologici)
+async function allineaNumeri() {
+  if (lettore) return false;
+  const nuovi = numeriCronologici(stato.cotte);
+  if (!nuovi.size) return false;
+  const cambiate = stato.cotte.filter(c => nuovi.has(c.id)).map(({ aggiornato, daSincronizzare, ...c }) => ({ ...c, ...nuovi.get(c.id) }));
+  try { await db.salvaMolti(cambiate); return true; } catch { return false; }
 }
 const birreNote = () => [...new Set(stato.cotte.map(c => nomeBirra(c.birra)).filter(Boolean))].sort();
 // Stile: quello già usato per la stessa birra, e la lista per i suggerimenti
@@ -160,6 +171,7 @@ async function importaStorico({ silenzioso = false } = {}) {
 
 // ---------- router ----------
 const routes = [
+  [/^#\/home$/, () => home.vistaHome()],
   [/^#\/cotte$/, vistaCotte],
   [/^#\/cotta\/(.+)$/, vistaCotta],
   [/^#\/planning$/, vistaPlanning],
@@ -184,7 +196,7 @@ const routes = [
 ];
 let pulizia = null;
 async function render() {
-  const h = location.hash || '#/cotte';
+  const h = location.hash || '#/home';
   if (h.includes('access_token=')) return; // link di invito: gestito all'avvio
   if (pulizia) { pulizia(); pulizia = null; }
   $app.oninput = $app.onchange = $app.onclick = null;
@@ -195,7 +207,7 @@ async function render() {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
   }
-  location.hash = '#/cotte';
+  location.hash = '#/home';
 }
 window.addEventListener('hashchange', render);
 // "/" apre la ricerca (se non si sta scrivendo in un campo)
@@ -242,6 +254,14 @@ function vistaCotte() {
       <button data-stato="" class="${filtri.stato ? '' : 'attivo'}" aria-pressed="${!filtri.stato}">Tutte <b>${filtrate.length}</b></button>
       ${['tank', 'pianificata', 'confezionata', 'chiusa'].map(k => [k, STATI[k]]).map(([k, v]) => html`<button data-stato="${k}" class="${k === filtri.stato ? 'attivo' : ''}" aria-pressed="${k === filtri.stato}">${v} <b>${perStato.get(k) || 0}</b></button>`)}
     </div>
+    ${(() => {
+      const annoP = Number(filtri.anno) || new Date().getFullYear();
+      const { doppi, fuoriOrdine } = problemiNumeri(stato.cotte, annoP);
+      if (!doppi.length && !fuoriOrdine.length) return '';
+      return html`<p class="avviso">⚠ Numeri di lotto ${annoP} da controllare (cotte già fatte, non le cambio da solo):
+        ${doppi.length ? html`<br>Doppi: ${doppi.map(g => `${g[0].lotto} (${g.map(c => `${c.birra} ${dataIT(c.data)}`).join(', ')})`).join(' · ')}` : ''}
+        ${fuoriOrdine.length ? html`<br>Fuori ordine di data: ${fuoriOrdine.map(c => `${c.lotto} ${c.birra} ${dataIT(c.data)}`).join(' · ')}` : ''}</p>`;
+    })()}
     <div class="lista">
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta ${s}" href="#/cotta/${encodeURIComponent(c.id)}">
@@ -280,7 +300,7 @@ function dialogNuovaCotta(pre = {}) {
         <label style="grid-column:1/-1">Birra <input name="birra" list="dl-birre" required value="${pre.birra || ''}" autocomplete="off"></label>
         <label>Data cotta <input name="data" type="date" required value="${pre.data || oggiISO()}"></label>
         <label>Giorni in FV <input name="durata" type="number" min="1" max="120"></label>
-        <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}"></label>
+        <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}" title="Le cotte pianificate si numerano da sole in ordine di data"></label>
         <label>Anno <input name="anno" type="number" value="${anno}"></label>
       </div>
       <label style="margin-top:12px;display:block">Copia da <select name="copiaDa">
@@ -334,6 +354,17 @@ function dialogNuovaCotta(pre = {}) {
   f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
   f.data.addEventListener('change', aggiornaFv);
+  // numero e anno proposti dalla data: una cotta futura prende il suo posto in ordine di data
+  const proponiNumero = () => {
+    const d = f.data.value;
+    if (!d) return;
+    const a = Number(d.slice(0, 4));
+    const n = d > oggiISO() ? numeriCronologici([...stato.cotte, { id: '~nuova', data: d, anno: a }]).get('~nuova') : null;
+    f.anno.value = a;
+    f.numero.value = n ? n.numero : prossimoNumero(stato.cotte, a);
+  };
+  f.data.addEventListener('change', proponiNumero);
+  proponiNumero();
   f.copiaDa.addEventListener('change', () => {
     // cotta scelta senza birra scritta: la birra è quella della cotta
     const x = stato.cotte.find(c => c.id === f.copiaDa.value);
@@ -413,6 +444,9 @@ async function vistaCotta(id) {
     clearTimeout(timer);
     salvataggio = salvataggio.then(async () => {
       c.lotto = c.numero && c.anno ? lottoDi(c.numero, c.anno) : c.lotto;
+      // cotta pianificata: numero in ordine di data (le altre cotte si riallineano dopo il salvataggio)
+      const nuovoNum = numeriCronologici(stato.cotte.map(x => (x.id === c.id ? c : x))).get(c.id);
+      if (nuovoNum) { Object.assign(c, nuovoNum); for (const k of ['numero', 'anno']) { const el = document.querySelector(`[data-path="${k}"]`); if (el && el !== document.activeElement) el.value = c[k]; } }
       c.birra = nomeBirra(c.birra);
       const g = gruppo();
       const primo = g[0];

@@ -106,16 +106,44 @@ export function trovaArticolo(articoli, nome) {
   if (diretto) return diretto;
   // stesso prodotto con un altro nome (Gypsum = Gesso, Epsom = Solfato di magnesio…)
   const g = gruppoDi(nome);
-  if (!g) return null;
   const nomi = a => [a.nome, ...(a.alias || [])];
+  if (!g) return null;
   return articoli.find(a => nomi(a).some(n => gruppoDi(n) === g)) || null;
+}
+
+// Parole equivalenti nei nomi di malti e luppoli (Brewfather in inglese, magazzino in italiano o abbreviato)
+const PAROLE_UGUALI = [['pilsner', 'pils', 'pilsen'], ['munich', 'monaco', 'munchen'], ['wheat', 'frumento', 'weizen'], ['oat', 'oats', 'avena'],
+  ['rye', 'segale'], ['maris', 'marris'], ['chit', 'chito'], ['caramel', 'cara'], ['torrified', 'torrefatto'], ['cryo', 'lupulin', 'lupomax']];
+const PAROLE_VUOTE = new Set(['malt', 'malto', 'malti', 'di', 'd', 'del', 'hop', 'hops', 'luppolo', 'pellet', 'pellets', 'malz', 'mälz', 'maltings', 'malting', 'malterie', 'malteries', 't90', 't 90', 'type', 'r', 'tm', 'ebc', 'l']);
+const formaParola = w => (PAROLE_UGUALI.find(x => x.includes(w)) || [w])[0];
+const paroleDi = n => chiaveNome(n).split(' ').filter(w => w && !PAROLE_VUOTE.has(w)).map(formaParola);
+const stessaParola = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+
+// Solo per l'import da Brewfather (l'articolo trovato dà il nome alla riga, poi l'abbinamento è esatto).
+// Prova anche nomi scritti in modo diverso: "Pilsner Dingemans" → "PILS dingemans", "Mosaic Cryo" → "Cryo Mosaic".
+// Tutte le parole cercate devono esserci nell'articolo; cryo/non cryo deve coincidere.
+// Vince l'articolo con meno parole in più; se sono pari non sceglie (meglio nessuno che quello sbagliato).
+export function articoloSimile(articoli, nome) {
+  const cerca = paroleDi(nome);
+  if (!cerca.length) return null;
+  const cryo = cerca.includes('cryo');
+  let migliore = null, extraMin = Infinity, pari = false;
+  for (const a of articoli) {
+    for (const n of [a.nome, ...(a.alias || [])]) {
+      const parole = paroleDi(n);
+      if (parole.includes('cryo') !== cryo || !cerca.every(w => parole.some(p => stessaParola(w, p)))) continue;
+      const extra = parole.filter(p => !cerca.some(w => stessaParola(w, p))).length;
+      if (extra < extraMin) { migliore = a; extraMin = extra; pari = false; } else if (extra === extraMin && a !== migliore) pari = true;
+    }
+  }
+  return pari ? null : migliore;
 }
 
 // Ingredienti importati da Brewfather: nome dell'articolo di magazzino se c'è, altrimenti il nome italiano
 export function nomiDaMagazzino(c, articoli) {
   for (const sez of ['malti', 'luppoli', 'lievito', 'sali']) {
     c[sez] = (c[sez] || []).map(r => {
-      const art = trovaArticolo(articoli, r.nome);
+      const art = trovaArticolo(articoli, r.nome) || (sez === 'malti' || sez === 'luppoli' ? articoloSimile(articoli, r.nome) : null);
       return { ...r, nome: art ? art.nome : sez === 'sali' ? nomeItaliano(r.nome) : r.nome };
     });
   }
