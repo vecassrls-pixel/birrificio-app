@@ -601,7 +601,7 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .home-azioni .btn { background: rgb(255 255 255 / .08); border-color: rgb(255 255 255 / .18); color: var(--top-text); }
 .home-azioni .btn:hover { background: rgb(255 255 255 / .16); }
 
-.home-kpi { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+.home-kpi { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 14px; }
 .w-kpi {
   display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; text-decoration: none; color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--ombra);
@@ -647,7 +647,10 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .w-delta.giu { color: var(--warn); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .w-data b { color: #f0b45a; } }
 :root[data-theme="dark"] .w-data b { color: #f0b45a; }
-@media (max-width: 900px) { .home-kpi { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 1000px) { .home-kpi { grid-template-columns: 1fr 1fr; } .home-kpi .w-kpi:last-child { grid-column: 1 / -1; } }
+.w-malti h3 { margin: 4px 0 8px; }
+.w-malti h3:not(:first-of-type) { margin-top: 16px; }
+.w-barre.luppoli .w-barra span { background: linear-gradient(90deg, #a3d977, #65a30d); }
 @media (max-width: 760px) {
   .home-hero { padding: 16px; gap: 10px; }
   .home-azioni { margin-left: 0; }

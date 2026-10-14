@@ -62,6 +62,10 @@ export async function vistaHome() {
   const malti = [...giac.values()].filter(x => x.articolo.categoria === 'malto' && !x.articolo.eliminato && (x.articolo.unita || 'kg') === 'kg');
   const kgMalti = malti.reduce((t, x) => t + Math.max(0, x.giacenza), 0);
   const maltiTop = malti.filter(x => x.giacenza > 0).sort((a, b) => b.giacenza - a.giacenza).slice(0, 5);
+  const kgDi = x => (x.articolo.unita === 'g' ? x.giacenza / 1000 : x.giacenza);
+  const luppoli = [...giac.values()].filter(x => x.articolo.categoria === 'luppolo' && ['kg', 'g'].includes(x.articolo.unita || 'kg'));
+  const kgLuppoli = luppoli.reduce((t, x) => t + Math.max(0, kgDi(x)), 0);
+  const luppoliTop = luppoli.filter(x => x.giacenza > 0).sort((a, b) => kgDi(b) - kgDi(a)).slice(0, 5);
   const sottoScorta = [...giac.values()].filter(x => x.sottoScorta).length;
   const { righe: daOrdinare } = fabbisogno(giac, datiMag, { fino: addGiorni(oggi, 42), anticipo: 7, oggi });
   const urgenti = daOrdinare.filter(r => r.urgente);
@@ -130,6 +134,7 @@ export async function vistaHome() {
       <a class="w-kpi" href="#/planning" style="--w:var(--s-tank)"><span>Nei fermentatori</span><b>${L(litriFv)}</b><small>${fvOccupati.length} FV occupati su ${fvTot}</small></a>
       <a class="w-kpi" href="#/birra" style="--w:var(--s-confezionata)"><span>Birra in magazzino</span><b>${impB ? L(litriMag) : '—'}</b><small>${impB ? `${numIT(pezzi('fusto'), 0)} fusti · ${numIT(pezzi('lattina/bottiglia'), 0)} lattine` : 'magazzino birra non avviato'}</small></a>
       <a class="w-kpi" href="#/materie-prime" style="--w:var(--accent)"><span>Malti in magazzino</span><b>${numIT(kgMalti, 0)} kg</b><small>${malti.filter(x => x.giacenza > 0).length} tipi${sottoScorta ? ` · ${sottoScorta} articoli sotto scorta` : ''}</small></a>
+      <a class="w-kpi" href="#/materie-prime" style="--w:#65a30d"><span>Luppoli in magazzino</span><b>${numIT(kgLuppoli, 1)} kg</b><small>${luppoli.filter(x => x.giacenza > 0).length} varietà</small></a>
       <a class="w-kpi" href="#/ordine" style="--w:${urgenti.length ? 'var(--warn)' : 'var(--s-pianificata)'}"><span>Da ordinare</span><b>${daOrdinare.length}</b><small>${urgenti.length ? `${urgenti.length} da ordinare subito` : 'per le cotte delle prossime 6 settimane'}</small></a>
     </div>
 
@@ -162,11 +167,17 @@ export async function vistaHome() {
       </section>
 
       <section class="widget w-malti">
-        <header><h2>Malti in magazzino</h2><a class="totale" href="#/materie-prime">Magazzino →</a></header>
+        <header><h2>Malti e luppoli</h2><a class="totale" href="#/materie-prime">Magazzino →</a></header>
+        <h3>Malti · ${numIT(kgMalti, 0)} kg</h3>
         ${maltiTop.length ? html`<ul class="w-barre">${maltiTop.map(x => html`<li>
           <span class="w-testo">${x.articolo.nome}</span><span class="w-num">${numIT(x.giacenza, 0)} kg</span>
           <span class="w-barra"><span style="width:${(x.giacenza / maltiTop[0].giacenza * 100).toFixed(1)}%"></span></span></li>`)}</ul>`
           : html`<p class="w-vuoto">Nessun malto in giacenza.</p>`}
+        <h3>Luppoli · ${numIT(kgLuppoli, 1)} kg</h3>
+        ${luppoliTop.length ? html`<ul class="w-barre luppoli">${luppoliTop.map(x => html`<li>
+          <span class="w-testo">${x.articolo.nome}</span><span class="w-num">${numIT(kgDi(x), 1)} kg</span>
+          <span class="w-barra"><span style="width:${(kgDi(x) / kgDi(luppoliTop[0]) * 100).toFixed(1)}%"></span></span></li>`)}</ul>`
+          : html`<p class="w-vuoto">Nessun luppolo in giacenza.</p>`}
       </section>
 
       <section class="widget w-stat">
