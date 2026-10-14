@@ -6,6 +6,7 @@ import { fabbisogno } from './ordine.js';
 import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
+import { scadenzeDaFare } from './haccp.js';
 import {
   SIMBOLI, eventiGiorno, fasiCotta, fineCotta, gruppoCotta, litriConfezionati, lottoGruppo, periodiCotta, statoCotta, travasoCotta,
 } from './dominio.js';
@@ -61,10 +62,11 @@ export function attivitaGiorno(cotte, d, { durate, fv, addGiorni, conGiorniDh = 
 export async function vistaHome() {
   const { html, stato, numIT, dataIT, oggiISO, addGiorni, diffGiorni } = u;
   const oggi = oggiISO(), domani = addGiorni(oggi, 1);
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome] = await Promise.all([
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze] = await Promise.all([
     ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
-    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME),
+    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'),
   ]);
+  const scadHaccp = scadenzeDaFare(scadenze, oggi);
   const logo = logoHome(impHome);
   const cotte = stato.cotte;
   const ctx = { durate: stato.durate, fv: stato.fv, addGiorni, conGiorniDh: u.conGiorniDh };
@@ -205,6 +207,14 @@ export async function vistaHome() {
         <div class="w-statgriglia">${stat.map(s => html`<div><span>${s.nome}</span><b>${numIT(s.v, 0)}${s.unita ? ` ${s.unita}` : ''}</b>${delta(s)}</div>`)}</div>
         <p class="totale" style="margin-bottom:0">Confronto con lo stesso periodo del ${anno - 1}.</p>
       </section>
+
+      ${scadHaccp.length ? html`<section class="widget w-haccp">
+        <header><h2>🗓️ Scadenze HACCP</h2><a class="totale" href="#/scadenzario">Scadenzario →</a></header>
+        <ul class="w-lista">${scadHaccp.slice(0, 6).map(x => html`<li><a href="#/scadenzario">
+          <span class="w-data"><b>${new Date(`${x.prossima}T12:00:00`).getDate()}</b>${new Date(`${x.prossima}T12:00:00`).toLocaleDateString('it-IT', { month: 'short' })}</span>
+          <span class="w-testo"><b>${x.s.nome}</b><small>ultima volta il ${dataIT(x.s.ultima)}</small></span>
+          <span class="w-num ${x.stato === 'scaduta' ? 'w-urgente' : ''}">${x.stato === 'scaduta' ? 'scaduta' : x.giorni === 0 ? 'oggi' : `tra ${x.giorni} gg`}</span></a></li>`)}</ul>
+      </section>` : ''}
 
       <section class="widget w-etichette">
         <header><h2>${SIMBOLI.etichette} Etichette da ordinare</h2><span class="totale">${senzaEtichette.length ? `${senzaEtichette.length} cotte` : ''}</span></header>

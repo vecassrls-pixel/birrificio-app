@@ -709,3 +709,25 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 }
 @media (max-width: 760px) { .tab-preventivi .pv-extra { display: none; } .tab-preventivi td { white-space: nowrap; } }
 @media (max-width: 760px) { .tab-pv td:first-child input { min-width: 130px; } .tab-pv input[type="number"] { min-width: 64px; } }
+
+/* ---------- HACCP: rintracciabilità, controllo arrivi, scadenzario ---------- */
+.haccp-badge { display: inline-block; margin-top: 6px; font-size: .78rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--accent-tenue); color: var(--accent); }
+.haccp-badge.urgente { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.rt-lotti { list-style: none; padding: 0; margin: 12px 0 0; columns: 3 260px; }
+.rt-lotti li { break-inside: avoid; }
+.rt-lotti a { display: block; padding: 7px 8px; border-radius: 8px; text-decoration: none; color: var(--text); }
+.rt-lotti a:hover { background: var(--surface-2); }
+.rt-lotti small { display: block; color: var(--muted); }
+.rt-foglio h2 { font-size: 1rem; margin: 18px 0 6px; color: #000; }
+.rt-manca { color: #b42318; font-weight: 600; }
+.tab-arrivi th.c, .tab-arrivi td.c { text-align: center; width: 70px; }
+.tab-arrivi th.c { white-space: normal; font-size: .7rem; }
+.ck-spunte { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.ck-spunte label { display: flex; align-items: center; gap: 8px; }
+.ck-spunte input { width: auto; min-height: auto; }
+.tab-scad td:first-child input { min-width: 220px; }
+.tab-scad input[type="number"] { width: 80px; }
+.tab-scad .sc-stato { display: block; font-size: .8rem; color: var(--muted); }
+.tab-scad tr.sc-scaduta .sc-stato { color: var(--warn); font-weight: 600; }
+.tab-scad tr.sc-vicina .sc-stato { color: var(--accent); font-weight: 600; }
+.tab-scad td { white-space: nowrap; }

@@ -1,9 +1,9 @@
 // Service worker: tiene in cache l'app così si apre anche senza internet.
 // Cambiare VERSIONE a ogni rilascio per far scaricare i file aggiornati.
-const VERSIONE = 'birrificio-v63';
+const VERSIONE = 'birrificio-v64';
 const FILE = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'img/logo-kashmir.png', 'img/gb-logo.png', 'img/gb-logo-chiaro.png', 'img/gb-monogramma.png', 'img/gb-monogramma-chiaro.png', 'img/gb-anim-lettere.png', 'img/gb-anim-arco-su.png', 'img/gb-anim-arco-giu.png', 'img/gb-anim-scritta.png',
-  'js/app.js', 'js/auth.js', 'js/config.js', 'js/serbatoio.js', 'js/brewfather.js', 'js/db.js', 'js/dominio.js', 'js/sync.js', 'js/xlsx.js', 'js/versione.js', 'js/magazzino.js', 'js/vista-magazzino.js', 'js/bolla-pdf.js', 'js/vista-statistiche.js', 'js/grafico-ferm.js', 'js/birra.js', 'js/vista-birra.js', 'js/costi.js', 'js/vista-costi.js', 'js/ordine.js', 'js/vista-ordine.js', 'js/vista-cerca.js', 'js/backup.js', 'js/allegati.js', 'js/listini.js', 'js/vista-listini.js', 'js/vista-home.js', 'js/vista-haccp.js', 'js/logo-kashmir.js', 'js/etichetta.js', 'js/preventivi.js', 'js/vista-preventivi.js', 'data/storico.json',
+  'js/app.js', 'js/auth.js', 'js/config.js', 'js/serbatoio.js', 'js/brewfather.js', 'js/db.js', 'js/dominio.js', 'js/sync.js', 'js/xlsx.js', 'js/versione.js', 'js/magazzino.js', 'js/vista-magazzino.js', 'js/bolla-pdf.js', 'js/vista-statistiche.js', 'js/grafico-ferm.js', 'js/birra.js', 'js/vista-birra.js', 'js/costi.js', 'js/vista-costi.js', 'js/ordine.js', 'js/vista-ordine.js', 'js/vista-cerca.js', 'js/backup.js', 'js/allegati.js', 'js/listini.js', 'js/vista-listini.js', 'js/vista-home.js', 'js/vista-haccp.js', 'js/logo-kashmir.js', 'js/etichetta.js', 'js/preventivi.js', 'js/vista-preventivi.js', 'js/haccp.js', 'data/storico.json',
 ];
 
 self.addEventListener('install', e => {

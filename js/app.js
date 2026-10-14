@@ -83,7 +83,7 @@ ordine.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addG
 costi.init({ $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO });
 listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia });
 preventivi.init({ $app, html, raw, db, toast, chiedi, dataIT, numIT, oggiISO, copia });
-haccp.init({ $app, html });
+haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
@@ -187,6 +187,10 @@ const routes = [
   [/^#\/scarico\/(.+)$/, id => magazzino.vistaScarico(id)],
   [/^#\/haccp$/, () => haccp.vistaHaccp()],
   [/^#\/registro-s6$/, () => magazzino.vistaRegistroS6()],
+  [/^#\/rintracciabilita$/, () => haccp.vistaRintracciabilita()],
+  [/^#\/rintracciabilita\/(.+)$/, id => haccp.vistaRintracciabilita(id)],
+  [/^#\/controllo-arrivi$/, () => haccp.vistaControlloArrivi()],
+  [/^#\/scadenzario$/, () => haccp.vistaScadenzario()],
   [/^#\/birra$/, () => magBirra.vistaBirra()],
   [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
   [/^#\/movbirra\/(.+)$/, id => magBirra.vistaMovimento(id)],
@@ -210,7 +214,7 @@ async function render() {
   $app.oninput = $app.onchange = $app.onclick = null;
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv)/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi')) || (a.dataset.tab === 'haccp' && h.startsWith('#/registro-s6'))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv)/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi')) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
