@@ -13,6 +13,7 @@ import * as ordine from './vista-ordine.js';
 import * as cerca from './vista-cerca.js';
 import * as listini from './vista-listini.js';
 import * as backup from './backup.js';
+import * as home from './vista-home.js';
 import { apriEtichetta } from './etichetta.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
@@ -78,6 +79,7 @@ cerca.init({ $app, html, db, stato, dataIT });
 ordine.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia });
 costi.init({ $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO });
 listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia });
+home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
@@ -169,6 +171,7 @@ async function importaStorico({ silenzioso = false } = {}) {
 
 // ---------- router ----------
 const routes = [
+  [/^#\/home$/, () => home.vistaHome()],
   [/^#\/cotte$/, vistaCotte],
   [/^#\/cotta\/(.+)$/, vistaCotta],
   [/^#\/planning$/, vistaPlanning],
@@ -193,7 +196,7 @@ const routes = [
 ];
 let pulizia = null;
 async function render() {
-  const h = location.hash || '#/cotte';
+  const h = location.hash || '#/home';
   if (h.includes('access_token=')) return; // link di invito: gestito all'avvio
   if (pulizia) { pulizia(); pulizia = null; }
   $app.oninput = $app.onchange = $app.onclick = null;
@@ -204,7 +207,7 @@ async function render() {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
   }
-  location.hash = '#/cotte';
+  location.hash = '#/home';
 }
 window.addEventListener('hashchange', render);
 // "/" apre la ricerca (se non si sta scrivendo in un campo)
