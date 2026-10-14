@@ -35,7 +35,7 @@ export function attivitaGiorno(cotte, d, { durate, fv, addGiorni, conGiorniDh = 
     const fasi = fasiCotta(c0, durate);
     if (dh.length) out.push({ ...base, tipo: 'dh', icona: '🌿', testo: 'Dry hop', dett: dh.map(r => `${r.nome}${r.qta ? ` ${u.numIT(r.qta, 1)} ${r.unita || 'g'}` : ''}`).join(', ') });
     else if (fasi.some(f => f.fase === 'dh' && f.da === d && d !== g[0].data)) out.push({ ...base, tipo: 'dh', icona: '🌿', testo: 'Inizio dry hop', dett: '' });
-    if (fasi.some(f => f.fase === 'maturazione' && f.da === d)) out.push({ ...base, tipo: 'freddo', icona: '❄️', testo: 'Inizio maturazione', dett: 'scendere a freddo' });
+    if (fasi.some(f => f.fase === 'maturazione' && f.da === d)) out.push({ ...base, tipo: 'freddo', icona: '❄️', testo: 'Crash cooling', dett: 'scendere a freddo, inizio maturazione' });
     const t = travasoCotta(g[0], fv);
     if (t?.data === d) out.push({ ...base, tipo: 'travaso', icona: '↪️', testo: 'Travaso', dett: `${g[0].fv} → ${t.fv || 'FV da scegliere'}${t.stimato ? ' (stimato)' : ''}` });
     const ev = (g[0].fermentazione || []).filter(e => e.data === d).flatMap(eventiGiorno);
@@ -61,12 +61,9 @@ export async function vistaHome() {
   const giac = giacenze(datiMag, oggi);
   const malti = [...giac.values()].filter(x => x.articolo.categoria === 'malto' && !x.articolo.eliminato && (x.articolo.unita || 'kg') === 'kg');
   const kgMalti = malti.reduce((t, x) => t + Math.max(0, x.giacenza), 0);
-  const maltiTop = malti.filter(x => x.giacenza > 0).sort((a, b) => b.giacenza - a.giacenza).slice(0, 5);
   const kgDi = x => (x.articolo.unita === 'g' ? x.giacenza / 1000 : x.giacenza);
   const luppoli = [...giac.values()].filter(x => x.articolo.categoria === 'luppolo' && ['kg', 'g'].includes(x.articolo.unita || 'kg'));
   const kgLuppoli = luppoli.reduce((t, x) => t + Math.max(0, kgDi(x)), 0);
-  const luppoliTop = luppoli.filter(x => x.giacenza > 0).sort((a, b) => kgDi(b) - kgDi(a)).slice(0, 5);
-  const sottoScorta = [...giac.values()].filter(x => x.sottoScorta).length;
   const { righe: daOrdinare } = fabbisogno(giac, datiMag, { fino: addGiorni(oggi, 42), anticipo: 7, oggi });
   const urgenti = daOrdinare.filter(r => r.urgente);
   daOrdinare.sort((a, b) => (b.urgente - a.urgente) || String(a.entro).localeCompare(String(b.entro)));
@@ -111,6 +108,10 @@ export async function vistaHome() {
   for (const c of prossime) if (!prossimeLotti.some(g => g.some(x => x.id === c.id))) prossimeLotti.push(gruppoCotta(c, cotte));
 
   const att = [[oggi, 'Oggi'], [domani, 'Domani']].map(([d, titolo]) => ({ d, titolo, voci: attivitaGiorno(cotte, d, ctx) }));
+  // DH, travasi e crash cooling previsti nei giorni dopo (fino a una settimana)
+  const previste = Array.from({ length: 6 }, (_, i) => addGiorni(oggi, i + 2))
+    .map(d => ({ d, voci: attivitaGiorno(cotte, d, ctx).filter(v => ['dh', 'travaso', 'freddo'].includes(v.tipo)) }))
+    .filter(x => x.voci.length);
   const L = n => `${numIT(n, 0)} L`;
   const delta = s => {
     if (!s.prima) return '';
@@ -133,8 +134,8 @@ export async function vistaHome() {
     <div class="home-kpi">
       <a class="w-kpi" href="#/planning" style="--w:var(--s-tank)"><span>Nei fermentatori</span><b>${L(litriFv)}</b><small>${fvOccupati.length} FV occupati su ${fvTot}</small></a>
       <a class="w-kpi" href="#/birra" style="--w:var(--s-confezionata)"><span>Birra in magazzino</span><b>${impB ? L(litriMag) : '—'}</b><small>${impB ? `${numIT(pezzi('fusto'), 0)} fusti · ${numIT(pezzi('lattina/bottiglia'), 0)} lattine` : 'magazzino birra non avviato'}</small></a>
-      <a class="w-kpi" href="#/materie-prime" style="--w:var(--accent)"><span>Malti in magazzino</span><b>${numIT(kgMalti, 0)} kg</b><small>${malti.filter(x => x.giacenza > 0).length} tipi${sottoScorta ? ` · ${sottoScorta} articoli sotto scorta` : ''}</small></a>
-      <a class="w-kpi" href="#/materie-prime" style="--w:#65a30d"><span>Luppoli in magazzino</span><b>${numIT(kgLuppoli, 1)} kg</b><small>${luppoli.filter(x => x.giacenza > 0).length} varietà</small></a>
+      <a class="w-kpi" href="#/materie-prime" style="--w:var(--accent)"><span>Malti in magazzino</span><b>${numIT(kgMalti, 0)} kg</b><small>totale di tutte le varietà</small></a>
+      <a class="w-kpi" href="#/materie-prime" style="--w:#65a30d"><span>Luppoli in magazzino</span><b>${numIT(kgLuppoli, 1)} kg</b><small>totale di tutte le varietà</small></a>
       <a class="w-kpi" href="#/ordine" style="--w:${urgenti.length ? 'var(--warn)' : 'var(--s-pianificata)'}"><span>Da ordinare</span><b>${daOrdinare.length}</b><small>${urgenti.length ? `${urgenti.length} da ordinare subito` : 'per le cotte delle prossime 6 settimane'}</small></a>
     </div>
 
@@ -146,6 +147,15 @@ export async function vistaHome() {
           <span class="w-testo"><b>${v.testo}</b> · ${v.birra} <span class="totale">${v.lotto || ''}${v.fv && v.tipo !== 'travaso' ? ` · ${v.fv}` : ''}</span>${v.dett ? html`<small>${v.dett}</small>` : ''}</span></a></li>`)}</ul>`
           : html`<p class="w-vuoto">Niente in programma.</p>`}
       </section>`)}
+
+      <section class="widget w-previste">
+        <header><h2>In arrivo</h2><span class="totale">DH, travasi e crash cooling</span></header>
+        ${previste.length ? html`<ul class="w-lista">${previste.flatMap(x => x.voci.map(v => html`<li><a href="#/cotta/${encodeURIComponent(v.id)}">
+          <span class="w-data"><b>${new Date(`${x.d}T12:00:00`).getDate()}</b>${new Date(`${x.d}T12:00:00`).toLocaleDateString('it-IT', { weekday: 'short' })}</span>
+          <span class="w-ico" aria-hidden="true">${v.icona}</span>
+          <span class="w-testo"><b>${v.testo}</b> · ${v.birra} <span class="totale">${v.lotto || ''}${v.fv && v.tipo !== 'travaso' ? ` · ${v.fv}` : ''}</span>${v.dett ? html`<small>${v.dett}</small>` : ''}</span></a></li>`))}</ul>`
+          : html`<p class="w-vuoto">Niente nei prossimi 7 giorni.</p>`}
+      </section>
 
       <section class="widget w-fv">
         <header><h2>Fermentatori</h2><a class="totale" href="#/planning">Planning →</a></header>
@@ -164,20 +174,6 @@ export async function vistaHome() {
           <span class="w-num">${fmtOrd(r)}<small class="${r.urgente ? 'w-urgente' : ''}">${r.urgente ? 'subito' : `entro ${dataIT(r.entro)}`}</small></span></a></li>`)}</ul>
           ${daOrdinare.length > 6 ? html`<p class="totale">e altri ${daOrdinare.length - 6}…</p>` : ''}`
           : html`<p class="w-vuoto">✓ Niente da ordinare per le cotte delle prossime 6 settimane.</p>`}
-      </section>
-
-      <section class="widget w-malti">
-        <header><h2>Malti e luppoli</h2><a class="totale" href="#/materie-prime">Magazzino →</a></header>
-        <h3>Malti · ${numIT(kgMalti, 0)} kg</h3>
-        ${maltiTop.length ? html`<ul class="w-barre">${maltiTop.map(x => html`<li>
-          <span class="w-testo">${x.articolo.nome}</span><span class="w-num">${numIT(x.giacenza, 0)} kg</span>
-          <span class="w-barra"><span style="width:${(x.giacenza / maltiTop[0].giacenza * 100).toFixed(1)}%"></span></span></li>`)}</ul>`
-          : html`<p class="w-vuoto">Nessun malto in giacenza.</p>`}
-        <h3>Luppoli · ${numIT(kgLuppoli, 1)} kg</h3>
-        ${luppoliTop.length ? html`<ul class="w-barre luppoli">${luppoliTop.map(x => html`<li>
-          <span class="w-testo">${x.articolo.nome}</span><span class="w-num">${numIT(kgDi(x), 1)} kg</span>
-          <span class="w-barra"><span style="width:${(kgDi(x) / kgDi(luppoliTop[0]) * 100).toFixed(1)}%"></span></span></li>`)}</ul>`
-          : html`<p class="w-vuoto">Nessun luppolo in giacenza.</p>`}
       </section>
 
       <section class="widget w-stat">

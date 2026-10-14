@@ -617,7 +617,8 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .widget { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--ombra); padding: 14px 16px; min-width: 0; }
 .widget > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .widget > header h2 { margin: 0; font-size: 1.02rem; }
-.widget > header .totale { margin: 0; text-transform: capitalize; }
+.widget > header .totale { margin: 0; }
+.w-attivita > header .totale { text-transform: capitalize; }
 .widget > header a.totale { text-transform: none; text-decoration: none; color: var(--brand); white-space: nowrap; }
 .w-attivita:first-child { border-top: 4px solid var(--accent); }
 .w-vuoto { color: var(--muted); margin: 6px 0 2px; }
