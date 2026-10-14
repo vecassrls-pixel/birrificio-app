@@ -2,6 +2,7 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import { LOGO_KASHMIR } from './logo-kashmir.js';
+import { CONTROLLI_ARRIVO } from './haccp.js';
 import {
   CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo,
 } from './magazzino.js';
@@ -54,7 +55,6 @@ export async function vistaMagazzino() {
       </div></div>
       <span class="spazio"></span>
       <a class="btn" href="#/ordine" title="Cosa ordinare per le cotte pianificate">🛒 Da ordinare</a>
-      <a class="btn" href="#/registro-s6">Registro S6</a>
       <a class="btn" href="#/inventario">Inventario</a>
       <button id="nuovo-art">+ Articolo</button>
       <a class="btn" href="#/scarico/carico">+ Carico manuale</a>
@@ -264,6 +264,8 @@ export async function vistaArticolo(id) {
 }
 
 // ---------- bolla di carico ----------
+// nome di chi controlla la merce: quello del saluto in Home su questo dispositivo
+const nomeControllo = () => { try { return localStorage.getItem('gb-nome-saluto') || ''; } catch { return ''; } };
 export async function vistaBolla(id) {
   const { html } = u;
   const dati = await datiMagazzino();
@@ -313,6 +315,18 @@ export async function vistaBolla(id) {
         <datalist id="dl-forn">${fornitori.map(f => html`<option value="${f}">`)}</datalist>
         <datalist id="dl-art">${dati.articoli.map(a => html`<option value="${a.nome}">`)}</datalist>
       </div>
+      <div class="scheda bolla-controllo">
+        <h2>Controllo all'arrivo <small class="totale">HACCP</small></h2>
+        <div class="ck-spunte">${CONTROLLI_ARRIVO.map(([k, n]) => html`<label><input type="checkbox" data-ck="${k}" ${b.controllo?.[k] ? 'checked' : ''}> ${n}</label>`)}</div>
+        <div class="griglia" style="margin-top:10px">
+          <label>Esito<select data-ck="esito">
+            <option value="" ${b.controllo?.esito ? '' : 'selected'}>non controllata</option>
+            <option value="conforme" ${b.controllo?.esito === 'conforme' ? 'selected' : ''}>Conforme</option>
+            <option value="non conforme" ${b.controllo?.esito === 'non conforme' ? 'selected' : ''}>Non conforme</option></select></label>
+          <label>Controllato da<input data-ck="chi" value="${b.controllo?.chi ?? nomeControllo()}"></label>
+          <label style="grid-column:span 2">Note (cosa non va, cosa hai fatto)<input data-ck="note" value="${b.controllo?.note || ''}"></label>
+        </div>
+      </div>
       <div class="scheda"><h2>Righe</h2>
         ${daPdf() ? html`<p class="totale">Controlla le righe lette dal PDF: togli la spunta a quello che non va in magazzino e correggi il nome se l'articolo esiste già con un altro nome (la descrizione del fornitore viene ricordata per le prossime bolle).</p>` : ''}
         <div class="scroll-x"><table class="tab-edit">
@@ -341,6 +355,11 @@ export async function vistaBolla(id) {
     const t = e.target;
     if (t.id === 'pdf' && e.type === 'change' && t.files[0]) return leggiPdf(t.files[0]);
     if (t.dataset.b) b[t.dataset.b] = t.value;
+    if (t.dataset.ck) {
+      b.controllo = { chi: nomeControllo(), ...b.controllo, [t.dataset.ck]: t.type === 'checkbox' ? t.checked : t.value };
+      // tutte le spunte date: esito proposto "conforme"
+      if (t.type === 'checkbox' && !b.controllo.esito && CONTROLLI_ARRIVO.every(([k]) => b.controllo[k])) { b.controllo.esito = 'conforme'; disegna(); }
+    }
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
       b.righe[i][k] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
@@ -512,7 +531,7 @@ export async function vistaRegistroS6() {
   const righe = registroS6(dati, s6.da, s6.a).filter(r => !s6.categoria || r.categoria === s6.categoria);
   u.$app.innerHTML = html`
     <div class="barra">
-      <a href="#/materie-prime" class="btn">← Materie prime</a>
+      <a href="#/haccp" class="btn">← HACCP</a>
       <label>Dal <input type="date" id="s6-da" value="${s6.da}"></label>
       <label>Al <input type="date" id="s6-a" value="${s6.a}"></label>
       <select id="s6-cat"><option value="">Tutte le categorie</option>

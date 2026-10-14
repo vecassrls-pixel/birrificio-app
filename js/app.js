@@ -12,8 +12,11 @@ import * as costi from './vista-costi.js';
 import * as ordine from './vista-ordine.js';
 import * as cerca from './vista-cerca.js';
 import * as listini from './vista-listini.js';
+import * as preventivi from './vista-preventivi.js';
 import * as backup from './backup.js';
 import * as home from './vista-home.js';
+import { LOGO_KASHMIR } from './logo-kashmir.js';
+import * as haccp from './vista-haccp.js';
 import { apriEtichetta } from './etichetta.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
@@ -79,6 +82,8 @@ cerca.init({ $app, html, db, stato, dataIT });
 ordine.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia });
 costi.init({ $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO });
 listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia });
+preventivi.init({ $app, html, raw, db, toast, chiedi, dataIT, numIT, oggiISO, copia });
+haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
@@ -180,7 +185,13 @@ const routes = [
   [/^#\/bolla\/(.+)$/, id => magazzino.vistaBolla(id)],
   [/^#\/inventario$/, () => magazzino.vistaInventario()],
   [/^#\/scarico\/(.+)$/, id => magazzino.vistaScarico(id)],
+  [/^#\/haccp$/, () => haccp.vistaHaccp()],
   [/^#\/registro-s6$/, () => magazzino.vistaRegistroS6()],
+  [/^#\/rintracciabilita$/, () => haccp.vistaRintracciabilita()],
+  [/^#\/rintracciabilita\/(.+)$/, id => haccp.vistaRintracciabilita(id)],
+  [/^#\/controllo-arrivi$/, () => haccp.vistaControlloArrivi()],
+  [/^#\/scadenzario$/, () => haccp.vistaScadenzario()],
+  [/^#\/pulizie$/, () => haccp.vistaPulizie()],
   [/^#\/birra$/, () => magBirra.vistaBirra()],
   [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
   [/^#\/movbirra\/(.+)$/, id => magBirra.vistaMovimento(id)],
@@ -188,6 +199,8 @@ const routes = [
   [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
   [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
   [/^#\/listini$/, () => listini.vistaListini()],
+  [/^#\/preventivi$/, () => preventivi.vistaPreventivi()],
+  [/^#\/preventivo\/(.+)$/, id => preventivi.vistaPreventivo(id).then(f => { if (f) pulizia = f; })],
   [/^#\/statistiche$/, () => statistiche.vistaStatistiche()],
   [/^#\/costi$/, () => costi.vistaCosti()],
   [/^#\/ordine$/, () => ordine.vistaOrdine()],
@@ -202,7 +215,7 @@ async function render() {
   $app.oninput = $app.onchange = $app.onclick = null;
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|registro-s6|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini)/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi'))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv)/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi')) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -1370,12 +1383,48 @@ async function gestioneUtenti() {
   };
   carica();
 }
+// immagine ridotta (al massimo larghezza × altezza) in PNG, così resta leggera nel database e sincronizza in fretta
+function immaginePiccola(file, maxL, maxA) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, maxL / img.naturalWidth, maxA / img.naturalHeight);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      resolve(cv.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('immagine')); };
+    img.src = url;
+  });
+}
+const leggiNomeSaluto = () => { try { return localStorage.getItem(home.NOME_SALUTO) || ''; } catch { return ''; } };
 async function vistaImpostazioni() {
   const nonInviati = (await db.daInviare()).length;
   const bfUltimo = await db.meta('brewfatherUltimo');
   const backupUltimo = await backup.ultimo();
+  const impHome = (await db.leggi(home.ID_HOME)) || {};
+  const logoScelto = impHome.eliminato ? 'gb' : impHome.logo || 'gb';
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
+    <div class="scheda">
+      <h2>Home</h2>
+      <label style="max-width:320px">Nome nel saluto ("Buongiorno …")<input id="nome-saluto" value="${leggiNomeSaluto()}" placeholder="es. Romain" autocomplete="given-name"></label>
+      <p class="totale">Il nome vale solo su questo dispositivo: ognuno può mettere il suo.</p>
+      <h3>Logo in alto nella Home</h3>
+      <div class="logo-scelta solo-editori">
+        <label><input type="radio" name="logo-home" value="gb" ${logoScelto === 'gb' ? 'checked' : ''}><span class="anteprima"><img src="img/gb-logo-chiaro.png" alt=""></span>Global Brewing</label>
+        <label><input type="radio" name="logo-home" value="kashmir" ${logoScelto === 'kashmir' ? 'checked' : ''}><span class="anteprima"><img class="su-bianco" src="${LOGO_KASHMIR}" alt=""></span>Kashmir Brewing</label>
+        <label><input type="radio" name="logo-home" value="mio" ${logoScelto === 'mio' ? 'checked' : ''} ${impHome.logoImmagine ? '' : 'disabled'}><span class="anteprima">${impHome.logoImmagine ? html`<img class="${impHome.sfondoBianco === false ? '' : 'su-bianco'}" src="${impHome.logoImmagine}" alt="">` : 'nessuna immagine'}</span>Immagine caricata</label>
+      </div>
+      <div class="barra solo-editori">
+        <label class="btn piccolo" style="cursor:pointer">Carica un logo…<input type="file" id="logo-file" accept="image/*" hidden></label>
+        ${impHome.logoImmagine ? html`<label><input type="checkbox" id="logo-bianco" ${impHome.sfondoBianco === false ? '' : 'checked'}> Sfondo bianco dietro il logo (per i loghi scuri)</label>` : ''}
+      </div>
+      <p class="totale">Il logo vale per tutti i dispositivi. Va bene un PNG o JPG; per un logo chiaro su sfondo trasparente togli lo sfondo bianco.</p>
+    </div>
     <div class="scheda">
       <h2>Fermentatori</h2>
       <table class="tab-edit">
@@ -1439,6 +1488,22 @@ async function vistaImpostazioni() {
   $app.querySelectorAll('[data-del-fv]').forEach(b => b.addEventListener('click', async () => {
     if (await chiedi('Rimuovere questo fermentatore?', 'Rimuovi')) await db.elimina(b.dataset.delFv);
   }));
+  const salvaHome = async campi => { const { aggiornato: _a, eliminato: _e, ...r } = (await db.leggi(home.ID_HOME)) || {}; await db.salva({ ...r, ...campi, id: home.ID_HOME, tipo: 'impostazione' }); };
+  $app.querySelectorAll('input[name="logo-home"]').forEach(el => { el.onchange = async () => { await salvaHome({ logo: el.value }); toast('Logo della Home cambiato'); }; });
+  const bianco = document.getElementById('logo-bianco');
+  if (bianco) bianco.onchange = async () => { await salvaHome({ sfondoBianco: bianco.checked }); vistaImpostazioni(); };
+  document.getElementById('logo-file').onchange = async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      await salvaHome({ logo: 'mio', logoImmagine: await immaginePiccola(f, 640, 200) });
+      toast('Logo caricato: lo vedi in Home');
+    } catch { toast('Non riesco a leggere questa immagine'); }
+    vistaImpostazioni();
+  };
+  document.getElementById('nome-saluto').onchange = e => {
+    try { localStorage.setItem(home.NOME_SALUTO, e.target.value.trim()); toast('Nome salvato: lo vedi in Home'); } catch { toast('Non riesco a salvare il nome su questo dispositivo'); }
+  };
   document.getElementById('add-fv').onclick = async () => {
     const n = stato.fv.length + 1;
     await db.salva({ id: db.nuovoId('fv'), tipo: 'fv', nome: `FV${n}`, capacita: null });
@@ -1683,7 +1748,7 @@ misuraTop();
   db.onCambio(async () => {
     await carica();
     // non ridisegnare la scheda mentre si sta scrivendo
-    if (!/^#\/(cotta|bolla|inventario|scarico|movbirra|birra-)/.test(location.hash)) render();
+    if (!/^#\/(cotta|bolla|inventario|scarico|movbirra|birra-|preventivo\/)/.test(location.hash)) render();
   });
   window.addEventListener('online', () => aggiornaRete());
   window.addEventListener('offline', () => aggiornaRete());

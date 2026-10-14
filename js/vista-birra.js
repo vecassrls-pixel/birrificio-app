@@ -71,6 +71,7 @@ export async function vistaBirra() {
       <a class="btn" href="#/birra-inventario">Inventario</a>
       <a class="btn" href="#/birra-registro">Registro</a>
       <a class="btn" href="#/listini">Listini</a>
+      <a class="btn" href="#/preventivi">Preventivi</a>
     </div>
     ${!imp.inizio ? html`<div class="scheda avviso solo-editori"><h2>Per iniziare</h2>
       <p>La birra entra in magazzino da sola quando scrivi il confezionamento nella scheda cotta, ed esce con gli scarichi (a mano, dalle fatture di Fatture in Cloud o dagli ordini Shopify).

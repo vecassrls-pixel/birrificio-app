@@ -5,6 +5,8 @@ import { giacenze } from './magazzino.js';
 import { fabbisogno } from './ordine.js';
 import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
+import { LOGO_KASHMIR } from './logo-kashmir.js';
+import { fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
 import {
   SIMBOLI, eventiGiorno, fasiCotta, fineCotta, gruppoCotta, litriConfezionati, lottoGruppo, periodiCotta, statoCotta, travasoCotta,
 } from './dominio.js';
@@ -14,7 +16,18 @@ export function init(strumenti) { u = strumenti; }
 
 const NOMI_FASE = { fermentazione: 'Fermentazione', dh: 'Dry hop', maturazione: 'Maturazione' };
 const giornoSett = d => new Date(`${d}T12:00:00`).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
-const saluto = () => { const h = new Date().getHours(); return h < 13 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'; };
+// il nome del saluto si scrive in Impostazioni e vale per questo dispositivo (ognuno vede il suo)
+export const NOME_SALUTO = 'gb-nome-saluto';
+// logo in alto nella Home (record condiviso, uguale per tutti): 'gb' Global Brewing, 'kashmir', 'mio' = immagine caricata
+export const ID_HOME = 'impostazione-home';
+function logoHome(imp) {
+  const scelta = imp && !imp.eliminato ? imp.logo : 'gb';
+  if (scelta === 'kashmir') return { src: LOGO_KASHMIR, alt: 'Kashmir Brewing Company', bianco: true };
+  if (scelta === 'mio' && imp.logoImmagine) return { src: imp.logoImmagine, alt: 'Logo del birrificio', bianco: imp.sfondoBianco !== false };
+  return { src: 'img/gb-logo-chiaro.png', alt: 'Global Brewing' };
+}
+const nomeSaluto = () => { try { return (localStorage.getItem(NOME_SALUTO) || '').trim(); } catch { return ''; } };
+const saluto = () => { const h = new Date().getHours(); const n = nomeSaluto(); return `${h < 13 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'}${n ? ` ${n}` : ''}`; };
 
 // Cosa c'è da fare in un giorno, per lotto (le cotte doppie una volta sola)
 export function attivitaGiorno(cotte, d, { durate, fv, addGiorni, conGiorniDh = g => g[0] }) {
@@ -49,10 +62,13 @@ export function attivitaGiorno(cotte, d, { durate, fv, addGiorni, conGiorniDh = 
 export async function vistaHome() {
   const { html, stato, numIT, dataIT, oggiISO, addGiorni, diffGiorni } = u;
   const oggi = oggiISO(), domani = addGiorni(oggi, 1);
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra] = await Promise.all([
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze, pulizie] = await Promise.all([
     ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
-    u.db.leggi(ID_IMPOSTAZIONI),
+    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'),
   ]);
+  const scadHaccp = scadenzeDaFare(scadenze, oggi);
+  const sporchi = fvDaPulire(statoFermentatori(stato.cotte, stato.durate, stato.fv, pulizie, oggi), pulizie, oggi);
+  const logo = logoHome(impHome);
   const cotte = stato.cotte;
   const ctx = { durate: stato.durate, fv: stato.fv, addGiorni, conGiorniDh: u.conGiorniDh };
 
@@ -106,6 +122,17 @@ export async function vistaHome() {
     .sort((a, b) => a.data.localeCompare(b.data));
   const prossimeLotti = [];
   for (const c of prossime) if (!prossimeLotti.some(g => g.some(x => x.id === c.id))) prossimeLotti.push(gruppoCotta(c, cotte));
+  // etichette da ordinare: cotte pianificate o ancora nei fermentatori senza la spunta "Etichette pronte"
+  // (le etichette sono del lotto: basta la spunta su una cotta). Servono per il confezionamento: ordine per fine in FV.
+  const senzaEtichette = [];
+  for (const c of cotte) {
+    if (c.eliminato || !c.data || senzaEtichette.some(x => x.g.some(y => y.id === c.id))) continue;
+    if (!['pianificata', 'tank'].includes(statoCotta(c, stato.durate, oggi, cotte))) continue;
+    const g = gruppoCotta(c, cotte);
+    if (g.some(x => x.etichetteOk)) continue;
+    senzaEtichette.push({ g, fine: fineCotta(g[0], stato.durate), inFv: g[0].data <= oggi });
+  }
+  senzaEtichette.sort((x, y) => x.fine.localeCompare(y.fine));
 
   const att = [[oggi, 'Oggi'], [domani, 'Domani']].map(([d, titolo]) => ({ d, titolo, voci: attivitaGiorno(cotte, d, ctx) }));
   // DH, travasi e crash cooling previsti nei giorni dopo (fino a una settimana)
@@ -122,7 +149,7 @@ export async function vistaHome() {
 
   u.$app.innerHTML = html`
     <section class="home-hero">
-      <img class="home-logo" src="img/gb-logo-chiaro.png" alt="Global Brewing" width="1174" height="240">
+      ${logo.bianco ? html`<img class="home-logo su-bianco" src="${logo.src}" alt="${logo.alt}">` : html`<img class="home-logo" src="${logo.src}" alt="${logo.alt}" width="1174" height="240">`}
       <div class="home-ciao"><b>${saluto()}</b><span>${giornoSett(oggi)}</span></div>
       <div class="home-azioni solo-editori">
         <a class="btn" href="#/planning">Planning</a>
@@ -182,12 +209,39 @@ export async function vistaHome() {
         <p class="totale" style="margin-bottom:0">Confronto con lo stesso periodo del ${anno - 1}.</p>
       </section>
 
+      ${sporchi.length ? html`<section class="widget w-pulizie">
+        <header><h2>🧽 FV da pulire</h2><a class="totale" href="#/pulizie">Pulizie →</a></header>
+        <ul class="w-lista">${sporchi.map(x => html`<li><a href="#/pulizie">
+          <span class="w-data"><b>${x.fv.nome}</b></span>
+          <span class="w-testo"><b>${x.svuotato ? `vuoto dal ${dataIT(x.svuotato)}` : 'nessuna pulizia registrata'}</b><small>${x.prossimo ? `si riempie il ${dataIT(x.prossimo.da)} con ${x.prossimo.cotte[0].birra}` : 'nessuna cotta pianificata'}</small></span>
+          <span class="w-num ${x.giorni !== null && x.giorni <= 2 ? 'w-urgente' : ''}">${x.giorni === null ? '' : x.giorni <= 0 ? 'oggi' : `tra ${x.giorni} gg`}</span></a></li>`)}</ul>
+      </section>` : ''}
+
+      ${scadHaccp.length ? html`<section class="widget w-haccp">
+        <header><h2>🗓️ Scadenze HACCP</h2><a class="totale" href="#/scadenzario">Scadenzario →</a></header>
+        <ul class="w-lista">${scadHaccp.slice(0, 6).map(x => html`<li><a href="#/scadenzario">
+          <span class="w-data"><b>${new Date(`${x.prossima}T12:00:00`).getDate()}</b>${new Date(`${x.prossima}T12:00:00`).toLocaleDateString('it-IT', { month: 'short' })}</span>
+          <span class="w-testo"><b>${x.s.nome}</b><small>ultima volta il ${dataIT(x.s.ultima)}</small></span>
+          <span class="w-num ${x.stato === 'scaduta' ? 'w-urgente' : ''}">${x.stato === 'scaduta' ? 'scaduta' : x.giorni === 0 ? 'oggi' : `tra ${x.giorni} gg`}</span></a></li>`)}</ul>
+      </section>` : ''}
+
+      <section class="widget w-etichette">
+        <header><h2>${SIMBOLI.etichette} Etichette da ordinare</h2><span class="totale">${senzaEtichette.length ? `${senzaEtichette.length} cotte` : ''}</span></header>
+        ${senzaEtichette.length ? html`<ul class="w-lista">${senzaEtichette.slice(0, 8).map(({ g, fine, inFv }) => { const gg = diffGiorni(oggi, fine); return html`<li><a href="#/cotta/${encodeURIComponent(g[0].id)}">
+          <span class="w-data"><b>${new Date(`${fine}T12:00:00`).getDate()}</b>${new Date(`${fine}T12:00:00`).toLocaleDateString('it-IT', { month: 'short' })}</span>
+          <span class="w-testo"><b>${g[0].birra}</b> <span class="totale">${g.length > 1 ? lottoGruppo(g) : g[0].lotto}${g[0].fv ? ` · ${g[0].fv}` : ''}</span><small>${inFv ? 'nel fermentatore' : `cotta il ${dataIT(g[0].data)}`} · da confezionare ${gg <= 0 ? 'ora' : `tra ${gg} gg`}</small></span>
+          <span class="w-num ${gg <= 14 ? 'w-urgente' : ''}">${gg <= 14 ? 'urgente' : ''}</span></a></li>`; })}</ul>
+          ${senzaEtichette.length > 8 ? html`<p class="totale">e altre ${senzaEtichette.length - 8}…</p>` : ''}
+          <p class="totale" style="margin-bottom:0">Quando le hai, spunta "Etichette pronte" nella cotta.</p>`
+          : html`<p class="w-vuoto">✓ Etichette pronte per tutte le cotte pianificate.</p>`}
+      </section>
+
       <section class="widget w-prossime">
         <header><h2>Prossime cotte</h2><a class="totale" href="#/planning">Planning →</a></header>
         ${prossimeLotti.length ? html`<ul class="w-lista">${prossimeLotti.slice(0, 5).map(g => html`<li><a href="#/cotta/${encodeURIComponent(g[0].id)}">
           <span class="w-data"><b>${new Date(`${g[0].data}T12:00:00`).getDate()}</b>${new Date(`${g[0].data}T12:00:00`).toLocaleDateString('it-IT', { month: 'short' })}</span>
           <span class="w-testo"><b>${g[0].birra}</b> <span class="totale">${g.length > 1 ? lottoGruppo(g) : g[0].lotto}${g[0].fv ? ` · ${g[0].fv}` : ''}</span>
-            <small>${[g.every(x => x.materiePrime) ? '✓ materie prime' : 'materie prime da ordinare', g.every(x => x.lievitoOk) ? `${SIMBOLI.lievito} lievito ok` : '', g.every(x => x.etichetteOk) ? `${SIMBOLI.etichette} etichette ok` : ''].filter(Boolean).join(' · ')}</small></span>
+            <small>${[g.every(x => x.materiePrime) ? '✓ materie prime' : 'materie prime da ordinare', g.every(x => x.lievitoOk) ? `${SIMBOLI.lievito} lievito ok` : '', g.some(x => x.etichetteOk) ? `${SIMBOLI.etichette} etichette ok` : ''].filter(Boolean).join(' · ')}</small></span>
           <span class="w-num">tra ${diffGiorni(oggi, g[0].data)} gg</span></a></li>`)}</ul>`
           : html`<p class="w-vuoto">Nessuna cotta pianificata.</p>`}
       </section>
