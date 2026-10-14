@@ -196,6 +196,7 @@ const routes = [
   [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
   [/^#\/movbirra\/(.+)$/, id => magBirra.vistaMovimento(id)],
   [/^#\/birra-inventario$/, () => magBirra.vistaInventario()],
+  [/^#\/birra-prodotti-fic$/, () => magBirra.vistaProdottiFic()],
   [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
   [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
   [/^#\/listini$/, () => listini.vistaListini()],

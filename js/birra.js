@@ -88,6 +88,28 @@ export function elencoProdotti({ cotte, movimenti = [], inventari = [], prodotti
   return [...s].sort((a, b) => a.localeCompare(b, 'it'));
 }
 
+// Da un nome libero (prodotto di Fatture in Cloud, riga di un ordine) prova a capire birra e formato.
+// birreNote: nomi delle birre già conosciute (dalle cotte). Ritorna { birra, tipo, litri, sicuro }.
+export function indovinaProdotto(nome, birreNote = []) {
+  const n = ` ${pulito(nome)} `;
+  let litri = null;
+  const cl = /(?:^|[^0-9,.])(\d{2})\s*cl\b/.exec(n);
+  const dec = /(?:^|[^0-9])0[,.](\d{2})\b/.exec(n);
+  const l = /(?:^|[^0-9,.])(\d{1,2})\s*(?:l|lt|litri)\b/.exec(n);
+  if (cl) litri = Number(cl[1]) / 100;
+  else if (dec) litri = Number(`0.${dec[1]}`);
+  else if (l) litri = Number(l[1]);
+  const fusto = /\b(fust|keg)/.test(n), lattina = /\b(lattin|can|bottigl)/.test(n);
+  const tipo = fusto ? 'fusto' : lattina || (litri && litri < 1) ? 'lattina/bottiglia' : litri ? 'fusto' : '';
+  if (!litri && tipo === 'lattina/bottiglia') litri = 0.33;
+  const compatto = n.replace(/ /g, '');
+  const nota = [...birreNote].sort((a, b) => b.length - a.length).find(b => n.includes(` ${pulito(b)} `) || compatto.includes(pulito(b).replace(/ /g, '')));
+  // senza una birra conosciuta: il nome senza le parole del formato
+  const birra = nota || pulito(nome).replace(/\b\d+([,.]\d+)?\s*(cl|lt|l|litri)\b/g, ' ').replace(/\b(fusto|fusti|keg|lattina|lattine|can|bottiglia|bottiglie|birra|cl|lt|l|litri|x)\b/g, ' ')
+    .replace(/\b\d+([,.]\d+)?\b/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+  return { birra: nomeBirra(birra), tipo: tipo || 'fusto', litri: litri || 0, sicuro: !!(nota && tipo && litri), birraNota: !!nota, formatoNoto: !!(tipo && litri) };
+}
+
 // ---------- giacenze ----------
 const ORDINE = { inventario: 0, carico: 1, scarico: 2 };
 const chiaveLotto = l => String(l || '').trim().toLowerCase();

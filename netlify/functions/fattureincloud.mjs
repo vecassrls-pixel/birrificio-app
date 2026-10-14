@@ -6,6 +6,8 @@
 //   SUPABASE_URL, SUPABASE_ANON_KEY  per controllare chi chiama
 //
 // Uso dall'app:  /.netlify/functions/fattureincloud?dal=2026-10-01&tipo=invoice
+//                /.netlify/functions/fattureincloud?elenco=prodotti   anagrafica prodotti (serve il permesso Prodotti: lettura)
+//                  → { prodotti: [{ id, nome, codice }] }
 // Risponde nello stesso formato del proxy Shopify:
 //   { documenti: [{ id, numero, data, cliente, stato, righe: [{ codice, nome, qta }] }], altri }
 
@@ -22,9 +24,10 @@ export default async req => {
   if (!(await autorizzato(req))) return json({ errore: 'Accesso non autorizzato' }, 401);
 
   const url = new URL(req.url);
+  const elenco = url.searchParams.get('elenco') === 'prodotti';
   const dal = dataValida(url.searchParams.get('dal'));
   const tipo = TIPI.includes(url.searchParams.get('tipo')) ? url.searchParams.get('tipo') : 'invoice';
-  if (!dal) return json({ errore: 'Data non valida' }, 400);
+  if (!dal && !elenco) return json({ errore: 'Data non valida' }, 400);
 
   const chiama = async (path, params = {}, conAzienda = true) => {
     const res = await fetch(`${BASE}${conAzienda ? `/c/${encodeURIComponent(azienda)}` : ''}${path}?${new URLSearchParams(params)}`, {
@@ -44,6 +47,15 @@ export default async req => {
       const u = await chiama('/user/companies', {}, false);
       azienda = u.data?.companies?.[0]?.id;
       if (!azienda) return json({ errore: 'Il token di Fatture in Cloud non ha accesso a nessuna azienda' }, 502);
+    }
+    if (elenco) {
+      const prodotti = [];
+      for (let pagina = 1; pagina <= 20; pagina++) {
+        const r = await chiama('/products', { fieldset: 'basic', sort: 'name', page: pagina, per_page: 100 });
+        prodotti.push(...(r.data || []));
+        if (pagina >= (r.last_page || 1)) break;
+      }
+      return json({ prodotti: prodotti.map(p => ({ id: String(p.id), nome: p.name || '', codice: p.code || '' })) });
     }
     const docs = [];
     let altri = false;
@@ -75,6 +87,7 @@ export default async req => {
       })),
     });
   } catch (e) {
+    if (elenco && e.status === 403) return json({ errore: 'Il token di Fatture in Cloud non può leggere i prodotti: nell\'app "Global Brewing" di Fatture in Cloud aggiungi il permesso Prodotti in lettura e rigenera il token.' }, 502);
     return json({ errore: e.message }, e.status === 401 || e.status === 403 ? 502 : 500);
   }
 };
