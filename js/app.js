@@ -413,6 +413,30 @@ function dialogNuovaCotta(pre = {}) {
 }
 
 // ---------- Scheda cotta ----------
+// Lista dei malti da macinare su WhatsApp (link wa.me, si preme Invia a mano).
+// Il numero di chi macina si chiede la prima volta e resta in questo dispositivo.
+const PREF_MACINA = 'gb-whatsapp-macina';
+function inviaMaltiWhatsApp(c) {
+  let num = null;
+  try { num = localStorage.getItem(PREF_MACINA); } catch {}
+  if (num === null) {
+    num = prompt('Numero WhatsApp di chi macina (es. 3331234567). Lascia vuoto per scegliere il contatto in WhatsApp ogni volta.', '');
+    if (num === null) return;
+    num = num.replace(/\D/g, '');
+    if (num.length === 10 && num.startsWith('3')) num = '39' + num; // cellulare italiano senza prefisso
+    try { localStorage.setItem(PREF_MACINA, num); } catch {}
+  }
+  const righe = (c.malti || []).filter(r => r.nome);
+  const kg = righe.reduce((t, r) => t + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
+  const testo = [
+    `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
+    '',
+    ...righe.map(r => `• ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
+    ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
+  ].join('\n');
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(testo)}`, '_blank');
+}
+
 const SEZIONI_INGR = [
   ['malti', 'Malti e zuccheri', 'kg'],
   ['luppoli', 'Luppoli', 'g'],
@@ -556,6 +580,7 @@ async function vistaCotta(id) {
       <datalist id="dl-art-${k}">${voci.map(a => html`<option value="${a.nome}" label="${fmtGiac(a)}"></option>`)}</datalist>
       <button class="piccolo" data-add="${k}" data-unita="${unitaDef}">+ Aggiungi</button>
       ${totaleIngr(righe)}
+      ${k === 'malti' && righe.length ? html`<button class="piccolo" id="whatsapp-malti" title="Apre WhatsApp con la lista dei malti da macinare già scritta">📲 Malti da macinare su WhatsApp</button>` : ''}
     </div>`;
   }
   function totaleIngr(righe) {
@@ -1047,6 +1072,8 @@ async function vistaCotta(id) {
       await db.elimina(altro.id);
       toast('Cotta collegata a Brewfather');
       const y = scrollY; disegna(); scrollTo(0, y);
+    } else if (t.id === 'whatsapp-malti') {
+      inviaMaltiWhatsApp(c);
     } else if (t.id === 'stampa') {
       // il titolo diventa il nome proposto per il file PDF
       const titolo = document.title;
