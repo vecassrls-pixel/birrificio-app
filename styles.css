@@ -731,3 +731,6 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .tab-scad tr.sc-scaduta .sc-stato { color: var(--warn); font-weight: 600; }
 .tab-scad tr.sc-vicina .sc-stato { color: var(--accent); font-weight: 600; }
 .tab-scad td { white-space: nowrap; }
+.tab-fv-pulizia tr.fv-sporco td { background: color-mix(in srgb, var(--warn) 7%, transparent); }
+.fv-ok { color: var(--ok); font-weight: 600; }
+.w-pulizie .w-data b { font-size: .95rem; }

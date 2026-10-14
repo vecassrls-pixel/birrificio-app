@@ -3,7 +3,7 @@
 // Calcoli in haccp.js.
 
 import { ID_IMPOSTAZIONI, nomeFormato } from './birra.js';
-import { CONTROLLI_ARRIVO, SCADENZE_CONSIGLIATE, GIORNI_PREAVVISO, controlloFatto, lottiBirra, rintracciabilita, statoScadenzaHaccp } from './haccp.js';
+import { CONTROLLI_ARRIVO, FASI_PULIZIA, LINEE, fvDaPulire, inizioRegistroPulizie, statoFermentatori, SCADENZE_CONSIGLIATE, GIORNI_PREAVVISO, controlloFatto, lottiBirra, rintracciabilita, statoScadenzaHaccp } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
@@ -21,7 +21,8 @@ const testa = (titolo, sotto) => u.html`<div class="s6-testa"><img src="${LOGO_K
 
 export async function vistaHaccp() {
   const { html } = u;
-  const [bolle, scadenze] = await Promise.all([u.db.tutti('bolla'), u.db.tutti('scadenzahaccp')]);
+  const [bolle, scadenze, pulizie] = await Promise.all([u.db.tutti('bolla'), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia')]);
+  const sporchi = fvDaPulire(statoFermentatori(u.stato.cotte, u.stato.durate, u.stato.fv, pulizie, u.oggiISO()), pulizie, u.oggiISO()).length;
   const da30 = u.addGiorni(u.oggiISO(), -30);
   const daControllare = bolle.filter(b => !b.eliminato && b.data >= da30 && !controlloFatto(b)).length;
   const stati = scadenze.filter(s => !s.eliminato).map(s => statoScadenzaHaccp(s, u.oggiISO()).stato);
@@ -38,6 +39,8 @@ export async function vistaHaccp() {
       ${voce('#/rintracciabilita', '🔎', 'Rintracciabilità per lotto', 'Da un lotto di birra: materie prime usate con lotto e fornitore, confezionamento e a chi è andata.')}
       ${voce('#/controllo-arrivi', '📦', 'Controllo merci in arrivo', 'Spunte di controllo su ogni bolla di carico e registro da stampare.',
         daControllare ? html`<span class="haccp-badge">${daControllare} ${daControllare === 1 ? 'bolla' : 'bolle'} da controllare</span>` : '')}
+      ${voce('#/pulizie', '🧽', 'Pulizie e sanificazioni', 'CIP di fermentatori e linee: data, fasi, prodotti e chi l\'ha fatta. Avviso se un FV si riempie senza pulizia.',
+        sporchi ? html`<span class="haccp-badge urgente">${sporchi} FV da pulire</span>` : '')}
       ${voce('#/scadenzario', '🗓️', 'Scadenzario HACCP', 'Analisi dell\'acqua, tarature, manutenzioni, disinfestazione e formazione, con avviso in Home.',
         scadute || vicine ? html`<span class="haccp-badge ${scadute ? 'urgente' : ''}">${[scadute && `${scadute} ${scadute === 1 ? 'scaduta' : 'scadute'}`, vicine && `${vicine} in scadenza`].filter(Boolean).join(' · ')}</span>` : '')}
     </div>`;
@@ -212,6 +215,100 @@ export async function vistaScadenzario() {
       if (!(await u.chiedi(`Eliminare "${s.nome}" dallo scadenzario?`, 'Elimina'))) return;
       await u.db.elimina(s.id);
       return vistaScadenzario();
+    }
+  };
+}
+
+// ---------- pulizie e sanificazioni (CIP) ----------
+const nomeOperatore = () => { try { return localStorage.getItem('gb-nome-saluto') || ''; } catch { return ''; } };
+const regP = { da: '', a: '' };
+export async function vistaPulizie(cosaScelta = '') {
+  const { html } = u;
+  const oggi = u.oggiISO();
+  if (!regP.da) { regP.da = `${oggi.slice(0, 7)}-01`; regP.a = oggi; }
+  const pulizie = (await u.db.tutti('pulizia')).filter(p => !p.eliminato);
+  const stati = statoFermentatori(u.stato.cotte, u.stato.durate, u.stato.fv, pulizie, oggi);
+  const daPulire = new Set(fvDaPulire(stati, pulizie, oggi).map(s => s.fv.nome));
+  const inizio = inizioRegistroPulizie(pulizie);
+  const ultima = [...pulizie].sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
+  const nel = pulizie.filter(p => p.data >= regP.da && p.data <= regP.a).sort((a, b) => a.data.localeCompare(b.data) || a.cosa.localeCompare(b.cosa, 'it', { numeric: true }));
+  const prodottiUsati = [...new Set(pulizie.map(p => p.prodotti).filter(Boolean))];
+  const lineeUsate = [...new Set([...LINEE, ...pulizie.map(p => p.cosa)])].filter(x => !u.stato.fv.some(f => f.nome === x));
+  const nuova = { data: oggi, cosa: cosaScelta, fasi: ultima?.fasi || FASI_PULIZIA, prodotti: ultima?.prodotti || '', chi: nomeOperatore(), note: '' };
+  const birraDi = r => r.cotte.map(c => c.birra).filter((x, i, a) => a.indexOf(x) === i).join(' + ');
+  u.$app.innerHTML = html`
+    <div class="barra non-stampa"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Pulizie e sanificazioni</h1></div>
+    <div class="scheda non-stampa">
+      <h2>Fermentatori</h2>
+      ${pulizie.length ? '' : html`<p class="totale">Registra la prima pulizia: da quel giorno l'app avvisa quando un FV svuotato non risulta pulito prima del riempimento.</p>`}
+      <div class="scroll-x"><table class="tab-mag tab-fv-pulizia">
+        <thead><tr><th>FV</th><th>Oggi</th><th>Ultima pulizia</th><th>Prossimo riempimento</th><th></th></tr></thead>
+        <tbody>${stati.map(s => html`<tr class="${daPulire.has(s.fv.nome) ? 'fv-sporco' : ''}">
+          <td><b>${s.fv.nome}</b></td>
+          <td>${s.ora ? html`pieno · ${birraDi(s.ora)}${s.ora.pulito || !inizio || s.ora.da < inizio ? '' : html` <span class="rt-manca" title="Nessuna pulizia registrata tra lo svuotamento precedente e il riempimento">· senza pulizia</span>`}`
+            : s.svuotato ? html`vuoto dal ${u.dataIT(s.svuotato)} · ${s.pulitoOra ? html`<span class="fv-ok">✓ pulito</span>` : daPulire.has(s.fv.nome) ? html`<span class="rt-manca">da pulire</span>` : html`<span class="totale">pulizia non registrata</span>`}` : 'vuoto'}</td>
+          <td>${s.ultima ? `${u.dataIT(s.ultima.data)}${s.ultima.chi ? ` · ${s.ultima.chi}` : ''}` : '—'}</td>
+          <td>${s.prossimo ? `${u.dataIT(s.prossimo.da)} · ${birraDi(s.prossimo)}` : '—'}</td>
+          <td><button class="piccolo solo-editori" data-pulisci="${s.fv.nome}">Registra pulizia</button></td></tr>`)}</tbody>
+      </table></div>
+    </div>
+    <div class="scheda non-stampa solo-editori" id="pl-form">
+      <h2>Registra una pulizia</h2>
+      <div class="griglia">
+        <label>Data<input type="date" id="pl-data" value="${nuova.data}"></label>
+        <label>Cosa (FV o linea)<input id="pl-cosa" list="pl-cose" value="${nuova.cosa}" placeholder="es. FV3 o Linea fusti"></label>
+        <label style="grid-column:span 2">Prodotti e concentrazione<input id="pl-prodotti" list="pl-prod" value="${nuova.prodotti}" placeholder="es. soda 2% a 70 °C, PAA 0,2%"></label>
+        <label>Fatta da<input id="pl-chi" value="${nuova.chi}"></label>
+      </div>
+      <datalist id="pl-cose">${u.stato.fv.map(f => html`<option value="${f.nome}">`)}${lineeUsate.map(x => html`<option value="${x}">`)}</datalist>
+      <datalist id="pl-prod">${prodottiUsati.map(x => html`<option value="${x}">`)}</datalist>
+      <div class="ck-spunte" style="margin-top:10px">${FASI_PULIZIA.map(f => html`<label><input type="checkbox" data-fase="${f}" ${nuova.fasi.includes(f) ? 'checked' : ''}> ${f}</label>`)}</div>
+      <label style="margin-top:10px">Note<input id="pl-note" placeholder="es. controllo visivo ok, guarnizioni cambiate"></label>
+      <div class="barra"><span class="spazio"></span><button class="primario" id="pl-salva">Registra</button></div>
+    </div>
+    <div class="barra non-stampa">
+      <label>Dal <input type="date" id="pl-da" value="${regP.da}"></label>
+      <label>Al <input type="date" id="pl-a" value="${regP.a}"></label>
+      <span class="spazio"></span>
+      <button class="primario" id="stampa">Stampa / Salva PDF</button>
+    </div>
+    <div class="s6">
+      ${testa('REGISTRO PULIZIE E SANIFICAZIONI', `Periodo: dal ${u.dataIT(regP.da)} al ${u.dataIT(regP.a)}`)}
+      ${nel.length ? html`<table class="tab-s6">
+        <thead><tr><th>Data</th><th>FV / linea</th><th>Fasi</th><th>Prodotti e concentrazione</th><th>Fatta da</th><th>Note</th><th class="non-stampa"></th></tr></thead>
+        <tbody>${nel.map(p => html`<tr><td>${u.dataIT(p.data)}</td><td>${p.cosa}</td><td>${(p.fasi || []).join(', ')}</td><td>${p.prodotti || ''}</td><td>${p.chi || ''}</td><td>${p.note || ''}</td>
+          <td class="non-stampa az"><button class="piccolo solo-editori" data-del="${p.id}" title="Elimina">✕</button></td></tr>`)}</tbody></table>`
+      : html`<p class="vuoto">Nessuna pulizia registrata nel periodo.</p>`}
+    </div>`;
+  const $ = id => document.getElementById(id);
+  $('pl-da').onchange = e => { regP.da = e.target.value; vistaPulizie(); };
+  $('pl-a').onchange = e => { regP.a = e.target.value; vistaPulizie(); };
+  $('stampa').onclick = () => stampa(`Registro pulizie ${regP.da} ${regP.a}`);
+  u.$app.onclick = async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.pulisci) {
+      $('pl-cosa').value = b.dataset.pulisci;
+      $('pl-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return $('pl-prodotti').focus({ preventScroll: true });
+    }
+    if (b.id === 'pl-salva') {
+      const rec = {
+        id: u.db.nuovoId('pulizia'), tipo: 'pulizia', data: $('pl-data').value, cosa: $('pl-cosa').value.trim(),
+        fasi: FASI_PULIZIA.filter(f => u.$app.querySelector(`[data-fase="${f}"]`).checked),
+        prodotti: $('pl-prodotti').value.trim(), chi: $('pl-chi').value.trim(), note: $('pl-note').value.trim(),
+      };
+      if (!rec.data || !rec.cosa) return u.toast('Servono la data e cosa hai pulito');
+      await u.db.salva(rec);
+      u.toast(`Pulizia ${rec.cosa} registrata`);
+      if (rec.data < regP.da || rec.data > regP.a) { regP.da = `${rec.data.slice(0, 7)}-01`; regP.a = rec.data > oggi ? rec.data : oggi; }
+      return vistaPulizie();
+    }
+    if (b.dataset.del) {
+      const p = pulizie.find(x => x.id === b.dataset.del);
+      if (!(await u.chiedi(`Eliminare la pulizia di ${p.cosa} del ${u.dataIT(p.data)}?`, 'Elimina'))) return;
+      await u.db.elimina(p.id);
+      return vistaPulizie();
     }
   };
 }

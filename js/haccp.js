@@ -3,8 +3,9 @@
 // Record nell'archivio:
 //   bolla.controllo  { imballo, etichetta, scadenza, trasporto: bool, esito: 'conforme'|'non conforme', chi, note }
 //   scadenzahaccp    { nome, ogniMesi, ultima: 'AAAA-MM-GG', note, storico: [{ data }] }
+//   pulizia          { data, cosa (nome del FV o della linea), fasi: [], prodotti, chi, note }
 
-import { diffGiorni, gruppoCotta, oggiISO } from './dominio.js';
+import { addGiorni, diffGiorni, gruppoCotta, nomeBirra, oggiISO, periodiCotta } from './dominio.js';
 import { registroS6 } from './magazzino.js';
 import { lottoEtichetta, registroBirra } from './birra.js';
 
@@ -77,4 +78,52 @@ export function statoScadenzaHaccp(s, oggi = oggiISO()) {
 export function scadenzeDaFare(scadenze, oggi = oggiISO()) {
   return scadenze.filter(s => !s.eliminato).map(s => ({ s, ...statoScadenzaHaccp(s, oggi) }))
     .filter(x => x.stato === 'scaduta' || x.stato === 'vicina').sort((a, b) => a.giorni - b.giorni);
+}
+
+// ---------- pulizie e sanificazioni (CIP) ----------
+export const FASI_PULIZIA = ['Risciacquo', 'Alcalino (soda)', 'Acido', 'Sanificante'];
+export const LINEE = ['Sala cottura', 'Linea fusti', 'Linea lattine', 'Tubi e raccordi', 'Scambiatore'];
+export const GIORNI_AVVISO_PULIZIA = 14;
+const kc = s => String(s || '').trim().toLowerCase();
+
+// Per ogni FV: com'è oggi (pieno o vuoto), ultima pulizia, se è stato pulito dopo l'ultimo svuotamento
+// e il prossimo riempimento. Una cotta doppia nello stesso FV conta come un solo riempimento.
+// Il FV "si svuota" il giorno dopo la fine in FV (o il giorno del travaso): la pulizia vale da quel giorno
+// fino al giorno del riempimento compreso.
+export function statoFermentatori(cotte, durate, fvs, pulizie, oggi = oggiISO()) {
+  const valide = pulizie.filter(p => !p.eliminato && p.data);
+  return fvs.map(fv => {
+    const periodi = cotte.filter(c => !c.eliminato).flatMap(c => periodiCotta(c, durate, fvs)).filter(p => p.fv === fv.nome)
+      .sort((a, b) => a.da.localeCompare(b.da));
+    const riempimenti = [];
+    for (const p of periodi) {
+      const ultimo = riempimenti[riempimenti.length - 1];
+      if (ultimo && p.da <= ultimo.a && nomeBirra(p.cotta.birra) === nomeBirra(ultimo.cotte[0].birra)) { if (p.a > ultimo.a) ultimo.a = p.a; ultimo.cotte.push(p.cotta); continue; }
+      riempimenti.push({ da: p.da, a: p.a, cotte: [p.cotta], travaso: !!p.travaso });
+    }
+    const sue = valide.filter(p => kc(p.cosa) === kc(fv.nome)).sort((a, b) => b.data.localeCompare(a.data));
+    const pulitoTra = (da, a) => sue.some(p => (!da || p.data >= da) && p.data <= a);
+    riempimenti.forEach((r, i) => {
+      r.svuotatoPrima = i ? addGiorni(riempimenti[i - 1].a, 1) : '';
+      r.pulito = pulitoTra(r.svuotatoPrima ? addGiorni(r.svuotatoPrima, -1) : '', r.da);
+    });
+    const ora = riempimenti.find(r => r.da <= oggi && r.a >= oggi) || null;
+    const prima = riempimenti.filter(r => r.a < oggi).pop() || null;
+    const prossimo = riempimenti.find(r => r.da > oggi) || null;
+    const svuotato = ora ? '' : prima ? addGiorni(prima.a, 1) : '';
+    // vuoto oggi: pulito se c'è una pulizia dal giorno dello svuotamento in poi
+    const pulitoOra = ora ? ora.pulito : pulitoTra(svuotato ? addGiorni(svuotato, -1) : '', '9999-12-31');
+    return { fv, ora, prossimo, svuotato, ultima: sue[0] || null, pulitoOra, riempimenti };
+  });
+}
+// FV da pulire prima di un riempimento vicino (entro GIORNI_AVVISO_PULIZIA giorni) o vuoti e sporchi.
+// Si parte dal giorno della prima pulizia registrata: prima di allora il registro non c'era.
+export const inizioRegistroPulizie = pulizie => pulizie.filter(p => !p.eliminato && p.data).map(p => p.data).sort()[0] || '';
+export function fvDaPulire(stati, pulizie, oggi = oggiISO()) {
+  const inizio = inizioRegistroPulizie(pulizie);
+  if (!inizio) return [];
+  return stati.filter(s => !s.ora && !s.pulitoOra
+    && ((s.svuotato && s.svuotato >= inizio) || (s.prossimo && diffGiorni(oggi, s.prossimo.da) <= GIORNI_AVVISO_PULIZIA)))
+    .map(s => ({ ...s, giorni: s.prossimo ? diffGiorni(oggi, s.prossimo.da) : null }))
+    .sort((a, b) => (a.giorni ?? 999) - (b.giorni ?? 999));
 }
