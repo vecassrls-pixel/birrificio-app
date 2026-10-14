@@ -106,6 +106,17 @@ export async function vistaHome() {
     .sort((a, b) => a.data.localeCompare(b.data));
   const prossimeLotti = [];
   for (const c of prossime) if (!prossimeLotti.some(g => g.some(x => x.id === c.id))) prossimeLotti.push(gruppoCotta(c, cotte));
+  // etichette da ordinare: cotte pianificate o ancora nei fermentatori senza la spunta "Etichette pronte"
+  // (le etichette sono del lotto: basta la spunta su una cotta). Servono per il confezionamento: ordine per fine in FV.
+  const senzaEtichette = [];
+  for (const c of cotte) {
+    if (c.eliminato || !c.data || senzaEtichette.some(x => x.g.some(y => y.id === c.id))) continue;
+    if (!['pianificata', 'tank'].includes(statoCotta(c, stato.durate, oggi, cotte))) continue;
+    const g = gruppoCotta(c, cotte);
+    if (g.some(x => x.etichetteOk)) continue;
+    senzaEtichette.push({ g, fine: fineCotta(g[0], stato.durate), inFv: g[0].data <= oggi });
+  }
+  senzaEtichette.sort((x, y) => x.fine.localeCompare(y.fine));
 
   const att = [[oggi, 'Oggi'], [domani, 'Domani']].map(([d, titolo]) => ({ d, titolo, voci: attivitaGiorno(cotte, d, ctx) }));
   // DH, travasi e crash cooling previsti nei giorni dopo (fino a una settimana)
@@ -182,12 +193,23 @@ export async function vistaHome() {
         <p class="totale" style="margin-bottom:0">Confronto con lo stesso periodo del ${anno - 1}.</p>
       </section>
 
+      <section class="widget w-etichette">
+        <header><h2>${SIMBOLI.etichette} Etichette da ordinare</h2><span class="totale">${senzaEtichette.length ? `${senzaEtichette.length} cotte` : ''}</span></header>
+        ${senzaEtichette.length ? html`<ul class="w-lista">${senzaEtichette.slice(0, 8).map(({ g, fine, inFv }) => { const gg = diffGiorni(oggi, fine); return html`<li><a href="#/cotta/${encodeURIComponent(g[0].id)}">
+          <span class="w-data"><b>${new Date(`${fine}T12:00:00`).getDate()}</b>${new Date(`${fine}T12:00:00`).toLocaleDateString('it-IT', { month: 'short' })}</span>
+          <span class="w-testo"><b>${g[0].birra}</b> <span class="totale">${g.length > 1 ? lottoGruppo(g) : g[0].lotto}${g[0].fv ? ` · ${g[0].fv}` : ''}</span><small>${inFv ? 'nel fermentatore' : `cotta il ${dataIT(g[0].data)}`} · da confezionare ${gg <= 0 ? 'ora' : `tra ${gg} gg`}</small></span>
+          <span class="w-num ${gg <= 14 ? 'w-urgente' : ''}">${gg <= 14 ? 'urgente' : ''}</span></a></li>`; })}</ul>
+          ${senzaEtichette.length > 8 ? html`<p class="totale">e altre ${senzaEtichette.length - 8}…</p>` : ''}
+          <p class="totale" style="margin-bottom:0">Quando le hai, spunta "Etichette pronte" nella cotta.</p>`
+          : html`<p class="w-vuoto">✓ Etichette pronte per tutte le cotte pianificate.</p>`}
+      </section>
+
       <section class="widget w-prossime">
         <header><h2>Prossime cotte</h2><a class="totale" href="#/planning">Planning →</a></header>
         ${prossimeLotti.length ? html`<ul class="w-lista">${prossimeLotti.slice(0, 5).map(g => html`<li><a href="#/cotta/${encodeURIComponent(g[0].id)}">
           <span class="w-data"><b>${new Date(`${g[0].data}T12:00:00`).getDate()}</b>${new Date(`${g[0].data}T12:00:00`).toLocaleDateString('it-IT', { month: 'short' })}</span>
           <span class="w-testo"><b>${g[0].birra}</b> <span class="totale">${g.length > 1 ? lottoGruppo(g) : g[0].lotto}${g[0].fv ? ` · ${g[0].fv}` : ''}</span>
-            <small>${[g.every(x => x.materiePrime) ? '✓ materie prime' : 'materie prime da ordinare', g.every(x => x.lievitoOk) ? `${SIMBOLI.lievito} lievito ok` : '', g.every(x => x.etichetteOk) ? `${SIMBOLI.etichette} etichette ok` : ''].filter(Boolean).join(' · ')}</small></span>
+            <small>${[g.every(x => x.materiePrime) ? '✓ materie prime' : 'materie prime da ordinare', g.every(x => x.lievitoOk) ? `${SIMBOLI.lievito} lievito ok` : '', g.some(x => x.etichetteOk) ? `${SIMBOLI.etichette} etichette ok` : ''].filter(Boolean).join(' · ')}</small></span>
           <span class="w-num">tra ${diffGiorni(oggi, g[0].data)} gg</span></a></li>`)}</ul>`
           : html`<p class="w-vuoto">Nessuna cotta pianificata.</p>`}
       </section>
