@@ -353,7 +353,7 @@ export async function vistaInventario() {
       <div class="barra"><a href="#/birra" class="btn">← Birra</a><span class="spazio"></span></div>
       <div class="scheda">
         <h1 style="margin-top:0">Inventario birra</h1>
-        <p class="totale">Scrivi i pezzi contati per ogni lotto. Per una birra in cui scrivi almeno un numero, i lotti lasciati vuoti valgono 0; le birre senza nessun numero non cambiano.
+        <p class="totale">Scrivi i pezzi contati per ogni lotto. I lotti lasciati vuoti restano con la quantità calcolata: per azzerare un lotto scrivi 0. Le birre senza nessun numero non cambiano.
         Da quel giorno la giacenza riparte da qui, poi si aggiungono i confezionamenti e si tolgono gli scarichi.
         Una birra o un formato che non c'è ancora si aggiunge con "+ Nuova birra" in fondo, oppure tutte insieme dai prodotti di Fatture in Cloud.</p>
         <div class="barra" style="margin:0;align-items:flex-end">
@@ -370,7 +370,7 @@ export async function vistaInventario() {
             <td>${nuovo ? nomeProdotto(r.prodotto) : ''}</td><td>${r.libero ? html`<input data-i="${i}.lotto" value="${r.lotto || ''}" placeholder="lotto">` : r.lotto || html`<span class="totale">senza lotto</span>`}</td>
             <td><input type="date" data-i="${i}.scadenza" value="${r.scadenza || ''}"></td>
             <td class="n">${r.calcolato ? u.numIT(r.calcolato, 0) : html`<span class="totale">0</span>`}</td>
-            <td><input data-i="${i}.contato" type="number" min="0" step="1" inputmode="numeric" value="${r.contato ?? ''}"></td></tr>`;
+            <td><input data-i="${i}.contato" type="number" min="0" step="1" inputmode="numeric" placeholder="${r.calcolato ? u.numIT(r.calcolato, 0) : ''}" value="${r.contato ?? ''}"></td></tr>`;
         })}
         ${extra.map((r, i) => html`<tr>
           <td><select data-x="${i}.prodotto"><option value="">Scegli…</option>${prodotti.map(k => html`<option value="${k}" ${k === r.prodotto ? 'selected' : ''}>${nomeProdotto(k)}</option>`)}</select></td>
@@ -420,8 +420,10 @@ export async function vistaInventario() {
     const tutte = [...righe, ...extra.filter(r => r.prodotto)];
     const contati = new Set(tutte.filter(r => r.contato !== null && r.contato !== undefined).map(r => r.prodotto));
     if (!contati.size) return u.toast('Nessun pezzo inserito');
-    const out = tutte.filter(r => contati.has(r.prodotto))
-      .map(r => ({ prodotto: r.prodotto, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', pezzi: Number(r.contato) || 0 }));
+    // I lotti lasciati vuoti di una birra contata tengono la quantità calcolata (si azzera solo scrivendo 0)
+    const vuoto = r => r.contato === null || r.contato === undefined;
+    const out = tutte.filter(r => contati.has(r.prodotto) && !(vuoto(r) && !r.calcolato))
+      .map(r => ({ prodotto: r.prodotto, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', pezzi: vuoto(r) ? Number(r.calcolato) || 0 : Number(r.contato) || 0 }));
     await u.db.salva({ tipo: 'inventariobirra', id: u.db.nuovoId('inventariobirra'), data: data.v, righe: out });
     if (!imp.inizio) await salvaImpostazioni({ inizio: data.v });
     u.toast(`Inventario salvato: ${contati.size} birre`);
