@@ -668,3 +668,44 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .haccp-ico { font-size: 1.8rem; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 12px; background: var(--accent-tenue); flex: none; }
 .haccp-vai { margin-left: auto; color: var(--muted); font-size: 1.2rem; }
 @media (min-width: 761px) and (max-width: 1000px) { .top nav a { padding: 8px 6px; gap: 4px; font-size: .85rem; } .top nav svg { width: 17px; height: 17px; } }
+.home-logo.su-bianco { width: auto; max-width: min(320px, 72vw); max-height: 96px; background: #fff; padding: 8px 14px; border-radius: var(--radius); }
+.logo-scelta { display: flex; flex-wrap: wrap; gap: 10px; }
+.logo-scelta label { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; min-width: 150px; }
+.logo-scelta label:has(input:checked) { border-color: var(--accent); background: var(--accent-tenue); }
+.logo-scelta .anteprima { height: 48px; display: flex; align-items: center; justify-content: center; background: var(--top-bg); border-radius: 6px; padding: 4px 10px; width: 100%; }
+.logo-scelta .anteprima img { max-height: 40px; max-width: 160px; }
+.logo-scelta .anteprima img.su-bianco { background: #fff; padding: 2px 6px; border-radius: 4px; }
+
+/* ---------- Preventivi per beerfirm ---------- */
+.tab-preventivi tr.cliccabile { cursor: pointer; }
+.tab-preventivi tr.cliccabile:hover td { background: var(--surface-2); }
+.pv-stato { font-size: .78rem; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.pv-inviato { background: var(--accent-tenue); color: var(--accent); }
+.pv-accettato { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.pv-rifiutato { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.tab-pv td:first-child input { min-width: 170px; }
+.tab-pv input[type="number"] { width: 100%; min-width: 80px; max-width: 120px; }
+.tab-pv th.n, .tab-pv td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tab-pv tr.pv-zero input { color: var(--muted); }
+.tab-pv tfoot td { padding-top: 8px; border-top: 1px solid var(--border); }
+.pv-conti { display: grid; grid-template-columns: max-content max-content; gap: 6px 24px; align-items: center; margin: 0; }
+.pv-conti dt { color: var(--muted); }
+.pv-conti dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+.pv-conti .pv-guadagno { max-width: 140px; text-align: right; }
+.pv-troppi { color: var(--warn); font-weight: 600; }
+.pv-foglio { background: #fff; color: #000; padding: 18px; border-radius: 8px; margin-top: 10px; }
+.pv-foglio-testa { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.pv-foglio-testa img { height: 52px; }
+.pv-foglio-testa h2 { margin: 0; color: #000; }
+.pv-foglio table { width: 100%; border-collapse: collapse; color: #000; }
+.pv-foglio th, .pv-foglio td { border-bottom: 1px solid #ccc; padding: 6px 8px; text-align: left; background: none; color: #000; }
+.pv-foglio .n { text-align: right; }
+.pv-foglio tfoot td { border-bottom: none; border-top: 2px solid #000; }
+.pv-note { white-space: pre-wrap; margin-top: 14px; }
+@media print {
+  .pv-anteprima { border: none; padding: 0; }
+  .pv-anteprima > summary { display: none !important; }
+  .pv-foglio { padding: 0; font-size: 12px; }
+}
+@media (max-width: 760px) { .tab-preventivi .pv-extra { display: none; } .tab-preventivi td { white-space: nowrap; } }
+@media (max-width: 760px) { .tab-pv td:first-child input { min-width: 130px; } .tab-pv input[type="number"] { min-width: 64px; } }

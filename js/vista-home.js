@@ -5,6 +5,7 @@ import { giacenze } from './magazzino.js';
 import { fabbisogno } from './ordine.js';
 import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
+import { LOGO_KASHMIR } from './logo-kashmir.js';
 import {
   SIMBOLI, eventiGiorno, fasiCotta, fineCotta, gruppoCotta, litriConfezionati, lottoGruppo, periodiCotta, statoCotta, travasoCotta,
 } from './dominio.js';
@@ -14,7 +15,18 @@ export function init(strumenti) { u = strumenti; }
 
 const NOMI_FASE = { fermentazione: 'Fermentazione', dh: 'Dry hop', maturazione: 'Maturazione' };
 const giornoSett = d => new Date(`${d}T12:00:00`).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
-const saluto = () => { const h = new Date().getHours(); return h < 13 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'; };
+// il nome del saluto si scrive in Impostazioni e vale per questo dispositivo (ognuno vede il suo)
+export const NOME_SALUTO = 'gb-nome-saluto';
+// logo in alto nella Home (record condiviso, uguale per tutti): 'gb' Global Brewing, 'kashmir', 'mio' = immagine caricata
+export const ID_HOME = 'impostazione-home';
+function logoHome(imp) {
+  const scelta = imp && !imp.eliminato ? imp.logo : 'gb';
+  if (scelta === 'kashmir') return { src: LOGO_KASHMIR, alt: 'Kashmir Brewing Company', bianco: true };
+  if (scelta === 'mio' && imp.logoImmagine) return { src: imp.logoImmagine, alt: 'Logo del birrificio', bianco: imp.sfondoBianco !== false };
+  return { src: 'img/gb-logo-chiaro.png', alt: 'Global Brewing' };
+}
+const nomeSaluto = () => { try { return (localStorage.getItem(NOME_SALUTO) || '').trim(); } catch { return ''; } };
+const saluto = () => { const h = new Date().getHours(); const n = nomeSaluto(); return `${h < 13 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'}${n ? ` ${n}` : ''}`; };
 
 // Cosa c'è da fare in un giorno, per lotto (le cotte doppie una volta sola)
 export function attivitaGiorno(cotte, d, { durate, fv, addGiorni, conGiorniDh = g => g[0] }) {
@@ -49,10 +61,11 @@ export function attivitaGiorno(cotte, d, { durate, fv, addGiorni, conGiorniDh = 
 export async function vistaHome() {
   const { html, stato, numIT, dataIT, oggiISO, addGiorni, diffGiorni } = u;
   const oggi = oggiISO(), domani = addGiorni(oggi, 1);
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra] = await Promise.all([
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome] = await Promise.all([
     ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
-    u.db.leggi(ID_IMPOSTAZIONI),
+    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME),
   ]);
+  const logo = logoHome(impHome);
   const cotte = stato.cotte;
   const ctx = { durate: stato.durate, fv: stato.fv, addGiorni, conGiorniDh: u.conGiorniDh };
 
@@ -133,7 +146,7 @@ export async function vistaHome() {
 
   u.$app.innerHTML = html`
     <section class="home-hero">
-      <img class="home-logo" src="img/gb-logo-chiaro.png" alt="Global Brewing" width="1174" height="240">
+      ${logo.bianco ? html`<img class="home-logo su-bianco" src="${logo.src}" alt="${logo.alt}">` : html`<img class="home-logo" src="${logo.src}" alt="${logo.alt}" width="1174" height="240">`}
       <div class="home-ciao"><b>${saluto()}</b><span>${giornoSett(oggi)}</span></div>
       <div class="home-azioni solo-editori">
         <a class="btn" href="#/planning">Planning</a>
