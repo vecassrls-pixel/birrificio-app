@@ -19,7 +19,7 @@
 // Lotti: lotto e scadenza sono quelli dell'etichetta, dalla sezione Confezionamento della cotta.
 // Gli scarichi senza lotto escono dal lotto che scade prima.
 
-import { gruppoCotta, lottoGruppo, nomeBirra, numIT, oggiISO, scadenzaCotta } from './dominio.js';
+import { abv, gruppoCotta, lottoGruppo, nomeBirra, numIT, oggiISO, scadenzaCotta } from './dominio.js';
 import { statoScadenza } from './magazzino.js';
 
 export const ID_IMPOSTAZIONI = 'impostazione-birra';
@@ -62,7 +62,15 @@ export function fineMese(mese) {
 
 // Confezionamenti di tutte le cotte = carichi di birra. Le cotte doppie/triple hanno il
 // confezionamento solo sulla prima del gruppo.
-export function confezionamenti(cotte, durate) {
+// Prodotti rinominati: il record del vecchio nome tiene rinominatoIn (serve per i confezionamenti
+// delle cotte, che hanno ancora il nome vecchio). Ritorna Map vecchia chiave → chiave attuale.
+export function rinominati(prodotti = []) {
+  const m = new Map(prodotti.filter(p => !p.eliminato && p.chiave && p.rinominatoIn).map(p => [p.chiave, p.rinominatoIn]));
+  for (const k of m.keys()) { let v = m.get(k); for (let i = 0; i < 10 && m.has(v); i++) v = m.get(v); m.set(k, v); }
+  return m;
+}
+
+export function confezionamenti(cotte, durate, alias = new Map()) {
   const out = [];
   for (const c of cotte) {
     if (c.eliminato || !(c.confezionato || []).length) continue;
@@ -73,7 +81,8 @@ export function confezionamenti(cotte, durate) {
     for (const [i, r] of c.confezionato.entries()) {
       const data = r.data || c.fine || c.data || '';
       if (!(Number(r.pezzi) > 0) || !(Number(r.litri) > 0) || !data) continue;
-      out.push({ prodotto: chiaveProdotto(c.birra, r.tipo, r.litri), pezzi: Number(r.pezzi), data, lotto, scadenza, cotta: c, dove: { tipo: 'cotta', id: c.id, path: `confezionato.${i}` } });
+      const k = chiaveProdotto(c.birra, r.tipo, r.litri);
+      out.push({ prodotto: alias.get(k) || k, pezzi: Number(r.pezzi), data, lotto, scadenza, cotta: c, dove: { tipo: 'cotta', id: c.id, path: `confezionato.${i}` } });
     }
   }
   return out;
@@ -82,10 +91,25 @@ export function confezionamenti(cotte, durate) {
 // Prodotti conosciuti: dai confezionamenti, dai movimenti, dagli inventari e dai codici salvati
 export function elencoProdotti({ cotte, movimenti = [], inventari = [], prodotti = [] }) {
   const s = new Set();
-  for (const c of cotte) if (!c.eliminato) for (const r of c.confezionato || []) if (Number(r.litri) > 0) s.add(chiaveProdotto(c.birra, r.tipo, r.litri));
-  for (const m of [...movimenti, ...inventari]) for (const r of m.righe || []) if (r.prodotto) s.add(r.prodotto);
-  for (const p of prodotti) if (p.chiave) s.add(p.chiave);
+  const al = rinominati(prodotti);
+  for (const c of cotte) if (!c.eliminato) for (const r of c.confezionato || []) if (Number(r.litri) > 0) { const k = chiaveProdotto(c.birra, r.tipo, r.litri); s.add(al.get(k) || k); }
+  for (const m of [...movimenti, ...inventari]) for (const r of m.righe || []) if (r.prodotto) s.add(al.get(r.prodotto) || r.prodotto);
+  for (const p of prodotti) if (p.chiave && !p.eliminato) s.add(al.get(p.chiave) || p.chiave);
   return [...s].sort((a, b) => a.localeCompare(b, 'it'));
+}
+
+// Grado alcolico e stile di una birra (uguali per tutti i formati): quelli scritti nei prodotti,
+// altrimenti proposti dall'ultima cotta della birra (stile, ABV da OG e FG).
+export function caratteristiche(birra, prodotti = [], cotte = []) {
+  const mie = prodotti.filter(p => !p.eliminato && !p.rinominatoIn && p.chiave && daChiave(p.chiave).birra === birra);
+  const conAbv = mie.find(p => p.abv !== null && p.abv !== undefined && p.abv !== '');
+  const conStile = mie.find(p => p.stile);
+  const recenti = cotte.filter(c => !c.eliminato && nomeBirra(c.birra) === birra).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  const misurato = recenti.map(c => abv(Number(c.og), c.fg === null || c.fg === undefined || c.fg === '' ? null : Number(c.fg))).find(x => x > 0);
+  return {
+    abv: conAbv ? Number(conAbv.abv) : null, stile: conStile?.stile || '',
+    abvProposto: misurato ? Math.round(misurato * 10) / 10 : null, stileProposto: recenti.find(c => c.stile)?.stile || '',
+  };
 }
 
 // Da un nome libero (prodotto di Fatture in Cloud, riga di un ordine) prova a capire birra e formato.
@@ -119,7 +143,9 @@ export function giacenzeBirra(dati, oggi = oggiISO()) {
   const imp = impostazioniDa(dati.impostazioni);
   const inizio = imp.inizio || oggi;
   const res = new Map();
-  const di = chiave => {
+  const al = rinominati(dati.prodotti);
+  const di = k => {
+    const chiave = al.get(k) || k;
     if (!res.has(chiave)) res.set(chiave, { ...daChiave(chiave), nome: nomeProdotto(chiave), inventario: null, movimenti: [], futuri: [], prima: [] });
     return res.get(chiave);
   };
@@ -142,7 +168,7 @@ export function giacenzeBirra(dati, oggi = oggiISO()) {
     if (conta(g, m.data)) g.movimenti.push(m);
     else g.prima.push(m); // già compreso nell'inventario (o prima dell'inizio): non tocca la giacenza ma resta nel registro
   };
-  for (const cf of confezionamenti(dati.cotte, dati.durate)) {
+  for (const cf of confezionamenti(dati.cotte, dati.durate, al)) {
     aggiungi(cf.prodotto, { tipo: 'carico', data: cf.data, pezzi: cf.pezzi, lotto: cf.lotto, scadenza: cf.scadenza, rif: `Confezionamento ${cf.cotta.lotto || ''}`.trim(), chi: 'Confezionamento', link: `#/cotta/${encodeURIComponent(cf.cotta.id)}`, dove: cf.dove });
   }
   for (const mv of dati.movimenti || []) {
