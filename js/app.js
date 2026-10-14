@@ -1694,7 +1694,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.st-libero, .copia-lotto, #b-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

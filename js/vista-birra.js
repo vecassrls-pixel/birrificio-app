@@ -5,7 +5,7 @@
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import {
   ID_IMPOSTAZIONI, FORMATI, confezionamenti, MOTIVI_SCARICO, MOTIVI_CARICO, ORIGINI, nomeMotivo, testoScontrino, impostazioniDa, giacenzeBirra, elencoProdotti, nomeProdotto,
-  nomeFormato, registroBirra, trovaProdotto, conCodice, idProdotto, chiaveProdotto, daChiave, indovinaProdotto,
+  nomeFormato, registroBirra, trovaProdotto, conCodice, idProdotto, chiaveProdotto, daChiave, indovinaProdotto, rinominati, caratteristiche,
 } from './birra.js';
 import { nomeBirra } from './dominio.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
@@ -53,6 +53,11 @@ export async function vistaBirra() {
   const inScadenza = g.filter(x => x.statoScadenza).length;
   const ultimi = [...dati.movimenti].filter(m => !m.ignorato).sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 10);
   let birraPrima = '';
+  const testoCar = birra => {
+    const c = caratteristiche(birra, dati.prodotti, dati.cotte);
+    const t = [c.abv !== null ? `${u.numIT(c.abv, 1)}%` : '', c.stile].filter(Boolean).join(' · ');
+    return t ? html` <span class="totale">${t}</span>` : '';
+  };
 
   u.$app.innerHTML = html`
     <div class="barra">
@@ -93,7 +98,7 @@ export async function vistaBirra() {
         <tbody>${righe.map(x => {
           const nuova = x.birra !== birraPrima;
           birraPrima = x.birra;
-          return html`${nuova ? html`<tr class="gruppo-birra"><td colspan="4">${x.birra}</td></tr>` : ''}<tr class="${x.giacenza < 0 ? 'neg' : ''}">
+          return html`${nuova ? html`<tr class="gruppo-birra"><td colspan="4">${x.birra}${testoCar(x.birra)}</td></tr>` : ''}<tr class="${x.giacenza < 0 ? 'neg' : ''}">
             <td><a href="#/birra-prodotto/${encodeURIComponent(x.chiave)}">${nomeFormato(x.tipo, x.litri)}</a>${x.mancanti ? html` <span class="totale" title="Scaricati più pezzi di quelli caricati: manca un confezionamento o un inventario">⚠</span>` : ''}
               <div class="totale" style="margin:2px 0 0">${x.lotti.map(l => `${l.lotto || 'senza lotto'} (${l.pezzi})`).join(' · ') || '—'}</div></td>
             <td class="n"><b>${u.numIT(x.giacenza, 0)}</b></td>
@@ -141,12 +146,16 @@ export async function vistaProdotto(chiave) {
   if (!g) { u.$app.innerHTML = html`<p class="vuoto">Prodotto non trovato. <a href="#/birra">Torna alla birra</a></p>`; return; }
   const rec = dati.prodotti.find(p => p.chiave === chiave);
   const codici = [...(rec?.codici || [])];
+  const car = caratteristiche(g.birra, dati.prodotti, dati.cotte);
+  const $car = id => u.$app.querySelector('#' + id);
   function disegna() {
     u.$app.innerHTML = html`
       <div class="barra"><a href="#/birra" class="btn">← Birra</a><span class="spazio"></span>
+        <button class="solo-editori" id="rinomina" title="Cambia nome o formato">✎ Rinomina</button>
         <a class="btn" href="#/movbirra/scarico?p=${encodeURIComponent(chiave)}">− Scarico</a></div>
       <div class="scheda">
         <h1 style="margin-top:0">${g.birra} <span class="totale">${nomeFormato(g.tipo, g.litri)}</span></h1>
+        ${car.abv !== null || car.stile ? html`<p class="totale" style="margin-top:-6px">${[car.abv !== null ? `${u.numIT(car.abv, 1)}% vol` : '', car.stile].filter(Boolean).join(' · ')}</p>` : ''}
         <div class="kpi">
           <div><b>${pz(g.giacenza)}</b>in magazzino</div>
           <div><b>${litri(g.litriTot)}</b>litri</div>
@@ -161,6 +170,15 @@ export async function vistaProdotto(chiave) {
           <tbody>${g.lotti.map(l => html`<tr><td>${l.lotto || html`<span class="totale">senza lotto</span>`}</td><td>${scad(l.scadenza)}</td>
             <td>${u.dataIT(l.data)} <span class="totale">${l.rif}</span></td><td class="n">${u.numIT(l.pezzi, 0)}</td><td class="n">${u.numIT(l.pezzi * g.litri, 1)}</td></tr>`)}</tbody>
         </table></div>` : html`<p class="totale">Nessun lotto in magazzino.</p>`}
+      </div>
+      <div class="scheda solo-editori"><h2>Grado alcolico e stile</h2>
+        <p class="totale">Valgono per tutti i formati di ${g.birra}.${car.abvProposto !== null || car.stileProposto ? ' In grigio quelli dell\'ultima cotta: scrivili per confermarli.' : ''}</p>
+        <div class="griglia">
+          <label>Alcol % vol <input id="car-abv" type="number" step="0.1" min="0" inputmode="decimal" value="${car.abv ?? ''}" placeholder="${car.abvProposto !== null ? u.numIT(car.abvProposto, 1) : 'es. 6,5'}"></label>
+          <label style="grid-column:span 2">Stile <input id="car-stile" list="dl-car-stili" value="${car.stile}" placeholder="${car.stileProposto || 'es. American IPA'}"></label>
+        </div>
+        <datalist id="dl-car-stili">${[...new Set(dati.cotte.map(c => c.stile).filter(Boolean))].sort().map(st => html`<option value="${st}">`)}</datalist>
+        <div class="barra" style="margin-top:8px"><span class="spazio"></span><button class="primario" id="salva-car">Salva</button></div>
       </div>
       <div class="scheda solo-editori"><h2>Codici in Fatture in Cloud e Shopify</h2>
         <p class="totale">Codice articolo, SKU o descrizione con cui questa birra compare nelle fatture e negli ordini. "Pezzi" = quanti ${g.tipo === 'fusto' ? 'fusti' : 'pezzi'} esce per ogni unità venduta (es. cartone da 24 = 24). Si aggiungono da soli quando colleghi una riga durante l'import.</p>
@@ -188,6 +206,29 @@ export async function vistaProdotto(chiave) {
   };
   u.$app.onclick = async e => {
     const t = e.target;
+    if (t.id === 'rinomina') {
+      const nuova = await dialogNuovaBirra(dati, { birra: g.birra, tipo: g.tipo, litri: g.litri }, true);
+      if (!nuova || nuova === chiave) return;
+      if (elencoProdotti(dati).includes(nuova) && !(await u.chiedi(`${nomeProdotto(nuova)} esiste già: unisco i due prodotti (lotti, movimenti e codici)?`, 'Unisci'))) return;
+      await rinomina(dati, chiave, nuova);
+      u.toast(`Rinominato in ${nomeProdotto(nuova)}`);
+      location.hash = `#/birra-prodotto/${encodeURIComponent(nuova)}`;
+      return;
+    }
+    if (t.id === 'salva-car') {
+      const v = $car('car-abv').value.replace(',', '.');
+      car.abv = v === '' ? null : Number(v);
+      car.stile = $car('car-stile').value.trim();
+      // su tutti i formati della birra
+      const out = elencoProdotti(dati).filter(k => daChiave(k).birra === g.birra).map(k => {
+        const { aggiornato: _a, ...r } = dati.prodotti.find(p => p.chiave === k) || { tipo: 'prodottobirra', id: idProdotto(k), chiave: k, codici: [] };
+        return { ...r, abv: car.abv, stile: car.stile };
+      });
+      await u.db.salvaMolti(out);
+      for (const r of out) { const i = dati.prodotti.findIndex(p => p.chiave === r.chiave); if (i >= 0) dati.prodotti[i] = r; else dati.prodotti.push(r); }
+      u.toast('Salvato');
+      return disegna();
+    }
     if (t.id === 'add-cod') { codici.push({ codice: '', x: 1 }); disegna(); }
     else if (t.dataset.del !== undefined) { codici.splice(Number(t.dataset.del), 1); disegna(); }
     else if (t.id === 'salva-cod') {
@@ -335,7 +376,7 @@ export async function vistaInventario() {
   };
   for (const x of g.values()) for (const l of x.lotti) aggiungi(x.chiave, l.lotto, l.scadenza, l.pezzi);
   const daAnno = u.addGiorni(oggi, -365);
-  for (const cf of confezionamenti(dati.cotte, dati.durate)) if (cf.data >= daAnno && cf.data <= oggi) aggiungi(cf.prodotto, cf.lotto, cf.scadenza, 0);
+  for (const cf of confezionamenti(dati.cotte, dati.durate, rinominati(dati.prodotti))) if (cf.data >= daAnno && cf.data <= oggi) aggiungi(cf.prodotto, cf.lotto, cf.scadenza, 0);
   const righe = [...proposti.values()];
   // birre aggiunte a mano o da Fatture in Cloud, senza lotti: una riga con lotto e scadenza da scrivere
   const senzaLotti = chiavi => { for (const k of chiavi) if (!righe.some(r => r.prodotto === k)) righe.push({ prodotto: k, lotto: '', scadenza: '', calcolato: 0, libero: true }); };
@@ -346,18 +387,25 @@ export async function vistaInventario() {
   const data = { v: oggi };
   const prodotti = elencoProdotti(dati);
   const nascondi = { v: true };
+  const filtro = { v: '' };
 
+  // il filtro nasconde le righe senza ridisegnare, così i numeri scritti e il cursore restano
+  const filtra = () => {
+    const q = filtro.v.trim().toLowerCase();
+    u.$app.querySelectorAll('tr[data-p]').forEach(tr => { tr.hidden = !!q && !tr.dataset.p.includes(q); });
+  };
   function disegna() {
     let prima = '';
     u.$app.innerHTML = html`
       <div class="barra"><a href="#/birra" class="btn">← Birra</a><span class="spazio"></span></div>
       <div class="scheda">
         <h1 style="margin-top:0">Inventario birra</h1>
-        <p class="totale">Scrivi i pezzi contati per ogni lotto. Per una birra in cui scrivi almeno un numero, i lotti lasciati vuoti valgono 0; le birre senza nessun numero non cambiano.
+        <p class="totale">Scrivi i pezzi contati per ogni lotto. I lotti lasciati vuoti restano con la quantità calcolata: per azzerare un lotto scrivi 0. Le birre senza nessun numero non cambiano.
         Da quel giorno la giacenza riparte da qui, poi si aggiungono i confezionamenti e si tolgono gli scarichi.
         Una birra o un formato che non c'è ancora si aggiunge con "+ Nuova birra" in fondo, oppure tutte insieme dai prodotti di Fatture in Cloud.</p>
         <div class="barra" style="margin:0;align-items:flex-end">
           <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
+          <label style="max-width:240px">Cerca birra <input type="search" id="inv-q" value="${filtro.v}" placeholder="nome…"></label>
           <label class="spunta"><input type="checkbox" id="inv-zero" ${nascondi.v ? 'checked' : ''}> Solo lotti in magazzino o confezionati negli ultimi 12 mesi</label>
         </div>
       </div>
@@ -366,11 +414,11 @@ export async function vistaInventario() {
         <tbody>${righe.map((r, i) => {
           const nuovo = r.prodotto !== prima;
           prima = r.prodotto;
-          return html`<tr>
+          return html`<tr data-p="${nomeProdotto(r.prodotto).toLowerCase()}">
             <td>${nuovo ? nomeProdotto(r.prodotto) : ''}</td><td>${r.libero ? html`<input data-i="${i}.lotto" value="${r.lotto || ''}" placeholder="lotto">` : r.lotto || html`<span class="totale">senza lotto</span>`}</td>
             <td><input type="date" data-i="${i}.scadenza" value="${r.scadenza || ''}"></td>
             <td class="n">${r.calcolato ? u.numIT(r.calcolato, 0) : html`<span class="totale">0</span>`}</td>
-            <td><input data-i="${i}.contato" type="number" min="0" step="1" inputmode="numeric" value="${r.contato ?? ''}"></td></tr>`;
+            <td><input data-i="${i}.contato" type="number" min="0" step="1" inputmode="numeric" placeholder="${r.calcolato ? u.numIT(r.calcolato, 0) : ''}" value="${r.contato ?? ''}"></td></tr>`;
         })}
         ${extra.map((r, i) => html`<tr>
           <td><select data-x="${i}.prodotto"><option value="">Scegli…</option>${prodotti.map(k => html`<option value="${k}" ${k === r.prodotto ? 'selected' : ''}>${nomeProdotto(k)}</option>`)}</select></td>
@@ -382,11 +430,12 @@ export async function vistaInventario() {
           <a class="btn piccolo" href="#/birra-prodotti-fic">Birre da Fatture in Cloud</a><span class="spazio"></span>
           <button class="primario" id="salva-inv">Salva inventario</button></div>
       </div>`;
+    filtra();
   }
   // con la spunta tolta compaiono anche i lotti confezionati da più di un anno
   async function tuttiLotti(si) {
     nascondi.v = si;
-    if (!si) for (const cf of confezionamenti(dati.cotte, dati.durate)) if (cf.data < daAnno) {
+    if (!si) for (const cf of confezionamenti(dati.cotte, dati.durate, rinominati(dati.prodotti))) if (cf.data < daAnno) {
       const k = `${cf.prodotto}§${cf.lotto.toLowerCase()}`;
       if (!proposti.has(k)) { const x = { prodotto: cf.prodotto, lotto: cf.lotto, scadenza: cf.scadenza, calcolato: 0 }; proposti.set(k, x); righe.push(x); }
     }
@@ -398,6 +447,7 @@ export async function vistaInventario() {
   u.$app.oninput = u.$app.onchange = e => {
     const t = e.target;
     if (t.id === 'data-inv') data.v = t.value;
+    if (t.id === 'inv-q') { filtro.v = t.value; return filtra(); }
     if (t.id === 'inv-zero' && e.type === 'change') return tuttiLotti(t.checked);
     const [lista, path] = t.dataset.i ? [righe, t.dataset.i] : t.dataset.x ? [extra, t.dataset.x] : [];
     if (!lista) return;
@@ -420,8 +470,10 @@ export async function vistaInventario() {
     const tutte = [...righe, ...extra.filter(r => r.prodotto)];
     const contati = new Set(tutte.filter(r => r.contato !== null && r.contato !== undefined).map(r => r.prodotto));
     if (!contati.size) return u.toast('Nessun pezzo inserito');
-    const out = tutte.filter(r => contati.has(r.prodotto))
-      .map(r => ({ prodotto: r.prodotto, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', pezzi: Number(r.contato) || 0 }));
+    // I lotti lasciati vuoti di una birra contata tengono la quantità calcolata (si azzera solo scrivendo 0)
+    const vuoto = r => r.contato === null || r.contato === undefined;
+    const out = tutte.filter(r => contati.has(r.prodotto) && !(vuoto(r) && !r.calcolato))
+      .map(r => ({ prodotto: r.prodotto, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', pezzi: vuoto(r) ? Number(r.calcolato) || 0 : Number(r.contato) || 0 }));
     await u.db.salva({ tipo: 'inventariobirra', id: u.db.nuovoId('inventariobirra'), data: data.v, righe: out });
     if (!imp.inizio) await salvaImpostazioni({ inizio: data.v });
     u.toast(`Inventario salvato: ${contati.size} birre`);
@@ -632,11 +684,13 @@ function birreNote(dati) {
   return [...new Set([...dati.cotte.filter(c => !c.eliminato).map(c => nomeBirra(c.birra)), ...elencoProdotti(dati).map(k => daChiave(k).birra)].filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'it'));
 }
-function dialogNuovaBirra(dati, pre = {}) {
+// rinomina = true: solo scelta del nuovo nome/formato, senza creare il prodotto
+function dialogNuovaBirra(dati, pre = {}, rinomina = false) {
   const { html } = u;
   const d = document.createElement('dialog');
   d.innerHTML = html`<form method="dialog">
-    <h2 style="margin-top:0">Nuova birra</h2>
+    <h2 style="margin-top:0">${rinomina ? 'Rinomina prodotto' : 'Nuova birra'}</h2>
+    ${rinomina ? html`<p class="totale">Il nuovo nome vale per lotti, movimenti, inventari e codici, anche per i confezionamenti delle cotte.</p>` : ''}
     <div class="griglia">
       <label style="grid-column:1/-1">Birra <input name="birra" required list="dl-nb" value="${pre.birra || ''}" placeholder="es. LA MORTE SUA"></label>
       <label>Formato <select name="tipo">${Object.entries(FORMATI).map(([k, v]) => html`<option value="${k}" ${k === (pre.tipo || 'fusto') ? 'selected' : ''}>${v}</option>`)}</select></label>
@@ -645,7 +699,7 @@ function dialogNuovaBirra(dati, pre = {}) {
     <datalist id="dl-nb">${birreNote(dati).map(b => html`<option value="${b}">`)}</datalist>
     <datalist id="dl-nl">${[...LITRI_TIPICI.fusto, ...LITRI_TIPICI['lattina/bottiglia']].map(l => html`<option value="${l}">`)}</datalist>
     <div class="barra" style="margin-top:14px"><span class="spazio"></span>
-      <button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">Aggiungi</button></div>
+      <button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">${rinomina ? 'Rinomina' : 'Aggiungi'}</button></div>
   </form>`.s;
   document.body.appendChild(d);
   const f = d.querySelector('form');
@@ -655,7 +709,7 @@ function dialogNuovaBirra(dati, pre = {}) {
     const birra = nomeBirra(f.birra.value), litri = Number(String(f.litri.value).replace(',', '.'));
     if (d.returnValue !== 'ok' || !birra || !(litri > 0)) return ok(null);
     const chiave = chiaveProdotto(birra, f.tipo.value, litri);
-    if (!elencoProdotti(dati).includes(chiave)) {
+    if (!rinomina && !elencoProdotti(dati).includes(chiave)) {
       const rec = { tipo: 'prodottobirra', id: idProdotto(chiave), chiave, codici: [] };
       await u.db.salva(rec);
       dati.prodotti.push(rec);
@@ -664,6 +718,25 @@ function dialogNuovaBirra(dati, pre = {}) {
   }));
   d.showModal();
   return fatto;
+}
+
+// Cambia la chiave di un prodotto in tutti i record. Il vecchio record resta con rinominatoIn
+// perché le cotte confezionate hanno ancora il nome vecchio.
+async function rinomina(dati, vecchia, nuova) {
+  const cambia = rec => ({ ...rec, righe: rec.righe.map(r => (r.prodotto === vecchia ? { ...r, prodotto: nuova } : r)) });
+  const tocca = rec => (rec.righe || []).some(r => r.prodotto === vecchia);
+  const out = [...dati.movimenti.filter(tocca), ...dati.inventari.filter(tocca)].map(cambia);
+  const vecchio = dati.prodotti.find(p => p.chiave === vecchia);
+  const esiste = dati.prodotti.find(p => p.chiave === nuova);
+  const codici = [...(esiste?.codici || [])];
+  for (const c of vecchio?.codici || []) if (!codici.some(x => String(x.codice).toLowerCase() === String(c.codice).toLowerCase())) codici.push(c);
+  const nuovo = { ...(esiste || { tipo: 'prodottobirra', id: idProdotto(nuova), chiave: nuova }), codici, rinominatoIn: undefined, eliminato: false };
+  for (const k of ['abv', 'stile']) if ((nuovo[k] === undefined || nuovo[k] === null || nuovo[k] === '') && vecchio?.[k] !== undefined) nuovo[k] = vecchio[k];
+  out.push(nuovo);
+  out.push({ ...(vecchio || { tipo: 'prodottobirra', id: idProdotto(vecchia), chiave: vecchia }), codici: [], rinominatoIn: nuova });
+  // chi era già stato rinominato nel vecchio nome ora punta al nuovo
+  for (const p of dati.prodotti) if (p.rinominatoIn === vecchia) out.push({ ...p, rinominatoIn: nuova });
+  await u.db.salvaMolti(out.map(({ aggiornato: _a, ...r }) => r));
 }
 
 // ---------- birre dall'anagrafica prodotti di Fatture in Cloud ----------
