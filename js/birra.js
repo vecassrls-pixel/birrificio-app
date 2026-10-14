@@ -120,7 +120,7 @@ export function giacenzeBirra(dati, oggi = oggiISO()) {
   const inizio = imp.inizio || oggi;
   const res = new Map();
   const di = chiave => {
-    if (!res.has(chiave)) res.set(chiave, { ...daChiave(chiave), nome: nomeProdotto(chiave), inventario: null, movimenti: [], futuri: [] });
+    if (!res.has(chiave)) res.set(chiave, { ...daChiave(chiave), nome: nomeProdotto(chiave), inventario: null, movimenti: [], futuri: [], prima: [] });
     return res.get(chiave);
   };
   for (const k of elencoProdotti(dati)) di(k);
@@ -140,6 +140,7 @@ export function giacenzeBirra(dati, oggi = oggiISO()) {
     const g = di(k);
     if (m.data > oggi) { g.futuri.push(m); return; }
     if (conta(g, m.data)) g.movimenti.push(m);
+    else g.prima.push(m); // già compreso nell'inventario (o prima dell'inizio): non tocca la giacenza ma resta nel registro
   };
   for (const cf of confezionamenti(dati.cotte, dati.durate)) {
     aggiungi(cf.prodotto, { tipo: 'carico', data: cf.data, pezzi: cf.pezzi, lotto: cf.lotto, scadenza: cf.scadenza, rif: `Confezionamento ${cf.cotta.lotto || ''}`.trim(), chi: 'Confezionamento', link: `#/cotta/${encodeURIComponent(cf.cotta.id)}`, dove: cf.dove });
@@ -204,12 +205,12 @@ export function registroBirra(dati, da, a) {
   const oggi = oggiISO();
   const righe = [];
   for (const g of giacenzeBirra(dati, a && a < oggi ? a : oggi).values()) {
-    for (const m of g.movimenti) {
+    for (const m of [...g.movimenti, ...g.prima]) {
       if (m.tipo === 'inventario' || (da && m.data < da) || (a && m.data > a)) continue;
       const base = { data: m.data, prodotto: g.nome, chiave: g.chiave, birra: g.birra, chi: m.chi, link: m.link, origine: m.origine };
       const lp = g.litri;
       if (m.tipo === 'carico') righe.push({ ...base, cs: 'C', lotto: m.lotto, scadenza: m.scadenza, pezzi: m.pezzi, litri: m.pezzi * lp });
-      else for (const l of m.lotti || []) righe.push({ ...base, cs: 'S', lotto: l.lotto, scadenza: l.scadenza, pezzi: l.pezzi, litri: l.pezzi * lp });
+      else for (const l of m.lotti || [{ lotto: m.lottoScelto, scadenza: '', pezzi: m.pezzi }]) righe.push({ ...base, cs: 'S', lotto: l.lotto, scadenza: l.scadenza, pezzi: l.pezzi, litri: l.pezzi * lp });
     }
   }
   return righe.sort((x, y) => x.data.localeCompare(y.data) || x.cs.localeCompare(y.cs) || x.prodotto.localeCompare(y.prodotto, 'it'));
