@@ -346,7 +346,13 @@ export async function vistaInventario() {
   const data = { v: oggi };
   const prodotti = elencoProdotti(dati);
   const nascondi = { v: true };
+  const filtro = { v: '' };
 
+  // il filtro nasconde le righe senza ridisegnare, così i numeri scritti e il cursore restano
+  const filtra = () => {
+    const q = filtro.v.trim().toLowerCase();
+    u.$app.querySelectorAll('tr[data-p]').forEach(tr => { tr.hidden = !!q && !tr.dataset.p.includes(q); });
+  };
   function disegna() {
     let prima = '';
     u.$app.innerHTML = html`
@@ -358,6 +364,7 @@ export async function vistaInventario() {
         Una birra o un formato che non c'è ancora si aggiunge con "+ Nuova birra" in fondo, oppure tutte insieme dai prodotti di Fatture in Cloud.</p>
         <div class="barra" style="margin:0;align-items:flex-end">
           <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
+          <label style="max-width:240px">Cerca birra <input type="search" id="inv-q" value="${filtro.v}" placeholder="nome…"></label>
           <label class="spunta"><input type="checkbox" id="inv-zero" ${nascondi.v ? 'checked' : ''}> Solo lotti in magazzino o confezionati negli ultimi 12 mesi</label>
         </div>
       </div>
@@ -366,7 +373,7 @@ export async function vistaInventario() {
         <tbody>${righe.map((r, i) => {
           const nuovo = r.prodotto !== prima;
           prima = r.prodotto;
-          return html`<tr>
+          return html`<tr data-p="${nomeProdotto(r.prodotto).toLowerCase()}">
             <td>${nuovo ? nomeProdotto(r.prodotto) : ''}</td><td>${r.libero ? html`<input data-i="${i}.lotto" value="${r.lotto || ''}" placeholder="lotto">` : r.lotto || html`<span class="totale">senza lotto</span>`}</td>
             <td><input type="date" data-i="${i}.scadenza" value="${r.scadenza || ''}"></td>
             <td class="n">${r.calcolato ? u.numIT(r.calcolato, 0) : html`<span class="totale">0</span>`}</td>
@@ -382,6 +389,7 @@ export async function vistaInventario() {
           <a class="btn piccolo" href="#/birra-prodotti-fic">Birre da Fatture in Cloud</a><span class="spazio"></span>
           <button class="primario" id="salva-inv">Salva inventario</button></div>
       </div>`;
+    filtra();
   }
   // con la spunta tolta compaiono anche i lotti confezionati da più di un anno
   async function tuttiLotti(si) {
@@ -398,6 +406,7 @@ export async function vistaInventario() {
   u.$app.oninput = u.$app.onchange = e => {
     const t = e.target;
     if (t.id === 'data-inv') data.v = t.value;
+    if (t.id === 'inv-q') { filtro.v = t.value; return filtra(); }
     if (t.id === 'inv-zero' && e.type === 'change') return tuttiLotti(t.checked);
     const [lista, path] = t.dataset.i ? [righe, t.dataset.i] : t.dataset.x ? [extra, t.dataset.x] : [];
     if (!lista) return;
