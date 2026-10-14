@@ -104,12 +104,16 @@ export function caratteristiche(birra, prodotti = [], cotte = []) {
   const mie = prodotti.filter(p => !p.eliminato && !p.rinominatoIn && p.chiave && daChiave(p.chiave).birra === birra);
   const conAbv = mie.find(p => p.abv !== null && p.abv !== undefined && p.abv !== '');
   const conStile = mie.find(p => p.stile);
-  const recenti = cotte.filter(c => !c.eliminato && nomeBirra(c.birra) === birra).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  // anche le cotte col nome vecchio di un prodotto rinominato
+  const nomi = new Set([birra, ...prodotti.filter(p => !p.eliminato && p.rinominatoIn && daChiave(p.rinominatoIn).birra === birra).map(p => daChiave(p.chiave).birra)]);
+  const recenti = cotte.filter(c => !c.eliminato && nomi.has(nomeBirra(c.birra))).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
   const misurato = recenti.map(c => abv(Number(c.og), c.fg === null || c.fg === undefined || c.fg === '' ? null : Number(c.fg))).find(x => x > 0);
-  return {
+  const r = {
     abv: conAbv ? Number(conAbv.abv) : null, stile: conStile?.stile || '',
     abvProposto: misurato ? Math.round(misurato * 10) / 10 : null, stileProposto: recenti.find(c => c.stile)?.stile || '',
   };
+  // da mostrare: quelli scritti, altrimenti quelli dell'ultima cotta
+  return { ...r, abvVale: r.abv ?? r.abvProposto, stileVale: r.stile || r.stileProposto };
 }
 
 // Da un nome libero (prodotto di Fatture in Cloud, riga di un ordine) prova a capire birra e formato.

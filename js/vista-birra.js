@@ -55,7 +55,7 @@ export async function vistaBirra() {
   let birraPrima = '';
   const testoCar = birra => {
     const c = caratteristiche(birra, dati.prodotti, dati.cotte);
-    const t = [c.abv !== null ? `${u.numIT(c.abv, 1)}%` : '', c.stile].filter(Boolean).join(' · ');
+    const t = [c.abvVale !== null ? `${u.numIT(c.abvVale, 1)}%` : '', c.stileVale].filter(Boolean).join(' · ');
     return t ? html` <span class="totale">${t}</span>` : '';
   };
 
@@ -155,7 +155,7 @@ export async function vistaProdotto(chiave) {
         <a class="btn" href="#/movbirra/scarico?p=${encodeURIComponent(chiave)}">− Scarico</a></div>
       <div class="scheda">
         <h1 style="margin-top:0">${g.birra} <span class="totale">${nomeFormato(g.tipo, g.litri)}</span></h1>
-        ${car.abv !== null || car.stile ? html`<p class="totale" style="margin-top:-6px">${[car.abv !== null ? `${u.numIT(car.abv, 1)}% vol` : '', car.stile].filter(Boolean).join(' · ')}</p>` : ''}
+        ${car.abvVale !== null || car.stileVale ? html`<p class="totale" style="margin-top:-6px">${[car.abvVale !== null ? `${u.numIT(car.abvVale, 1)}% vol` : '', car.stileVale].filter(Boolean).join(' · ')}</p>` : ''}
         <div class="kpi">
           <div><b>${pz(g.giacenza)}</b>in magazzino</div>
           <div><b>${litri(g.litriTot)}</b>litri</div>
@@ -172,7 +172,7 @@ export async function vistaProdotto(chiave) {
         </table></div>` : html`<p class="totale">Nessun lotto in magazzino.</p>`}
       </div>
       <div class="scheda solo-editori"><h2>Grado alcolico e stile</h2>
-        <p class="totale">Valgono per tutti i formati di ${g.birra}.${car.abvProposto !== null || car.stileProposto ? ' In grigio quelli dell\'ultima cotta: scrivili per confermarli.' : ''}</p>
+        <p class="totale">Valgono per tutti i formati di ${g.birra}.${car.abvProposto !== null || car.stileProposto ? ' Se non li scrivi valgono quelli dell\'ultima cotta, in grigio; scrivili solo per cambiarli.' : ''}</p>
         <div class="griglia">
           <label>Alcol % vol <input id="car-abv" type="number" step="0.1" min="0" inputmode="decimal" value="${car.abv ?? ''}" placeholder="${car.abvProposto !== null ? u.numIT(car.abvProposto, 1) : 'es. 6,5'}"></label>
           <label style="grid-column:span 2">Stile <input id="car-stile" list="dl-car-stili" value="${car.stile}" placeholder="${car.stileProposto || 'es. American IPA'}"></label>
