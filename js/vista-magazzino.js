@@ -54,7 +54,6 @@ export async function vistaMagazzino() {
       </div></div>
       <span class="spazio"></span>
       <a class="btn" href="#/ordine" title="Cosa ordinare per le cotte pianificate">🛒 Da ordinare</a>
-      <a class="btn" href="#/registro-s6">Registro S6</a>
       <a class="btn" href="#/inventario">Inventario</a>
       <button id="nuovo-art">+ Articolo</button>
       <a class="btn" href="#/scarico/carico">+ Carico manuale</a>
@@ -512,7 +511,7 @@ export async function vistaRegistroS6() {
   const righe = registroS6(dati, s6.da, s6.a).filter(r => !s6.categoria || r.categoria === s6.categoria);
   u.$app.innerHTML = html`
     <div class="barra">
-      <a href="#/materie-prime" class="btn">← Materie prime</a>
+      <a href="#/haccp" class="btn">← HACCP</a>
       <label>Dal <input type="date" id="s6-da" value="${s6.da}"></label>
       <label>Al <input type="date" id="s6-a" value="${s6.a}"></label>
       <select id="s6-cat"><option value="">Tutte le categorie</option>

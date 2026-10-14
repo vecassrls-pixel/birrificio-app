@@ -267,7 +267,7 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
     height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom);
     background: var(--top-bg); border-top: 1px solid rgb(255 255 255 / .08);
   }
-  .top nav a { flex: 1; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 2px; border-radius: 0; font-size: .68rem; font-weight: 500; min-width: 0; }
+  .top nav a { flex: 1; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 1px; border-radius: 0; font-size: .64rem; font-weight: 500; min-width: 0; }
   .top nav a span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .top nav a svg { width: 23px; height: 23px; }
   .top nav a.attivo { background: none; color: #fff; }
@@ -519,11 +519,11 @@ body.cerca-attiva .cerca-top { color: var(--brand-chiaro); }
 .kpi b.neg, td.neg, .neg > td { color: var(--warn); }
 /* ---------- tablet (iPad) ---------- */
 .nav-corto { display: none; }
-@media (max-width: 1100px) {
+@media (max-width: 1360px) {
   .nav-lungo { display: none; }
   .nav-corto { display: inline; }
 }
-@media (min-width: 761px) and (max-width: 1100px) {
+@media (min-width: 761px) and (max-width: 1360px) {
   .top { gap: 10px; }
   .top nav a { padding: 8px 10px; gap: 6px; }
   .rete-testo { display: none; } /* resta il pallino, il testo è nel suggerimento */
@@ -658,3 +658,13 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
   .w-kpi { padding: 12px; }
   .w-kpi b { font-size: 1.35rem; }
 }
+
+/* ---------- HACCP ---------- */
+.haccp-griglia { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.haccp-voce { display: flex; align-items: center; gap: 14px; text-decoration: none; color: var(--text); transition: transform .12s, box-shadow .12s; }
+.haccp-voce:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgb(28 25 23 / .08); }
+.haccp-voce b { display: block; font-size: 1.05rem; }
+.haccp-voce small { display: block; color: var(--muted); margin-top: 2px; }
+.haccp-ico { font-size: 1.8rem; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 12px; background: var(--accent-tenue); flex: none; }
+.haccp-vai { margin-left: auto; color: var(--muted); font-size: 1.2rem; }
+@media (min-width: 761px) and (max-width: 1000px) { .top nav a { padding: 8px 6px; gap: 4px; font-size: .85rem; } .top nav svg { width: 17px; height: 17px; } }
