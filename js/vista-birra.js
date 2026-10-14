@@ -37,7 +37,7 @@ const lottiUsati = m => ((m.lotti || []).some(l => l.lotto) ? ` · lotto ${m.lot
 const NASCONDI = 'birra-nascondi-zero';
 const leggiPref = () => { try { return localStorage.getItem(NASCONDI) !== '0'; } catch { return true; } };
 const scriviPref = v => { try { localStorage.setItem(NASCONDI, v ? '1' : '0'); } catch { /* vale solo ora */ } };
-const filtri = { q: '', formato: '' };
+const filtri = { q: '', formato: '', scad: false };
 
 // ---------- elenco giacenze ----------
 export async function vistaBirra() {
@@ -52,33 +52,50 @@ export async function vistaBirra() {
   const tot = tipo => g.filter(x => x.tipo === tipo).reduce((t, x) => t + Math.max(0, x.giacenza), 0);
   const inScadenza = g.filter(x => x.statoScadenza).length;
   const ultimi = [...dati.movimenti].filter(m => !m.ignorato).sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 10);
-  let birraPrima = '';
   const testoCar = birra => {
     const c = caratteristiche(birra, dati.prodotti, dati.cotte);
-    const t = [c.abv !== null ? `${u.numIT(c.abv, 1)}%` : '', c.stile].filter(Boolean).join(' · ');
+    const t = [c.abvVale !== null ? `${u.numIT(c.abvVale, 1)}%` : '', c.stileVale].filter(Boolean).join(' · ');
     return t ? html` <span class="totale">${t}</span>` : '';
   };
 
+  const scadSoon = g.filter(x => x.statoScadenza && x.giacenza > 0);
+  const vista = filtri.scad ? righe.filter(x => x.statoScadenza) : righe;
+  // una scheda per birra, con i suoi formati
+  const perBirra = [];
+  for (const x of vista) {
+    const ultima = perBirra[perBirra.length - 1];
+    if (ultima && ultima.birra === x.birra) ultima.formati.push(x); else perBirra.push({ birra: x.birra, formati: [x] });
+  }
+  const ICONA = { fusto: '🛢️', 'lattina/bottiglia': '🥫' };
+  const scadBadge = x => (x.scadenza ? html`<span class="b-scad ${x.statoScadenza || ''}" title="${x.statoScadenza === 'scaduto' ? 'Scaduta' : x.statoScadenza === 'vicino' ? `Scade entro ${GIORNI_IN_SCADENZA} giorni` : 'Scadenza più vicina'}">${x.statoScadenza === 'scaduto' ? 'scaduta ' : 'scad. '}${u.dataIT(x.scadenza)}</span>` : '');
+  const pezziMov = m => (m.righe || []).reduce((t, r) => t + (Number(r.pezzi) || 0), 0);
+
   u.$app.innerHTML = html`
-    <div class="barra">
-      <div><h1 style="margin:0">Birra</h1><div class="kpi">
-        <div><b>${u.numIT(tot('fusto'), 0)}</b>fusti</div>
-        <div><b>${u.numIT(tot('lattina/bottiglia'), 0)}</b>lattine</div>
-        <div><b>${litri(g.reduce((t, x) => t + Math.max(0, x.litriTot), 0))}</b>in magazzino</div>
-        <div><b>${inScadenza}</b>scaduti o in scadenza</div>
-      </div></div>
-    </div>
-    <div class="barra azioni-birra">
-      <a class="btn primario" href="#/movbirra/scarico">− Scarico</a>
-      <a class="btn" href="#/movbirra/carico">+ Carico</a>
-      <a class="btn" href="#/birra-importa/fic">Da Fatture in Cloud</a>
-      <a class="btn" href="#/birra-importa/shopify">Da Shopify</a>
+    <div class="barra b-testa">
+      <h1 style="margin:0">Birra</h1>
       <span class="spazio"></span>
-      <a class="btn" href="#/birra-inventario">Inventario</a>
-      <a class="btn" href="#/birra-registro">Registro</a>
-      <a class="btn" href="#/listini">Listini</a>
-      <a class="btn" href="#/preventivi">Preventivi</a>
+      <a class="btn" href="#/movbirra/carico">+ Carico</a>
+      <a class="btn primario" href="#/movbirra/scarico">− Scarico</a>
     </div>
+    <nav class="b-sezioni" aria-label="Sezioni della birra">
+      <a href="#/birra-inventario">📋 Inventario</a>
+      <a href="#/birra-registro">📒 Registro</a>
+      <a href="#/listini">💶 Listini</a>
+      <a href="#/preventivi">📄 Preventivi</a>
+      <span class="b-sep" aria-hidden="true"></span>
+      <a href="#/birra-importa/fic" class="solo-editori">⬇ Fatture in Cloud</a>
+      <a href="#/birra-importa/shopify" class="solo-editori">⬇ Shopify</a>
+    </nav>
+
+    <div class="st-kpi b-kpi">
+      <div class="st-tile"><span>Fusti</span><b>${u.numIT(tot('fusto'), 0)}</b><small>in magazzino</small></div>
+      <div class="st-tile"><span>Lattine</span><b>${u.numIT(tot('lattina/bottiglia'), 0)}</b><small>in magazzino</small></div>
+      <div class="st-tile"><span>Litri</span><b>${u.numIT(g.reduce((t, x) => t + Math.max(0, x.litriTot), 0), 0)}</b><small>totale confezionato</small></div>
+      <button class="st-tile b-tile-scad st-libero ${scadSoon.length ? 'allerta' : ''} ${filtri.scad ? 'attivo' : ''}" id="b-scad" aria-pressed="${filtri.scad}"
+        title="${filtri.scad ? 'Mostra tutte le birre' : 'Mostra solo le birre scadute o in scadenza'}">
+        <span>Scadute o in scadenza</span><b>${inScadenza}</b><small>${filtri.scad ? 'filtro attivo · tocca per togliere' : inScadenza ? 'tocca per vederle' : 'tutto a posto'}</small></button>
+    </div>
+
     ${!imp.inizio ? html`<div class="scheda avviso solo-editori"><h2>Per iniziare</h2>
       <p>La birra entra in magazzino da sola quando scrivi il confezionamento nella scheda cotta, ed esce con gli scarichi (a mano, dalle fatture di Fatture in Cloud o dagli ordini Shopify).
       Scegli da che giorno parte il magazzino: i confezionamenti precedenti non contano. Poi fai l'inventario della birra che hai oggi, lotto per lotto.</p>
@@ -86,33 +103,36 @@ export async function vistaBirra() {
         <label style="max-width:200px">Inizio magazzino birra <input type="date" id="b-inizio" value="${u.oggiISO()}"></label>
         <button class="primario" id="b-avvia">Inizia e fai l'inventario</button>
       </div></div>` : ''}
-    <div class="barra">
-      <input id="b-q" type="search" placeholder="Cerca birra…" value="${filtri.q}" style="flex:2;min-width:160px">
-      <select id="b-formato" style="flex:1;min-width:140px"><option value="">Tutti i formati</option>
-        ${Object.entries(FORMATI).map(([k, v]) => html`<option value="${k}" ${k === filtri.formato ? 'selected' : ''}>${v}</option>`)}</select>
-      <label class="spunta"><input type="checkbox" id="b-zero" ${nascondi ? 'checked' : ''}> Nascondi le birre a 0</label>
+
+    <div class="barra b-filtri">
+      <input id="b-q" type="search" placeholder="Cerca birra…" value="${filtri.q}">
+      <div class="segmenti" id="b-formati" role="group" aria-label="Formato">
+        ${[['', 'Tutti'], ...Object.entries(FORMATI).map(([k, v]) => [k, `${v === 'Fusto' ? 'Fusti' : 'Lattine'}`])].map(([k, v]) => html`<button class="st-libero ${k === filtri.formato ? 'attivo' : ''}" data-formato="${k}" aria-pressed="${k === filtri.formato}">${v}</button>`)}
+      </div>
+      <label class="spunta"><input type="checkbox" id="b-zero" ${nascondi ? 'checked' : ''}> Nascondi a 0</label>
     </div>
-    <div class="scheda">
-      ${righe.length ? html`<div class="scroll-x"><table class="tab-mag tab-birra">
-        <thead><tr><th>Birra · formato · lotti</th><th class="n">Pezzi</th><th class="n">Litri</th><th>Scade</th></tr></thead>
-        <tbody>${righe.map(x => {
-          const nuova = x.birra !== birraPrima;
-          birraPrima = x.birra;
-          return html`${nuova ? html`<tr class="gruppo-birra"><td colspan="4">${x.birra}${testoCar(x.birra)}</td></tr>` : ''}<tr class="${x.giacenza < 0 ? 'neg' : ''}">
-            <td><a href="#/birra-prodotto/${encodeURIComponent(x.chiave)}">${nomeFormato(x.tipo, x.litri)}</a>${x.mancanti ? html` <span class="totale" title="Scaricati più pezzi di quelli caricati: manca un confezionamento o un inventario">⚠</span>` : ''}
-              <div class="totale" style="margin:2px 0 0">${x.lotti.map(l => `${l.lotto || 'senza lotto'} (${l.pezzi})`).join(' · ') || '—'}</div></td>
-            <td class="n"><b>${u.numIT(x.giacenza, 0)}</b></td>
-            <td class="n">${u.numIT(x.litriTot, 0)}</td>
-            <td>${scad(x.scadenza)}</td>
-          </tr>`;
-        })}</tbody></table></div>` : html`<p class="totale">${g.length ? 'Nessuna birra in magazzino con questi filtri.' : 'Nessuna birra: scrivi il confezionamento nella scheda di una cotta.'}</p>`}
-    </div>
-    ${ultimi.length ? html`<div class="scheda"><h2>Ultimi movimenti</h2><div class="lista">
-      ${ultimi.map(m => html`<a class="riga-cotta" href="#/movbirra/${encodeURIComponent(m.id)}">
-        <span class="lotto">${u.dataIT(m.data)}</span>
-        <span class="birra">${m.verso === 'carico' ? '+' : '−'} ${nomeMotivo(m)}${testoScontrino(m) ? ` · ${testoScontrino(m)}` : ''}${m.cliente ? ` · ${m.cliente}` : ''}${m.documento ? ` · ${m.documento}` : ''}</span>
-        <span class="totale" style="margin:0">${(m.righe || []).reduce((t, r) => t + (Number(r.pezzi) || 0), 0)} pz${m.origine && m.origine !== 'manuale' ? ` · ${ORIGINI[m.origine]}` : ''}</span></a>`)}
-    </div></div>` : ''}
+
+    ${perBirra.length ? html`<div class="b-griglia">${perBirra.map(b => {
+      const totPz = b.formati.reduce((t, x) => t + x.giacenza, 0);
+      return html`<section class="b-card ${b.formati.some(x => x.statoScadenza === 'scaduto') ? 'scaduta' : b.formati.some(x => x.statoScadenza) ? 'vicina' : ''}">
+        <header><h2>${b.birra}</h2>${testoCar(b.birra)}<span class="b-tot">${u.numIT(totPz, 0)} pz</span></header>
+        ${b.formati.map(x => html`<a class="b-formato ${x.giacenza < 0 ? 'neg' : ''} ${x.giacenza === 0 ? 'zero' : ''}" href="#/birra-prodotto/${encodeURIComponent(x.chiave)}">
+          <span class="b-icona" aria-hidden="true">${ICONA[x.tipo] || '🍺'}</span>
+          <span class="b-nome">${nomeFormato(x.tipo, x.litri)}${x.mancanti ? html` <span title="Scaricati più pezzi di quelli caricati: manca un confezionamento o un inventario">⚠</span>` : ''}
+            <span class="b-lotti">${x.lotti.length ? x.lotti.map(l => html`<span class="b-lotto">${l.lotto || 'senza lotto'} <b>${u.numIT(l.pezzi, 0)}</b></span>`) : html`<span class="totale">nessun lotto</span>`}</span></span>
+          <span class="b-num"><b>${u.numIT(x.giacenza, 0)}</b><small>pz · ${u.numIT(x.litriTot, 0)} L</small>${scadBadge(x)}</span>
+        </a>`)}
+      </section>`;
+    })}</div>` : html`<div class="scheda"><p class="vuoto">${filtri.scad ? 'Nessuna birra scaduta o in scadenza 👍' : g.length ? 'Nessuna birra in magazzino con questi filtri.' : 'Nessuna birra: scrivi il confezionamento nella scheda di una cotta.'}</p></div>`}
+
+    ${ultimi.length ? html`<div class="scheda b-movimenti"><div class="barra" style="margin-bottom:8px"><h2 style="margin:0">Ultimi movimenti</h2><span class="spazio"></span><a href="#/birra-registro" class="totale">Tutto il registro →</a></div>
+      ${ultimi.map(m => html`<a class="b-mov ${m.verso === 'carico' ? 'carico' : 'scarico'}" href="#/movbirra/${encodeURIComponent(m.id)}">
+        <span class="b-mov-segno" aria-hidden="true">${m.verso === 'carico' ? '+' : '−'}</span>
+        <span class="b-mov-testo"><b>${nomeMotivo(m)}</b>${[testoScontrino(m), m.cliente, m.documento].filter(Boolean).length ? html` <span class="totale">· ${[testoScontrino(m), m.cliente, m.documento].filter(Boolean).join(' · ')}</span>` : ''}
+          <small>${u.dataIT(m.data)}${m.origine && m.origine !== 'manuale' ? ` · ${ORIGINI[m.origine]}` : ''}</small></span>
+        <span class="b-mov-pz">${m.verso === 'carico' ? '+' : '−'}${u.numIT(pezziMov(m), 0)} pz</span>
+      </a>`)}
+    </div>` : ''}
     ${imp.inizio ? html`<details class="scheda solo-editori"><summary><b>Impostazioni magazzino birra</b></summary>
       <div class="griglia" style="margin-top:10px">
         <label>Inizio magazzino <input type="date" id="b-inizio" value="${imp.inizio}"></label>
@@ -122,7 +142,8 @@ export async function vistaBirra() {
     </details>` : ''}`;
   const $ = s => document.getElementById(s);
   $('b-q').oninput = e => { filtri.q = e.target.value; vistaBirra().then(() => { const el = $('b-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }); };
-  $('b-formato').onchange = e => { filtri.formato = e.target.value; vistaBirra(); };
+  $('b-formati').onclick = e => { const b = e.target.closest('[data-formato]'); if (b) { filtri.formato = b.dataset.formato; vistaBirra(); } };
+  $('b-scad').onclick = () => { filtri.scad = !filtri.scad; vistaBirra(); };
   $('b-zero').onchange = e => { scriviPref(e.target.checked); vistaBirra(); };
   const $avvia = $('b-avvia');
   if ($avvia) $avvia.onclick = async () => {
@@ -155,7 +176,7 @@ export async function vistaProdotto(chiave) {
         <a class="btn" href="#/movbirra/scarico?p=${encodeURIComponent(chiave)}">− Scarico</a></div>
       <div class="scheda">
         <h1 style="margin-top:0">${g.birra} <span class="totale">${nomeFormato(g.tipo, g.litri)}</span></h1>
-        ${car.abv !== null || car.stile ? html`<p class="totale" style="margin-top:-6px">${[car.abv !== null ? `${u.numIT(car.abv, 1)}% vol` : '', car.stile].filter(Boolean).join(' · ')}</p>` : ''}
+        ${car.abvVale !== null || car.stileVale ? html`<p class="totale" style="margin-top:-6px">${[car.abvVale !== null ? `${u.numIT(car.abvVale, 1)}% vol` : '', car.stileVale].filter(Boolean).join(' · ')}</p>` : ''}
         <div class="kpi">
           <div><b>${pz(g.giacenza)}</b>in magazzino</div>
           <div><b>${litri(g.litriTot)}</b>litri</div>
@@ -172,7 +193,7 @@ export async function vistaProdotto(chiave) {
         </table></div>` : html`<p class="totale">Nessun lotto in magazzino.</p>`}
       </div>
       <div class="scheda solo-editori"><h2>Grado alcolico e stile</h2>
-        <p class="totale">Valgono per tutti i formati di ${g.birra}.${car.abvProposto !== null || car.stileProposto ? ' In grigio quelli dell\'ultima cotta: scrivili per confermarli.' : ''}</p>
+        <p class="totale">Valgono per tutti i formati di ${g.birra}.${car.abvProposto !== null || car.stileProposto ? ' Se non li scrivi valgono quelli dell\'ultima cotta, in grigio; scrivili solo per cambiarli.' : ''}</p>
         <div class="griglia">
           <label>Alcol % vol <input id="car-abv" type="number" step="0.1" min="0" inputmode="decimal" value="${car.abv ?? ''}" placeholder="${car.abvProposto !== null ? u.numIT(car.abvProposto, 1) : 'es. 6,5'}"></label>
           <label style="grid-column:span 2">Stile <input id="car-stile" list="dl-car-stili" value="${car.stile}" placeholder="${car.stileProposto || 'es. American IPA'}"></label>
