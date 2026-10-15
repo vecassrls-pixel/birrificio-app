@@ -346,7 +346,8 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-edit tr.escluso td { opacity: .45; }
 .tab-edit tr.escluso td:first-child { opacity: 1; }
 /* inventario: materie prime a zero nascoste (le quantità scritte restano) */
-.senza-zero tr.zero, .senza-zero .scheda.tutti-zero { display: none; }
+.senza-zero:not(.filtrato) tr.zero, .senza-zero:not(.filtrato) .scheda.tutti-zero { display: none; }
+#elenco-inv [hidden] { display: none !important; }
 label.spunta { display: flex; flex-direction: row; align-items: center; gap: 6px; min-height: 44px; }
 label.spunta input { width: auto; min-height: auto; }
 .tab-edit .nuovo-art { display: block; margin-top: 2px; font-size: .75rem; }

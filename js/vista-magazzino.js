@@ -414,6 +414,9 @@ const NASCONDI_ZERO = 'inventario-nascondi-zero';
 const leggiPref = () => { try { return localStorage.getItem(NASCONDI_ZERO) === '1'; } catch { return false; } };
 const scriviPref = v => { try { localStorage.setItem(NASCONDI_ZERO, v ? '1' : '0'); } catch { /* niente storage: vale solo ora */ } };
 const aZero = x => Math.abs(x) < 1e-9;
+// testo per il filtro dell'inventario: nome, alias e categoria, senza accenti e maiuscole
+const semplice = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+const testoCerca = a => semplice([a.nome, ...(a.alias || []), CATEGORIE[a.categoria]].join(' '));
 export async function vistaInventario() {
   const { html } = u;
   const dati = await datiMagazzino();
@@ -440,6 +443,7 @@ export async function vistaInventario() {
       <p class="totale">Scrivi la quantità contata solo per gli articoli che hai controllato: da quella data la giacenza riparte da lì, poi si aggiungono le bolle e si tolgono cotte e DH. Gli articoli lasciati vuoti non cambiano. Lotto e scadenza sono già quelli in magazzino: cambiali se non corrispondono.</p>
       <div class="barra" style="margin:0;align-items:flex-end">
         <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
+        <label style="max-width:260px">Cerca materia prima <input type="search" id="inv-cerca" placeholder="es. pils, citra, gypsum…" autocomplete="off"></label>
         <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondi ? 'checked' : ''}> Nascondi le materie prime a 0</label>
       </div>
     </div>
@@ -451,13 +455,14 @@ export async function vistaInventario() {
       const tuttiZero = rr.every(a => aZero(g.get(a.id).giacenza));
       return html`<div class="scheda ${tuttiZero ? 'tutti-zero' : ''}"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit tab-inv">
         <thead><tr><th>Articolo</th><th class="n">Calcolato oggi</th><th style="width:130px">Contato</th><th style="width:50px"></th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th></tr></thead>
-        <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}">
+        <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}" data-cerca="${testoCerca(a)}">
           <td class="inv-nome">${a.nome}</td><td class="n inv-calc" data-et="Calcolato oggi">${fmt(g.get(a.id).giacenza, a.unita)}</td>
           <td data-et="Contato (${a.unita})"><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale inv-unita">${a.unita}</td>
           <td data-et="Lotto (facolt.)"><input data-lotto="${a.id}" value="${extre.get(a.id)?.lotto || ''}">${proposto(a.id).altri.length ? html`<span class="totale" style="display:block;font-size:.72rem">altri lotti: ${proposto(a.id).altri.join(', ')}</span>` : ''}</td><td data-et="Scadenza (facolt.)"><input data-scad="${a.id}" type="date" value="${extre.get(a.id)?.scadenza || ''}"></td>
         </tr>`)}</tbody></table></div></div>`;
     })}
     </div>
+    <p class="vuoto" id="inv-nessuno" hidden>Nessuna materia prima trovata.</p>
     ${dati.articoli.length ? html`<div class="barra salva-inv"><span class="totale" id="inv-conta"></span><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
   const toccati = new Set(); // articoli con lotto o scadenza cambiati a mano
   // lotto/scadenza scritti senza quantità contata
@@ -466,7 +471,26 @@ export async function vistaInventario() {
     const n = contati.size + soloLotto().length;
     const el = document.getElementById('inv-conta'); if (el) el.textContent = n ? (n === 1 ? '1 articolo da salvare' : `${n} articoli da salvare`) : '';
   };
+  // filtro: nasconde le righe che non corrispondono (le quantità già scritte restano)
+  const filtra = () => {
+    const parole = semplice(document.getElementById('inv-cerca').value).split(' ').filter(Boolean);
+    let visibili = 0;
+    for (const sc of u.$app.querySelectorAll('#elenco-inv > .scheda')) {
+      let n = 0;
+      for (const tr of sc.querySelectorAll('tbody tr')) {
+        const ok = parole.every(p => tr.dataset.cerca.includes(p));
+        tr.hidden = !ok;
+        if (ok) n++;
+      }
+      sc.hidden = !n;
+      visibili += n;
+    }
+    document.getElementById('elenco-inv').classList.toggle('filtrato', parole.length > 0);
+    document.getElementById('inv-nessuno').hidden = !!visibili || !dati.articoli.length;
+  };
+  document.getElementById('inv-cerca').onkeydown = e => { if (e.key === 'Escape') { e.target.value = ''; filtra(); } };
   u.$app.oninput = e => {
+    if (e.target.id === 'inv-cerca') return filtra();
     if (e.target.id === 'nascondi-zero') {
       scriviPref(e.target.checked);
       document.getElementById('elenco-inv').classList.toggle('senza-zero', e.target.checked);
