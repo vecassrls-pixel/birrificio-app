@@ -220,7 +220,8 @@ export async function vistaScadenzario() {
 }
 
 // ---------- pulizie e sanificazioni (CIP) ----------
-// chi fa le pulizie e con cosa: di default Luca Ferri, soda 3% e sanificante 2% (Romain, 2026-10-15); si cambiano nel modulo
+// chi fa le pulizie e con cosa: di default Luca Ferri, soda 3% e sanificante 2%, fasi tutte tranne l'acido
+// (Romain, 2026-10-15); si cambiano nel modulo
 const OPERATORE_PULIZIE = 'LUCA FERRI';
 const PRODOTTI_PULIZIE = 'Soda 3%, sanificante 2%'; // default di Romain, 2026-10-15
 const regP = { da: '', a: '' };
@@ -232,11 +233,10 @@ export async function vistaPulizie(cosaScelta = '') {
   const stati = statoFermentatori(u.stato.cotte, u.stato.durate, u.stato.fv, pulizie, oggi);
   const daPulire = new Set(fvDaPulire(stati, pulizie, oggi).map(s => s.fv.nome));
   const inizio = inizioRegistroPulizie(pulizie);
-  const ultima = [...pulizie].sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
   const nel = pulizie.filter(p => p.data >= regP.da && p.data <= regP.a).sort((a, b) => a.data.localeCompare(b.data) || a.cosa.localeCompare(b.cosa, 'it', { numeric: true }));
   const prodottiUsati = [...new Set(pulizie.map(p => p.prodotti).filter(Boolean))];
   const lineeUsate = [...new Set([...LINEE, ...pulizie.map(p => p.cosa)])].filter(x => !u.stato.fv.some(f => f.nome === x));
-  const nuova = { data: oggi, cosa: cosaScelta, fasi: ultima?.fasi || FASI_PULIZIA, prodotti: PRODOTTI_PULIZIE, chi: OPERATORE_PULIZIE, note: '' };
+  const nuova = { data: oggi, cosa: cosaScelta, fasi: FASI_PULIZIA.filter(f => f !== 'Acido'), prodotti: PRODOTTI_PULIZIE, chi: OPERATORE_PULIZIE, note: '' };
   const birraDi = r => r.cotte.map(c => c.birra).filter((x, i, a) => a.indexOf(x) === i).join(' + ');
   u.$app.innerHTML = html`
     <div class="barra non-stampa"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Pulizie e sanificazioni</h1></div>
