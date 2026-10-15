@@ -510,6 +510,15 @@ export async function vistaInventario() {
     const solo = soloLotto();
     if (!contati.size && !solo.length) return u.toast('Nessuna quantità, lotto o scadenza inserita');
     if (!data.v) return u.toast('Manca la data');
+    // luppoli, lieviti, sali… in kg contati in grammi (10.000 kg di Citra): si chiede se dividere per 1000
+    const sospetti = [...contati].map(([id, q]) => ({ id, q, a: dati.articoli.find(x => x.id === id) }))
+      .filter(x => x.a && ['kg', 'L'].includes(x.a.unita) && !['malto', 'zucchero'].includes(x.a.categoria) && x.q >= 1000);
+    if (sospetti.length) {
+      const elenco = sospetti.map(x => `${x.a.nome} ${u.numIT(x.q)} ${x.a.unita}`).join(', ');
+      if (await u.chiedi(`${elenco}: forse li hai contati in grammi (o ml). Li divido per 1000? Con Annulla restano come li hai scritti.`, 'Sì, dividi per 1000')) {
+        for (const x of sospetti) contati.set(x.id, x.q / 1000);
+      }
+    }
     // Lotto o scadenza senza quantità: vanno sulla riga d'origine (bolla, carico manuale o inventario)
     // dei lotti in magazzino che non li hanno; se tutti li hanno già, riga d'inventario con la quantità calcolata.
     const daAggiornare = new Map(); // id record → [{ path, lotto, scadenza }]
