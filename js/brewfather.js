@@ -166,7 +166,7 @@ export function unisci(esistente, b, letture = []) {
   return c;
 }
 
-// Acqua di mash e sparge, temperatura di mash e whirlpool dalla ricetta.
+// Acqua di mash e sparge, temperatura e durata del mash e whirlpool dalla ricetta.
 // Import dei batch: solo se non già scritti nell'app; import di una ricetta scelta (forza): sempre, se la ricetta li ha.
 function completaDaRicetta(c, r = {}, forza = false) {
   const w = r.data || {};
@@ -179,6 +179,9 @@ function completaDaRicetta(c, r = {}, forza = false) {
   metti(c.acquaMash, 'litri', num(w.mashWaterAmount) !== null ? Math.round(num(w.mashWaterAmount)) : null);
   metti(c.acquaSparge, 'litri', num(w.spargeWaterAmount) !== null ? Math.round(num(w.spargeWaterAmount)) : null);
   metti(c.acquaMash, 'tempMash', num(r.mash?.steps?.[0]?.stepTemp));
+  // durata del mash: somma dei minuti di tutti gli step (senza le rampe)
+  const step = (r.mash?.steps || []).map(x => num(x.stepTime)).filter(t => t > 0);
+  metti(c, 'mashMin', step.length ? step.reduce((a, b) => a + b, 0) : null);
 }
 
 // ---------- ricette ----------
