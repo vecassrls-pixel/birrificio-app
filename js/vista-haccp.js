@@ -220,7 +220,8 @@ export async function vistaScadenzario() {
 }
 
 // ---------- pulizie e sanificazioni (CIP) ----------
-const nomeOperatore = () => { try { return localStorage.getItem('gb-nome-saluto') || ''; } catch { return ''; } };
+// chi fa le pulizie: di default Luca Ferri (Romain, 2026-10-15); si cambia nel modulo
+const OPERATORE_PULIZIE = 'LUCA FERRI';
 const regP = { da: '', a: '' };
 export async function vistaPulizie(cosaScelta = '') {
   const { html } = u;
@@ -234,7 +235,7 @@ export async function vistaPulizie(cosaScelta = '') {
   const nel = pulizie.filter(p => p.data >= regP.da && p.data <= regP.a).sort((a, b) => a.data.localeCompare(b.data) || a.cosa.localeCompare(b.cosa, 'it', { numeric: true }));
   const prodottiUsati = [...new Set(pulizie.map(p => p.prodotti).filter(Boolean))];
   const lineeUsate = [...new Set([...LINEE, ...pulizie.map(p => p.cosa)])].filter(x => !u.stato.fv.some(f => f.nome === x));
-  const nuova = { data: oggi, cosa: cosaScelta, fasi: ultima?.fasi || FASI_PULIZIA, prodotti: ultima?.prodotti || '', chi: nomeOperatore(), note: '' };
+  const nuova = { data: oggi, cosa: cosaScelta, fasi: ultima?.fasi || FASI_PULIZIA, prodotti: ultima?.prodotti || '', chi: OPERATORE_PULIZIE, note: '' };
   const birraDi = r => r.cotte.map(c => c.birra).filter((x, i, a) => a.indexOf(x) === i).join(' + ');
   u.$app.innerHTML = html`
     <div class="barra non-stampa"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Pulizie e sanificazioni</h1></div>
