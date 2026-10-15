@@ -3,6 +3,7 @@
 // Gli ingredienti con nomi diversi ma collegati allo stesso articolo del magazzino (nome o alias) si sommano.
 
 import { categoriaDa, chiaveNome, converti, lievitoRecuperato, trovaArticolo } from './magazzino.js';
+import { addGiorni, diffGiorni, periodiCotta } from './dominio.js';
 
 let u; // { $app, html, db, stato, dataIT, numIT, oggiISO }
 export function init(strumenti) { u = strumenti; }
@@ -25,6 +26,42 @@ function nomePeriodo(k) {
   if (/^\d{4}$/.test(k)) return k;
   if (/^\d{4}-\d{2}$/.test(k)) return `${MESI[Number(k.slice(5)) - 1]} ${k.slice(0, 4)}`;
   return `sett. ${Number(k.slice(6))} · ${k.slice(0, 4)}`;
+}
+
+// primo e ultimo giorno di un periodo ("2026", "2026-10", "2026-S41")
+function limitiPeriodo(k) {
+  if (/^\d{4}$/.test(k)) return [`${k}-01-01`, `${k}-12-31`];
+  if (/^\d{4}-\d{2}$/.test(k)) return [`${k}-01`, new Date(Date.UTC(+k.slice(0, 4), +k.slice(5), 0)).toISOString().slice(0, 10)];
+  const anno = +k.slice(0, 4), n = +k.slice(6);
+  const g4 = new Date(Date.UTC(anno, 0, 4));
+  const lun = new Date(g4 - ((g4.getUTCDay() + 6) % 7) * 86400000 + (n - 1) * 7 * 86400000).toISOString().slice(0, 10);
+  return [lun, addGiorni(lun, 6)];
+}
+
+// Occupazione dei fermentatori tra due date (comprese): giorni in cui ogni FV ha dentro birra
+// (dall'inoculo alla fine in FV, travasi compresi) diviso i giorni disponibili di tutti i FV.
+// Le cotte doppie nello stesso FV non contano due volte.
+export function occupazioneFv(cotte, durate, fvs, da, a) {
+  const giorni = da && a && a >= da ? diffGiorni(da, a) + 1 : 0;
+  const perFv = new Map(fvs.map(f => [f.nome, []]));
+  for (const c of cotte) {
+    if (c.eliminato) continue;
+    for (const p of periodiCotta(c, durate, fvs)) {
+      if (!perFv.has(p.fv) || p.a < da || p.da > a) continue;
+      perFv.get(p.fv).push([p.da < da ? da : p.da, p.a > a ? a : p.a]);
+    }
+  }
+  const righe = [...perFv].map(([nome, int]) => {
+    int.sort((x, y) => x[0].localeCompare(y[0]));
+    let occ = 0, fine = '';
+    for (const [x, y] of int) {
+      const inizio = fine && x <= fine ? addGiorni(fine, 1) : x;
+      if (y >= inizio) { occ += diffGiorni(inizio, y) + 1; fine = y; }
+    }
+    return { nome, giorni: occ, pct: giorni ? occ / giorni : 0 };
+  });
+  const tot = righe.reduce((t, r) => t + r.giorni, 0);
+  return { giorni, righe, pct: giorni && righe.length ? tot / (giorni * righe.length) : 0 };
 }
 
 // categorie degli ingredienti che si contano, con l'unità in cui si mostrano
@@ -165,6 +202,17 @@ export async function vistaStatistiche() {
     const pp = tutti.prodotti.filter(p => p.data.startsWith(prima) && p.data <= limite);
     confronto = { anno: prima, cotte: pp.length, litri: tot(pp, p => p.litri), finoA: filtri.anno === annoCorrente };
   }
+  // occupazione dei fermentatori nel periodo scelto (fino a oggi)
+  const [occDa, occA0] = filtri.dettaglio ? limitiPeriodo(filtri.dettaglio)
+    : filtri.anno === 'tutti' ? [tutti.prodotti.map(p => p.data).sort()[0] || oggi, oggi] : limitiPeriodo(filtri.anno);
+  const occA = occA0 > oggi ? oggi : occA0;
+  const occ = occupazioneFv(u.stato.cotte, u.stato.durate, u.stato.fv, occDa, occA);
+  const occPrima = confronto ? occupazioneFv(u.stato.cotte, u.stato.durate, u.stato.fv, `${confronto.anno}${occDa.slice(4)}`, `${confronto.anno}${occA.slice(4)}`) : null;
+  const punti = (ora, prima) => {
+    const d = Math.round((ora - prima) * 100);
+    return html`<span class="delta ${d >= 0 ? 'su' : 'giu'}">${d >= 0 ? '▲' : '▼'} ${Math.abs(d)} punti</span>`;
+  };
+
   // proiezione: solo sull'anno in corso, senza filtro di periodo
   const proiez = filtri.anno === annoCorrente && !filtri.dettaglio && tutti.prodotti.some(p => p.data.startsWith(annoCorrente))
     ? proiezioneAnno(tutti.prodotti, u.stato.cotte, oggi) : null;
@@ -230,6 +278,7 @@ export async function vistaStatistiche() {
       <div class="st-tile"><span>Litri prodotti</span><b>${u.numIT(litriProd, 0)}</b>${confronto ? html`<small>${delta(litriProd, confronto.litri)} vs ${u.numIT(confronto.litri, 0)} nel ${confronto.anno}</small>` : ''}</div>
       <div class="st-tile"><span>Litri confezionati</span><b>${u.numIT(litriConf, 0)}</b>${litriProd && litriConf ? html`<small>${u.numIT(litriConf / litriProd * 100, 0)}% del prodotto</small>` : html`<small>registrati nelle schede cotta</small>`}</div>
       <div class="st-tile"><span>Malti</span><b>${qtaIngr('malto', { tot: totIngr('malto'), ml: 0 })}</b>${det.prodotti.length ? html`<small>${u.numIT(totIngr('malto') / 1000 / Math.max(1, det.prodotti.length), 0)} kg a cotta</small>` : ''}</div>
+      <div class="st-tile"><span>Occupazione fermentatori</span><b>${occ.giorni ? `${u.numIT(occ.pct * 100, 0)}%` : '—'}</b><small>${occPrima && occPrima.giorni ? html`${punti(occ.pct, occPrima.pct)} vs ${u.numIT(occPrima.pct * 100, 0)}% nel ${confronto.anno}` : `media di ${occ.righe.length} FV in ${occ.giorni} giorni`}</small></div>
       <div class="st-tile"><span>Luppoli</span><b>${qtaIngr('luppolo', { tot: totIngr('luppolo'), ml: mlIngr('luppolo') })}</b>${litriProd ? html`<small>${u.numIT(totIngr('luppolo') / litriProd, 1)} g/L</small>` : ''}</div>
     </div>
 
@@ -243,6 +292,16 @@ export async function vistaStatistiche() {
         <div class="st-tile"><span>Fatte + già pianificate</span><b>${proiez.conPianificate.cotte} cotte</b><small>${proiez.pianificate} in planning · ${u.numIT(proiez.conPianificate.litri, 0)} L</small></div>
       </div>
     </div>` : ''}
+
+    ${occ.giorni && occ.righe.length ? html`<details class="scheda st-tabella st-occ">
+      <summary><b>Occupazione dei fermentatori · ${titoloDet}</b> <span class="totale">media ${u.numIT(occ.pct * 100, 0)}% · dal ${u.dataIT(occDa)} al ${u.dataIT(occA)}</span></summary>
+      <p class="totale">Giorni con birra nel FV (dall'inoculo alla fine in FV, travasi compresi) sui ${occ.giorni} giorni del periodo.</p>
+      <div class="scroll-x"><table class="tab-mag tab-quote">
+        <thead><tr><th>FV</th><th class="n">Giorni occupati</th><th class="quota">Occupazione</th></tr></thead>
+        <tbody>${occ.righe.map(r => html`<tr><td class="nome">${r.nome}</td><td class="n">${r.giorni}</td>
+          <td class="quota"><div><span class="quota-barra"><span style="width:${Math.max(1, Math.round(r.pct * 100))}%"></span></span><span class="n">${u.numIT(r.pct * 100, 0)}%</span></div></td></tr>`)}</tbody>
+      </table></div>
+    </details>` : ''}
 
     <div class="scheda">
       <div class="barra" style="margin-bottom:6px">
