@@ -264,8 +264,8 @@ export async function vistaArticolo(id) {
 }
 
 // ---------- bolla di carico ----------
-// nome di chi controlla la merce: quello del saluto in Home su questo dispositivo
-const nomeControllo = () => { try { return localStorage.getItem('gb-nome-saluto') || ''; } catch { return ''; } };
+// chi controlla la merce in arrivo: di default Luca Ferri (Romain, 2026-10-15); si cambia nella bolla
+const nomeControllo = () => 'LUCA FERRI';
 export async function vistaBolla(id) {
   const { html } = u;
   const dati = await datiMagazzino();
