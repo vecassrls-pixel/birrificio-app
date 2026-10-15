@@ -1348,18 +1348,19 @@ function vistaPlanning() {
 // ---------- Impostazioni ----------
 const NOMI_RUOLO = { admin: 'Amministratore', editore: 'Può modificare', lettore: 'Solo lettura' };
 
-// Solo l'admin: chi può entrare e con quale ruolo. L'invito con la password si manda da Supabase.
+// Solo l'admin: chi può entrare e con quale ruolo. L'email di invito parte dal server (netlify/functions/invita.mjs);
+// se il server non è configurato resta la strada di Supabase (Invite user).
 async function gestioneUtenti() {
   const box = document.getElementById('utenti');
   const disegna = (utenti, errore = '') => {
     box.innerHTML = html`<h2>Utenti</h2>
-      <p class="totale">"Solo lettura" vede tutto (cotte, planning, magazzino, stampe) ma non può modificare nulla. Dopo averlo aggiunto qui, invialo da Supabase: Authentication → Users → Invite user, con la stessa email.</p>
+      <p class="totale">"Solo lettura" vede tutto (cotte, planning, magazzino, stampe) ma non può modificare nulla. Aggiungendo una persona le arriva un'email per scegliere la password; con ✉ la rimandi.</p>
       ${errore ? html`<p class="errore">${errore}</p>` : ''}
       <table class="tab-edit"><thead><tr><th>Email</th><th>Ruolo</th><th></th></tr></thead>
       <tbody>${utenti.map(x => html`<tr>
         <td>${x.email}</td>
         <td><select data-ruolo="${x.email}" ${x.email === auth.utente()?.email?.toLowerCase() ? 'disabled' : ''}>${Object.entries(NOMI_RUOLO).map(([k, v]) => html`<option value="${k}" ${k === x.ruolo ? 'selected' : ''}>${v}</option>`)}</select></td>
-        <td class="az">${x.email === auth.utente()?.email?.toLowerCase() ? '' : html`<button class="piccolo" data-togli="${x.email}" title="Togli accesso">✕</button>`}</td>
+        <td class="az">${x.email === auth.utente()?.email?.toLowerCase() ? '' : html`<button class="piccolo" data-invita="${x.email}" title="Manda di nuovo l'email di invito">✉</button> <button class="piccolo" data-togli="${x.email}" title="Togli accesso">✕</button>`}</td>
       </tr>`)}</tbody></table>
       <form class="barra" id="nuovo-utente" style="margin-top:10px">
         <input name="email" type="email" required placeholder="email@esempio.it" style="flex:2;min-width:200px">
@@ -1369,9 +1370,11 @@ async function gestioneUtenti() {
     box.querySelector('#nuovo-utente').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      try { await auth.aggiungiUtente(fd.get('email'), fd.get('ruolo')); toast('Utente aggiunto: ora invialo da Supabase'); carica(); }
-      catch (ex) { carica(ex.message); }
+      try { await auth.aggiungiUtente(fd.get('email'), fd.get('ruolo')); } catch (ex) { carica(ex.message); return; }
+      await manda(String(fd.get('email')).trim().toLowerCase(), 'Utente aggiunto');
+      carica();
     };
+    box.querySelectorAll('[data-invita]').forEach(b => { b.onclick = () => manda(b.dataset.invita); });
     box.querySelectorAll('[data-ruolo]').forEach(sel => { sel.onchange = async () => {
       try { await auth.cambiaRuolo(sel.dataset.ruolo, sel.value); toast('Ruolo aggiornato'); } catch (ex) { carica(ex.message); }
     }; });
@@ -1379,6 +1382,14 @@ async function gestioneUtenti() {
       if (!(await chiedi(`Togliere l'accesso a ${b.dataset.togli}?`, 'Togli'))) return;
       try { await auth.togliUtente(b.dataset.togli); carica(); } catch (ex) { carica(ex.message); }
     }; });
+  };
+  const manda = async (email, prima = '') => {
+    try {
+      const r = await auth.invita(email);
+      toast(`${prima ? `${prima}: ` : ''}${r.tipo === 'recupero' ? 'era già registrato, gli è arrivata l\'email per impostare la password' : 'email di invito inviata'} a ${email}`);
+    } catch (ex) {
+      toast(ex.status === 503 || ex.status === 404 ? `${prima ? `${prima}. ` : ''}Invito automatico non attivo: invialo da Supabase (Authentication → Users → Invite user)` : `Invito non inviato: ${ex.message}`);
+    }
   };
   const carica = async (errore = '') => {
     try { disegna(await auth.elencoUtenti(), errore); }
