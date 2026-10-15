@@ -29,11 +29,13 @@ export function puntiFermentazione(c, diffGiorni, cotta = {}) {
   return punti;
 }
 
-// limiti "tondi" della scala con un po' di margine
-function scala(valori, passoMin) {
-  let lo = Math.min(...valori), hi = Math.max(...valori);
-  if (hi - lo < passoMin) { const m = (hi + lo) / 2; lo = m - passoMin / 2; hi = m + passoMin / 2; }
-  const pad = (hi - lo) * 0.12;
+// Scale fisse per ogni misura (allargate se un valore esce): con scale "dal minimo al massimo" le tre linee,
+// che di solito scendono tutte, finivano una sopra l'altra e il pH copriva la densità (Romain 2026-10-15).
+const LIMITI = { temp: [0, 25], densita: [0, 20], ph: [3.5, 6] };
+function scala(k, valori) {
+  const [a, b] = LIMITI[k];
+  const lo = Math.min(a, ...valori), hi = Math.max(b, ...valori);
+  const pad = (hi - lo) * 0.06;
   return [lo - pad, hi + pad];
 }
 
@@ -56,7 +58,7 @@ export function graficoFermentazione(c, diffGiorni, oggiG, cotta = {}) {
   let lx = 0;
   usate.forEach(([k, titolo, unita, dec]) => {
     const pts = punti.filter(p => pieno(p.e[k])).map(p => ({ g: p.g, v: Number(p.e[k]) }));
-    const [lo, hi] = scala(pts.map(p => p.v), k === 'ph' ? 0.4 : 2);
+    const [lo, hi] = scala(k, pts.map(p => p.v));
     const y = v => fondo - (v - lo) / (hi - lo) * H;
     const ult = pts[pts.length - 1];
     const testo = `${titolo} ${fmt(ult.v, dec)}${unita ? ` ${unita}` : ''}`;

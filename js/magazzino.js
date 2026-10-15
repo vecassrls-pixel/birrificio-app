@@ -5,7 +5,7 @@
 // di oggi ma dal disponibile.
 //
 // Record nell'archivio:
-//   articolo   { nome, categoria, unita, scortaMin, pesoPezzo, alias: [], creato }  (creato: senza inventario, gli scarichi contano da quel giorno; pesoPezzo: peso di un sacco/pezzo nell'unità dell'articolo)
+//   articolo   { nome, categoria, unita, scortaMin, pesoPezzo, densita, alias: [], creato }  (creato: senza inventario, gli scarichi contano da quel giorno; pesoPezzo: peso di un sacco/pezzo nell'unità dell'articolo; densita: kg/L per passare da ml a kg)
 //   bolla      { data, fornitore, numero, righe: [{ articoloId, qta, unita, lotto, scadenza }] }
 //   inventario { data, righe: [{ articoloId, qta, lotto, scadenza }] }
 // Lotto e scadenza sono facoltativi. Le cotte non dicono quale lotto usano: si assume che
@@ -33,11 +33,24 @@ export function converti(qta, da, a) {
 
 // Come converti, ma i pezzi (sacchi, confezioni) valgono il peso per pezzo dell'articolo, se c'è:
 // lolla di riso 3 pz con pesoPezzo 20 (kg) = 60 kg
+// e i liquidi passano da volume a peso con la densità (acido lattico 5 ml con articolo in kg = 0,006 kg)
 export function convertiPer(art, qta, da) {
   const q = converti(qta, da, art.unita);
-  if (q !== null || da !== 'pz' || !(art.pesoPezzo > 0)) return q;
+  if (q !== null) return q;
   const n = Number(qta);
-  return Number.isFinite(n) ? n * art.pesoPezzo : null;
+  if (!Number.isFinite(n)) return null;
+  if (da === 'pz') return art.pesoPezzo > 0 ? n * art.pesoPezzo : null;
+  const d = densitaArticolo(art);
+  if (!d) return null;
+  if (FAMIGLIA[da] === 'volume' && FAMIGLIA[art.unita] === 'peso') return converti(converti(n, da, 'L') * d, 'kg', art.unita);
+  if (FAMIGLIA[da] === 'peso' && FAMIGLIA[art.unita] === 'volume') return converti(converti(n, da, 'kg') / d, 'L', art.unita);
+  return null;
+}
+// densità in kg/L: quella dell'articolo, altrimenti 1,2 per l'acido lattico (all'80%)
+export const DENSITA_ACIDO = 1.2;
+export function densitaArticolo(art) {
+  if (Number(art?.densita) > 0) return Number(art.densita);
+  return /acido\s+lattico/i.test(art?.nome || '') ? DENSITA_ACIDO : null;
 }
 
 // Nome "pulito" di un ingrediente delle schede: toglie tempi, giorni di DH, usi.

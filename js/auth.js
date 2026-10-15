@@ -131,4 +131,13 @@ export async function caricaRuolo() {
 export const elencoUtenti = () => chiamataUtenti('?select=email,ruolo,aggiunto&order=aggiunto.asc');
 export const aggiungiUtente = (email, r) => chiamataUtenti('', { method: 'POST', body: { email: email.trim().toLowerCase(), ruolo: r } });
 export const cambiaRuolo = (email, r) => chiamataUtenti(`?email=eq.${encodeURIComponent(email)}`, { method: 'PATCH', body: { ruolo: r } });
+// Email di invito mandata dal server (netlify/functions/invita.mjs). { ok, tipo } oppure errore con .status
+export async function invita(email) {
+  const t = await token();
+  if (!t) throw new Error('Serve internet per mandare l\'invito.');
+  const res = await fetch('/.netlify/functions/invita', { method: 'POST', headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+  const dati = await res.json().catch(() => null);
+  if (!res.ok) throw Object.assign(new Error(dati?.errore || res.statusText), { status: res.status });
+  return dati;
+}
 export const togliUtente = email => chiamataUtenti(`?email=eq.${encodeURIComponent(email)}`, { method: 'DELETE' });

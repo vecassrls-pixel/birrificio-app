@@ -3,7 +3,7 @@
 // Calcoli in haccp.js.
 
 import { ID_IMPOSTAZIONI, nomeFormato } from './birra.js';
-import { CONTROLLI_ARRIVO, FASI_PULIZIA, LINEE, fvDaPulire, inizioRegistroPulizie, statoFermentatori, SCADENZE_CONSIGLIATE, GIORNI_PREAVVISO, controlloFatto, lottiBirra, rintracciabilita, statoScadenzaHaccp } from './haccp.js';
+import { ID_OPERATORI, operatoriDa, opzioniOperatori, CONTROLLI_ARRIVO, FASI_PULIZIA, LINEE, fvDaPulire, inizioRegistroPulizie, statoFermentatori, SCADENZE_CONSIGLIATE, GIORNI_PREAVVISO, controlloFatto, lottiBirra, rintracciabilita, statoScadenzaHaccp } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
@@ -220,21 +220,23 @@ export async function vistaScadenzario() {
 }
 
 // ---------- pulizie e sanificazioni (CIP) ----------
-const nomeOperatore = () => { try { return localStorage.getItem('gb-nome-saluto') || ''; } catch { return ''; } };
+// con cosa si pulisce: di default soda 3% e sanificante 2%, fasi tutte tranne l'acido (Romain, 2026-10-15);
+// chi la fa: il primo degli operatori in Impostazioni. Tutto si cambia nel modulo.
+const PRODOTTI_PULIZIE = 'Soda 3%, sanificante 2%'; // default di Romain, 2026-10-15
 const regP = { da: '', a: '' };
 export async function vistaPulizie(cosaScelta = '') {
   const { html } = u;
   const oggi = u.oggiISO();
   if (!regP.da) { regP.da = `${oggi.slice(0, 7)}-01`; regP.a = oggi; }
   const pulizie = (await u.db.tutti('pulizia')).filter(p => !p.eliminato);
+  const operatori = operatoriDa(await u.db.leggi(ID_OPERATORI));
   const stati = statoFermentatori(u.stato.cotte, u.stato.durate, u.stato.fv, pulizie, oggi);
   const daPulire = new Set(fvDaPulire(stati, pulizie, oggi).map(s => s.fv.nome));
   const inizio = inizioRegistroPulizie(pulizie);
-  const ultima = [...pulizie].sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
   const nel = pulizie.filter(p => p.data >= regP.da && p.data <= regP.a).sort((a, b) => a.data.localeCompare(b.data) || a.cosa.localeCompare(b.cosa, 'it', { numeric: true }));
   const prodottiUsati = [...new Set(pulizie.map(p => p.prodotti).filter(Boolean))];
   const lineeUsate = [...new Set([...LINEE, ...pulizie.map(p => p.cosa)])].filter(x => !u.stato.fv.some(f => f.nome === x));
-  const nuova = { data: oggi, cosa: cosaScelta, fasi: ultima?.fasi || FASI_PULIZIA, prodotti: ultima?.prodotti || '', chi: nomeOperatore(), note: '' };
+  const nuova = { data: oggi, cosa: cosaScelta, fasi: FASI_PULIZIA.filter(f => f !== 'Acido'), prodotti: PRODOTTI_PULIZIE, chi: operatori[0], note: '' };
   const birraDi = r => r.cotte.map(c => c.birra).filter((x, i, a) => a.indexOf(x) === i).join(' + ');
   u.$app.innerHTML = html`
     <div class="barra non-stampa"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Pulizie e sanificazioni</h1></div>
@@ -258,7 +260,7 @@ export async function vistaPulizie(cosaScelta = '') {
         <label>Data<input type="date" id="pl-data" value="${nuova.data}"></label>
         <label>Cosa (FV o linea)<input id="pl-cosa" list="pl-cose" value="${nuova.cosa}" placeholder="es. FV3 o Linea fusti"></label>
         <label style="grid-column:span 2">Prodotti e concentrazione<input id="pl-prodotti" list="pl-prod" value="${nuova.prodotti}" placeholder="es. soda 2% a 70 °C, PAA 0,2%"></label>
-        <label>Fatta da<input id="pl-chi" value="${nuova.chi}"></label>
+        <label>Fatta da<select id="pl-chi">${operatori.map(n => html`<option ${n === nuova.chi ? 'selected' : ''}>${n}</option>`)}</select></label>
       </div>
       <datalist id="pl-cose">${u.stato.fv.map(f => html`<option value="${f.nome}">`)}${lineeUsate.map(x => html`<option value="${x}">`)}</datalist>
       <datalist id="pl-prod">${prodottiUsati.map(x => html`<option value="${x}">`)}</datalist>

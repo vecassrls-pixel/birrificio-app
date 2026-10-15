@@ -15,6 +15,7 @@ import * as listini from './vista-listini.js';
 import * as preventivi from './vista-preventivi.js';
 import * as backup from './backup.js';
 import * as home from './vista-home.js';
+import { ID_OPERATORI, operatoriDa } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
 import { apriEtichetta } from './etichetta.js';
@@ -414,6 +415,30 @@ function dialogNuovaCotta(pre = {}) {
 }
 
 // ---------- Scheda cotta ----------
+// Lista dei malti da macinare su WhatsApp (link wa.me, si preme Invia a mano).
+// Il numero di chi macina si chiede la prima volta e resta in questo dispositivo.
+const PREF_MACINA = 'gb-whatsapp-macina';
+function inviaMaltiWhatsApp(c) {
+  let num = null;
+  try { num = localStorage.getItem(PREF_MACINA); } catch {}
+  if (num === null) {
+    num = prompt('Numero WhatsApp di chi macina (es. 3331234567). Lascia vuoto per scegliere il contatto in WhatsApp ogni volta.', '');
+    if (num === null) return;
+    num = num.replace(/\D/g, '');
+    if (num.length === 10 && num.startsWith('3')) num = '39' + num; // cellulare italiano senza prefisso
+    try { localStorage.setItem(PREF_MACINA, num); } catch {}
+  }
+  const righe = (c.malti || []).filter(r => r.nome);
+  const kg = righe.reduce((t, r) => t + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
+  const testo = [
+    `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
+    '',
+    ...righe.map(r => `• ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
+    ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
+  ].join('\n');
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(testo)}`, '_blank');
+}
+
 const SEZIONI_INGR = [
   ['malti', 'Malti e zuccheri', 'kg'],
   ['luppoli', 'Luppoli', 'g'],
@@ -557,6 +582,7 @@ async function vistaCotta(id) {
       <datalist id="dl-art-${k}">${voci.map(a => html`<option value="${a.nome}" label="${fmtGiac(a)}"></option>`)}</datalist>
       <button class="piccolo" data-add="${k}" data-unita="${unitaDef}">+ Aggiungi</button>
       ${totaleIngr(righe)}
+      ${k === 'malti' && righe.length ? html`<button class="piccolo" id="whatsapp-malti" title="Apre WhatsApp con la lista dei malti da macinare già scritta">📲 Malti da macinare su WhatsApp</button>` : ''}
     </div>`;
   }
   function totaleIngr(righe) {
@@ -599,7 +625,7 @@ async function vistaCotta(id) {
         <div class="barra" style="margin:0">
           <div><h1>${c.birra || 'Nuova cotta'} <span style="color:var(--muted);font-weight:400">· lotto ${c.lotto || '—'}</span></h1>
           ${g.length > 1 ? html`<p class="totale" style="margin:2px 0">Cotta ${g.length === 2 ? 'doppia' : g.length === 3 ? 'tripla' : 'multipla'} <b>${lottoGruppo(g)}</b> in ${c.fv}: ${g.filter(x => x.id !== c.id).map((x, i) => html`${i ? ', ' : ''}<a href="#/cotta/${encodeURIComponent(x.id)}">${x.lotto}</a>`)}. Registro di fermentazione, FG, fine in FV, travaso e confezionamento sono comuni; OG, pH e dati del giorno di cotta restano di ogni cotta. Il grado alcolico usa la media degli OG.</p>
-          <button class="piccolo solo-editori" id="copia-ricetta" title="Malti, luppoli, lievito, sali, acqua e whirlpool di questa scheda vanno anche ${g.length === 2 ? 'nell\'altra cotta' : 'nelle altre cotte'} del lotto">⧉ Copia la ricetta ${g.length === 2 ? 'nell\'altra cotta' : 'nelle altre cotte'}</button>` : ''}
+          <button class="piccolo solo-editori" id="copia-ricetta" title="Malti, luppoli, lievito, sali, acqua, mash e whirlpool di questa scheda vanno anche ${g.length === 2 ? 'nell\'altra cotta' : 'nelle altre cotte'} del lotto">⧉ Copia la ricetta ${g.length === 2 ? 'nell\'altra cotta' : 'nelle altre cotte'}</button>` : ''}
           <span class="chip ${s}">${STATI[s]}</span>
           ${s === 'tank' && giornoOggi > 0 ? html` <span class="totale">giorno ${giornoOggi} di ${giorniTank}</span>` : ''}
           ${c.origine ? html` <span class="totale">· ricetta da lotto ${c.origine}</span>` : ''}</div>
@@ -673,6 +699,7 @@ async function vistaCotta(id) {
           ${campo('acquaMash.tempAmbiente', 'T° ambiente')}
           ${campo('acquaMash.tempAcqua', 'T° acqua mash')}
           ${campo('acquaMash.tempMash', 'T° mash')}
+          ${campo('mashMin', 'Durata mash (min)')}
           ${campo('acquaMash.ph15', 'pH a 15 min')}
           ${campo('acquaSparge.temp', 'T° sparge')}
           ${campo('whirlpoolMin', 'Durata whirlpool (min)')}
@@ -975,7 +1002,7 @@ async function vistaCotta(id) {
       // cotta doppia/tripla: stessa ricetta sulle altre cotte del lotto (OG, pH, litri e misure restano di ognuna)
       const altre = gruppo().filter(x => x.id !== c.id);
       if (!altre.length) return;
-      if (!(await chiedi(`Copiare la ricetta di ${c.lotto} (malti, luppoli, lievito, sali, acqua, whirlpool) su ${altre.map(x => x.lotto).join(', ')}? La ricetta che c'è adesso ${altre.length === 1 ? 'in quella cotta' : 'in quelle cotte'} viene sostituita.`, 'Copia'))) return;
+      if (!(await chiedi(`Copiare la ricetta di ${c.lotto} (malti, luppoli, lievito, sali, acqua, mash, whirlpool) su ${altre.map(x => x.lotto).join(', ')}? La ricetta che c'è adesso ${altre.length === 1 ? 'in quella cotta' : 'in quelle cotte'} viene sostituita.`, 'Copia'))) return;
       await salvaOra();
       const clona = v => JSON.parse(JSON.stringify(v ?? null));
       await db.salvaMolti(altre.map(x => {
@@ -984,7 +1011,7 @@ async function vistaCotta(id) {
         const luppoli = (clona(c.luppoli) || []).map(r => (r.uso === 'dry hop' && Number(r.giorno) > 0 ? { ...r, giorno: Number(r.giorno) + sposta } : r));
         return { ...x, malti: clona(c.malti) || [], luppoli, lievito: clona(c.lievito) || [], sali: clona(c.sali) || [],
           acquaMash: clona(c.acquaMash) || {}, acquaSparge: clona(c.acquaSparge) || {}, acquaDip: clona(c.acquaDip) || {},
-          whirlpoolMin: c.whirlpoolMin ?? null, ...(c.ricettaBf ? { ricettaBf: clona(c.ricettaBf) } : {}) };
+          mashMin: c.mashMin ?? null, whirlpoolMin: c.whirlpoolMin ?? null, ...(c.ricettaBf ? { ricettaBf: clona(c.ricettaBf) } : {}) };
       }));
       toast(`Ricetta copiata su ${altre.map(x => x.lotto).join(', ')}`);
     } else if (t.id === 'duplica') {
@@ -1048,6 +1075,8 @@ async function vistaCotta(id) {
       await db.elimina(altro.id);
       toast('Cotta collegata a Brewfather');
       const y = scrollY; disegna(); scrollTo(0, y);
+    } else if (t.id === 'whatsapp-malti') {
+      inviaMaltiWhatsApp(c);
     } else if (t.id === 'stampa') {
       // il titolo diventa il nome proposto per il file PDF
       const titolo = document.title;
@@ -1346,18 +1375,19 @@ function vistaPlanning() {
 // ---------- Impostazioni ----------
 const NOMI_RUOLO = { admin: 'Amministratore', editore: 'Può modificare', lettore: 'Solo lettura' };
 
-// Solo l'admin: chi può entrare e con quale ruolo. L'invito con la password si manda da Supabase.
+// Solo l'admin: chi può entrare e con quale ruolo. L'email di invito parte dal server (netlify/functions/invita.mjs);
+// se il server non è configurato resta la strada di Supabase (Invite user).
 async function gestioneUtenti() {
   const box = document.getElementById('utenti');
   const disegna = (utenti, errore = '') => {
     box.innerHTML = html`<h2>Utenti</h2>
-      <p class="totale">"Solo lettura" vede tutto (cotte, planning, magazzino, stampe) ma non può modificare nulla. Dopo averlo aggiunto qui, invialo da Supabase: Authentication → Users → Invite user, con la stessa email.</p>
+      <p class="totale">"Solo lettura" vede tutto (cotte, planning, magazzino, stampe) ma non può modificare nulla. Aggiungendo una persona le arriva un'email per scegliere la password; con ✉ la rimandi.</p>
       ${errore ? html`<p class="errore">${errore}</p>` : ''}
       <table class="tab-edit"><thead><tr><th>Email</th><th>Ruolo</th><th></th></tr></thead>
       <tbody>${utenti.map(x => html`<tr>
         <td>${x.email}</td>
         <td><select data-ruolo="${x.email}" ${x.email === auth.utente()?.email?.toLowerCase() ? 'disabled' : ''}>${Object.entries(NOMI_RUOLO).map(([k, v]) => html`<option value="${k}" ${k === x.ruolo ? 'selected' : ''}>${v}</option>`)}</select></td>
-        <td class="az">${x.email === auth.utente()?.email?.toLowerCase() ? '' : html`<button class="piccolo" data-togli="${x.email}" title="Togli accesso">✕</button>`}</td>
+        <td class="az">${x.email === auth.utente()?.email?.toLowerCase() ? '' : html`<button class="piccolo" data-invita="${x.email}" title="Manda di nuovo l'email di invito">✉</button> <button class="piccolo" data-togli="${x.email}" title="Togli accesso">✕</button>`}</td>
       </tr>`)}</tbody></table>
       <form class="barra" id="nuovo-utente" style="margin-top:10px">
         <input name="email" type="email" required placeholder="email@esempio.it" style="flex:2;min-width:200px">
@@ -1367,9 +1397,11 @@ async function gestioneUtenti() {
     box.querySelector('#nuovo-utente').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      try { await auth.aggiungiUtente(fd.get('email'), fd.get('ruolo')); toast('Utente aggiunto: ora invialo da Supabase'); carica(); }
-      catch (ex) { carica(ex.message); }
+      try { await auth.aggiungiUtente(fd.get('email'), fd.get('ruolo')); } catch (ex) { carica(ex.message); return; }
+      await manda(String(fd.get('email')).trim().toLowerCase(), 'Utente aggiunto');
+      carica();
     };
+    box.querySelectorAll('[data-invita]').forEach(b => { b.onclick = () => manda(b.dataset.invita); });
     box.querySelectorAll('[data-ruolo]').forEach(sel => { sel.onchange = async () => {
       try { await auth.cambiaRuolo(sel.dataset.ruolo, sel.value); toast('Ruolo aggiornato'); } catch (ex) { carica(ex.message); }
     }; });
@@ -1377,6 +1409,14 @@ async function gestioneUtenti() {
       if (!(await chiedi(`Togliere l'accesso a ${b.dataset.togli}?`, 'Togli'))) return;
       try { await auth.togliUtente(b.dataset.togli); carica(); } catch (ex) { carica(ex.message); }
     }; });
+  };
+  const manda = async (email, prima = '') => {
+    try {
+      const r = await auth.invita(email);
+      toast(`${prima ? `${prima}: ` : ''}${r.tipo === 'recupero' ? 'era già registrato, gli è arrivata l\'email per impostare la password' : 'email di invito inviata'} a ${email}`);
+    } catch (ex) {
+      toast(ex.status === 503 || ex.status === 404 ? `${prima ? `${prima}. ` : ''}Invito automatico non attivo: invialo da Supabase (Authentication → Users → Invite user)` : `Invito non inviato: ${ex.message}`);
+    }
   };
   const carica = async (errore = '') => {
     try { disegna(await auth.elencoUtenti(), errore); }
@@ -1408,6 +1448,7 @@ async function vistaImpostazioni() {
   const backupUltimo = await backup.ultimo();
   const impHome = (await db.leggi(home.ID_HOME)) || {};
   const logoScelto = impHome.eliminato ? 'gb' : impHome.logo || 'gb';
+  const operatori = [...operatoriDa(await db.leggi(ID_OPERATORI))];
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
     <div class="scheda">
@@ -1425,6 +1466,16 @@ async function vistaImpostazioni() {
         ${impHome.logoImmagine ? html`<label><input type="checkbox" id="logo-bianco" ${impHome.sfondoBianco === false ? '' : 'checked'}> Sfondo bianco dietro il logo (per i loghi scuri)</label>` : ''}
       </div>
       <p class="totale">Il logo vale per tutti i dispositivi. Va bene un PNG o JPG; per un logo chiaro su sfondo trasparente togli lo sfondo bianco.</p>
+    </div>
+    <div class="scheda" id="operatori">
+      <h2>Operatori HACCP</h2>
+      <p class="totale">Chi fa pulizie e controllo merci in arrivo. Il n° 1 è proposto di default, gli altri si scelgono dal menu.</p>
+      <table class="tab-edit tab-operatori"><tbody>${operatori.map((n, i) => html`<tr>
+        <td class="op-n">${i + 1}</td><td><input data-op="${i}" value="${n}"></td>
+        <td class="az"><button class="piccolo" data-op-su="${i}" ${i ? '' : 'disabled'} title="Sposta su (il primo è il default)">↑</button></td>
+        <td class="az"><button class="piccolo" data-op-giu="${i}" ${i < operatori.length - 1 ? '' : 'disabled'} title="Sposta giù">↓</button></td>
+        <td class="az"><button class="piccolo" data-op-del="${i}" ${operatori.length > 1 ? '' : 'disabled'} title="Togli">✕</button></td></tr>`)}</tbody></table>
+      <button class="piccolo" id="op-nuovo">+ Aggiungi operatore</button>
     </div>
     <div class="scheda">
       <h2>Fermentatori</h2>
@@ -1501,6 +1552,29 @@ async function vistaImpostazioni() {
       toast('Logo caricato: lo vedi in Home');
     } catch { toast('Non riesco a leggere questa immagine'); }
     vistaImpostazioni();
+  };
+  const salvaOperatori = async nomi => { await db.salva({ id: ID_OPERATORI, tipo: 'impostazione', nomi: nomi.map(x => x.trim()).filter(Boolean) }); vistaImpostazioni(); };
+  const $op = document.getElementById('operatori');
+  $op.onchange = e => {
+    const i = e.target.dataset.op;
+    if (i === undefined) return;
+    const nomi = [...operatori]; nomi[Number(i)] = e.target.value;
+    salvaOperatori(nomi);
+  };
+  $op.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    e.stopPropagation();
+    const nomi = [...operatori];
+    if (b.id === 'op-nuovo') { // riga vuota: si salva quando scrivi il nome
+      const tb = $op.querySelector('tbody');
+      tb.insertAdjacentHTML('beforeend', html`<tr><td class="op-n">${nomi.length + 1}</td><td><input data-op="${nomi.length}" placeholder="Nome e cognome"></td><td></td><td></td><td></td></tr>`.s);
+      return tb.querySelector(`[data-op="${nomi.length}"]`).focus();
+    }
+    const sposta = (i, j) => { [nomi[i], nomi[j]] = [nomi[j], nomi[i]]; salvaOperatori(nomi); };
+    if (b.dataset.opSu) return sposta(Number(b.dataset.opSu), Number(b.dataset.opSu) - 1);
+    if (b.dataset.opGiu) return sposta(Number(b.dataset.opGiu), Number(b.dataset.opGiu) + 1);
+    if (b.dataset.opDel) { nomi.splice(Number(b.dataset.opDel), 1); salvaOperatori(nomi); }
   };
   document.getElementById('nome-saluto').onchange = e => {
     try { localStorage.setItem(home.NOME_SALUTO, e.target.value.trim()); toast('Nome salvato: lo vedi in Home'); } catch { toast('Non riesco a salvare il nome su questo dispositivo'); }

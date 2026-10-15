@@ -43,6 +43,9 @@ Il codice dell'app va in un repository privato su GitHub, da cui Netlify pubblic
 4. Sul telefono: apri l'indirizzo, poi *Condividi → Aggiungi a schermata Home* (iPhone) o *Installa app* (Android).
 
 ## Aggiungere o togliere una persona
+- **Dall'app (consigliato)**: Impostazioni → Utenti → email + ruolo → Aggiungi: l'email di invito parte da sola (✉ per rimandarla).
+  Serve una volta sola la variabile Netlify `SUPABASE_SERVICE_KEY` = chiave segreta di Supabase (Project Settings → API Keys → secret,
+  oppure la vecchia service_role). Va solo su Netlify, mai in chat o nel codice. Senza, si usa la strada qui sotto.
 - **Aggiungere**: `insert into utenti_autorizzati ...` (punto 1.4) e poi *Invite user* (punto 4.2).
 - **Togliere**: `delete from utenti_autorizzati where email = '...';` e in *Authentication → Users* elimina l'utente.
   Da quel momento non legge più nulla, nemmeno se ha l'app aperta.

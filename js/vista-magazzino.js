@@ -2,9 +2,9 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import { LOGO_KASHMIR } from './logo-kashmir.js';
-import { CONTROLLI_ARRIVO } from './haccp.js';
+import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
 
@@ -202,6 +202,7 @@ export async function vistaArticolo(id) {
         <label>Scorta minima (${a.unita}) <input name="scortaMin" type="number" step="any" inputmode="decimal" value="${a.scortaMin || ''}"></label>
         <label>Prezzo (€/${a.unita}) <input name="prezzo" type="number" step="any" inputmode="decimal" value="${a.prezzo || ''}" title="Usato per il costo delle cotte se le bolle non hanno il prezzo"></label>
         <label>1 pezzo / sacco = (${a.unita}) <input name="pesoPezzo" type="number" step="any" inputmode="decimal" value="${a.pesoPezzo || ''}" placeholder="es. 20" title="Per le bolle che riportano solo i pezzi"></label>
+        <label>Densità (kg/L) <input name="densita" type="number" step="any" inputmode="decimal" value="${a.densita || ''}" placeholder="${densitaArticolo({ nome: a.nome }) ? String(DENSITA_ACIDO).replace('.', ',') : 'solo liquidi'}" title="Per i liquidi: converte i ml delle schede cotta nell'unità dell'articolo (acido lattico 80% = 1,2)"></label>
         <label style="grid-column:1/-1">Altri nomi nelle schede cotta (separati da virgola)
           <input name="alias" value="${(a.alias || []).join(', ')}" placeholder="es. Pils Schuemma, pils shuema"></label>
       </div>
@@ -238,7 +239,7 @@ export async function vistaArticolo(id) {
     const fd = new FormData(e.target);
     await u.db.salva({
       ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'), unita: fd.get('unita'),
-      scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, prezzo: Number(fd.get('prezzo')) || null,
+      scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, densita: Number(fd.get('densita')) || null, prezzo: Number(fd.get('prezzo')) || null,
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
     });
     u.toast('Articolo salvato');
@@ -264,12 +265,13 @@ export async function vistaArticolo(id) {
 }
 
 // ---------- bolla di carico ----------
-// nome di chi controlla la merce: quello del saluto in Home su questo dispositivo
-const nomeControllo = () => { try { return localStorage.getItem('gb-nome-saluto') || ''; } catch { return ''; } };
 export async function vistaBolla(id) {
   const { html } = u;
   const dati = await datiMagazzino();
   const esistente = id === 'nuova' ? null : dati.bolle.find(b => b.id === id);
+  // chi controlla la merce in arrivo: di default il primo degli operatori in Impostazioni
+  const operatori = operatoriDa(await u.db.leggi(ID_OPERATORI));
+  const nomeControllo = () => operatori[0];
   if (id !== 'nuova' && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Bolla non trovata. <a href="#/materie-prime">Torna alle materie prime</a></p>`; return; }
   const b = esistente ? JSON.parse(JSON.stringify(esistente))
     : { tipo: 'bolla', data: u.oggiISO(), fornitore: '', numero: '', righe: [{ nome: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
@@ -323,7 +325,7 @@ export async function vistaBolla(id) {
             <option value="" ${b.controllo?.esito ? '' : 'selected'}>non controllata</option>
             <option value="conforme" ${b.controllo?.esito === 'conforme' ? 'selected' : ''}>Conforme</option>
             <option value="non conforme" ${b.controllo?.esito === 'non conforme' ? 'selected' : ''}>Non conforme</option></select></label>
-          <label>Controllato da<input data-ck="chi" value="${b.controllo?.chi ?? nomeControllo()}"></label>
+          <label>Controllato da<select data-ck="chi">${opzioniOperatori(operatori, b.controllo?.chi).map(n => html`<option ${n === (b.controllo?.chi || nomeControllo()) ? 'selected' : ''}>${n}</option>`)}</select></label>
           <label style="grid-column:span 2">Note (cosa non va, cosa hai fatto)<input data-ck="note" value="${b.controllo?.note || ''}"></label>
         </div>
       </div>
@@ -414,6 +416,9 @@ const NASCONDI_ZERO = 'inventario-nascondi-zero';
 const leggiPref = () => { try { return localStorage.getItem(NASCONDI_ZERO) === '1'; } catch { return false; } };
 const scriviPref = v => { try { localStorage.setItem(NASCONDI_ZERO, v ? '1' : '0'); } catch { /* niente storage: vale solo ora */ } };
 const aZero = x => Math.abs(x) < 1e-9;
+// testo per il filtro dell'inventario: nome, alias e categoria, senza accenti e maiuscole
+const semplice = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+const testoCerca = a => semplice([a.nome, ...(a.alias || []), CATEGORIE[a.categoria]].join(' '));
 export async function vistaInventario() {
   const { html } = u;
   const dati = await datiMagazzino();
@@ -440,6 +445,7 @@ export async function vistaInventario() {
       <p class="totale">Scrivi la quantità contata solo per gli articoli che hai controllato: da quella data la giacenza riparte da lì, poi si aggiungono le bolle e si tolgono cotte e DH. Gli articoli lasciati vuoti non cambiano. Lotto e scadenza sono già quelli in magazzino: cambiali se non corrispondono.</p>
       <div class="barra" style="margin:0;align-items:flex-end">
         <label style="max-width:200px">Data inventario <input type="date" id="data-inv" value="${data.v}"></label>
+        <label style="max-width:260px">Cerca materia prima <input type="search" id="inv-cerca" placeholder="es. pils, citra, gypsum…" autocomplete="off"></label>
         <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondi ? 'checked' : ''}> Nascondi le materie prime a 0</label>
       </div>
     </div>
@@ -451,13 +457,14 @@ export async function vistaInventario() {
       const tuttiZero = rr.every(a => aZero(g.get(a.id).giacenza));
       return html`<div class="scheda ${tuttiZero ? 'tutti-zero' : ''}"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-edit tab-inv">
         <thead><tr><th>Articolo</th><th class="n">Calcolato oggi</th><th style="width:130px">Contato</th><th style="width:50px"></th><th style="width:130px">Lotto (facolt.)</th><th style="width:140px">Scadenza (facolt.)</th></tr></thead>
-        <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}">
+        <tbody>${rr.map(a => html`<tr class="${aZero(g.get(a.id).giacenza) ? 'zero' : ''}" data-cerca="${testoCerca(a)}">
           <td class="inv-nome">${a.nome}</td><td class="n inv-calc" data-et="Calcolato oggi">${fmt(g.get(a.id).giacenza, a.unita)}</td>
           <td data-et="Contato (${a.unita})"><input data-inv="${a.id}" type="number" step="any" inputmode="decimal"></td><td class="totale inv-unita">${a.unita}</td>
           <td data-et="Lotto (facolt.)"><input data-lotto="${a.id}" value="${extre.get(a.id)?.lotto || ''}">${proposto(a.id).altri.length ? html`<span class="totale" style="display:block;font-size:.72rem">altri lotti: ${proposto(a.id).altri.join(', ')}</span>` : ''}</td><td data-et="Scadenza (facolt.)"><input data-scad="${a.id}" type="date" value="${extre.get(a.id)?.scadenza || ''}"></td>
         </tr>`)}</tbody></table></div></div>`;
     })}
     </div>
+    <p class="vuoto" id="inv-nessuno" hidden>Nessuna materia prima trovata.</p>
     ${dati.articoli.length ? html`<div class="barra salva-inv"><span class="totale" id="inv-conta"></span><span class="spazio"></span><button class="primario" id="salva-inv">Salva inventario</button></div>` : ''}`;
   const toccati = new Set(); // articoli con lotto o scadenza cambiati a mano
   // lotto/scadenza scritti senza quantità contata
@@ -466,7 +473,26 @@ export async function vistaInventario() {
     const n = contati.size + soloLotto().length;
     const el = document.getElementById('inv-conta'); if (el) el.textContent = n ? (n === 1 ? '1 articolo da salvare' : `${n} articoli da salvare`) : '';
   };
+  // filtro: nasconde le righe che non corrispondono (le quantità già scritte restano)
+  const filtra = () => {
+    const parole = semplice(document.getElementById('inv-cerca').value).split(' ').filter(Boolean);
+    let visibili = 0;
+    for (const sc of u.$app.querySelectorAll('#elenco-inv > .scheda')) {
+      let n = 0;
+      for (const tr of sc.querySelectorAll('tbody tr')) {
+        const ok = parole.every(p => tr.dataset.cerca.includes(p));
+        tr.hidden = !ok;
+        if (ok) n++;
+      }
+      sc.hidden = !n;
+      visibili += n;
+    }
+    document.getElementById('elenco-inv').classList.toggle('filtrato', parole.length > 0);
+    document.getElementById('inv-nessuno').hidden = !!visibili || !dati.articoli.length;
+  };
+  document.getElementById('inv-cerca').onkeydown = e => { if (e.key === 'Escape') { e.target.value = ''; filtra(); } };
   u.$app.oninput = e => {
+    if (e.target.id === 'inv-cerca') return filtra();
     if (e.target.id === 'nascondi-zero') {
       scriviPref(e.target.checked);
       document.getElementById('elenco-inv').classList.toggle('senza-zero', e.target.checked);
