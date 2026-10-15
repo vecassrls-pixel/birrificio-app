@@ -15,6 +15,7 @@ import * as listini from './vista-listini.js';
 import * as preventivi from './vista-preventivi.js';
 import * as backup from './backup.js';
 import * as home from './vista-home.js';
+import { ID_OPERATORI, operatoriDa } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
 import { apriEtichetta } from './etichetta.js';
@@ -1409,6 +1410,7 @@ async function vistaImpostazioni() {
   const backupUltimo = await backup.ultimo();
   const impHome = (await db.leggi(home.ID_HOME)) || {};
   const logoScelto = impHome.eliminato ? 'gb' : impHome.logo || 'gb';
+  const operatori = [...operatoriDa(await db.leggi(ID_OPERATORI))];
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
     <div class="scheda">
@@ -1426,6 +1428,16 @@ async function vistaImpostazioni() {
         ${impHome.logoImmagine ? html`<label><input type="checkbox" id="logo-bianco" ${impHome.sfondoBianco === false ? '' : 'checked'}> Sfondo bianco dietro il logo (per i loghi scuri)</label>` : ''}
       </div>
       <p class="totale">Il logo vale per tutti i dispositivi. Va bene un PNG o JPG; per un logo chiaro su sfondo trasparente togli lo sfondo bianco.</p>
+    </div>
+    <div class="scheda" id="operatori">
+      <h2>Operatori HACCP</h2>
+      <p class="totale">Chi fa pulizie e controllo merci in arrivo. Il n° 1 è proposto di default, gli altri si scelgono dal menu.</p>
+      <table class="tab-edit tab-operatori"><tbody>${operatori.map((n, i) => html`<tr>
+        <td class="op-n">${i + 1}</td><td><input data-op="${i}" value="${n}"></td>
+        <td class="az"><button class="piccolo" data-op-su="${i}" ${i ? '' : 'disabled'} title="Sposta su (il primo è il default)">↑</button></td>
+        <td class="az"><button class="piccolo" data-op-giu="${i}" ${i < operatori.length - 1 ? '' : 'disabled'} title="Sposta giù">↓</button></td>
+        <td class="az"><button class="piccolo" data-op-del="${i}" ${operatori.length > 1 ? '' : 'disabled'} title="Togli">✕</button></td></tr>`)}</tbody></table>
+      <button class="piccolo" id="op-nuovo">+ Aggiungi operatore</button>
     </div>
     <div class="scheda">
       <h2>Fermentatori</h2>
@@ -1502,6 +1514,29 @@ async function vistaImpostazioni() {
       toast('Logo caricato: lo vedi in Home');
     } catch { toast('Non riesco a leggere questa immagine'); }
     vistaImpostazioni();
+  };
+  const salvaOperatori = async nomi => { await db.salva({ id: ID_OPERATORI, tipo: 'impostazione', nomi: nomi.map(x => x.trim()).filter(Boolean) }); vistaImpostazioni(); };
+  const $op = document.getElementById('operatori');
+  $op.onchange = e => {
+    const i = e.target.dataset.op;
+    if (i === undefined) return;
+    const nomi = [...operatori]; nomi[Number(i)] = e.target.value;
+    salvaOperatori(nomi);
+  };
+  $op.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    e.stopPropagation();
+    const nomi = [...operatori];
+    if (b.id === 'op-nuovo') { // riga vuota: si salva quando scrivi il nome
+      const tb = $op.querySelector('tbody');
+      tb.insertAdjacentHTML('beforeend', html`<tr><td class="op-n">${nomi.length + 1}</td><td><input data-op="${nomi.length}" placeholder="Nome e cognome"></td><td></td><td></td><td></td></tr>`.s);
+      return tb.querySelector(`[data-op="${nomi.length}"]`).focus();
+    }
+    const sposta = (i, j) => { [nomi[i], nomi[j]] = [nomi[j], nomi[i]]; salvaOperatori(nomi); };
+    if (b.dataset.opSu) return sposta(Number(b.dataset.opSu), Number(b.dataset.opSu) - 1);
+    if (b.dataset.opGiu) return sposta(Number(b.dataset.opGiu), Number(b.dataset.opGiu) + 1);
+    if (b.dataset.opDel) { nomi.splice(Number(b.dataset.opDel), 1); salvaOperatori(nomi); }
   };
   document.getElementById('nome-saluto').onchange = e => {
     try { localStorage.setItem(home.NOME_SALUTO, e.target.value.trim()); toast('Nome salvato: lo vedi in Home'); } catch { toast('Non riesco a salvare il nome su questo dispositivo'); }

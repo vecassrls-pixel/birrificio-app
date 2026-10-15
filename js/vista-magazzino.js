@@ -2,7 +2,7 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import { LOGO_KASHMIR } from './logo-kashmir.js';
-import { CONTROLLI_ARRIVO } from './haccp.js';
+import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
   CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo,
 } from './magazzino.js';
@@ -264,12 +264,13 @@ export async function vistaArticolo(id) {
 }
 
 // ---------- bolla di carico ----------
-// chi controlla la merce in arrivo: di default Luca Ferri (Romain, 2026-10-15); si cambia nella bolla
-const nomeControllo = () => 'LUCA FERRI';
 export async function vistaBolla(id) {
   const { html } = u;
   const dati = await datiMagazzino();
   const esistente = id === 'nuova' ? null : dati.bolle.find(b => b.id === id);
+  // chi controlla la merce in arrivo: di default il primo degli operatori in Impostazioni
+  const operatori = operatoriDa(await u.db.leggi(ID_OPERATORI));
+  const nomeControllo = () => operatori[0];
   if (id !== 'nuova' && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Bolla non trovata. <a href="#/materie-prime">Torna alle materie prime</a></p>`; return; }
   const b = esistente ? JSON.parse(JSON.stringify(esistente))
     : { tipo: 'bolla', data: u.oggiISO(), fornitore: '', numero: '', righe: [{ nome: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
@@ -323,7 +324,7 @@ export async function vistaBolla(id) {
             <option value="" ${b.controllo?.esito ? '' : 'selected'}>non controllata</option>
             <option value="conforme" ${b.controllo?.esito === 'conforme' ? 'selected' : ''}>Conforme</option>
             <option value="non conforme" ${b.controllo?.esito === 'non conforme' ? 'selected' : ''}>Non conforme</option></select></label>
-          <label>Controllato da<input data-ck="chi" value="${b.controllo?.chi ?? nomeControllo()}"></label>
+          <label>Controllato da<select data-ck="chi">${opzioniOperatori(operatori, b.controllo?.chi).map(n => html`<option ${n === (b.controllo?.chi || nomeControllo()) ? 'selected' : ''}>${n}</option>`)}</select></label>
           <label style="grid-column:span 2">Note (cosa non va, cosa hai fatto)<input data-ck="note" value="${b.controllo?.note || ''}"></label>
         </div>
       </div>

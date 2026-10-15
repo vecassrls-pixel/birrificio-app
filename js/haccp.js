@@ -42,6 +42,14 @@ export function rintracciabilita(lotto, datiMag, datiBirra) {
   return { materie, confezionato, uscite: movimenti.filter(r => r.cs === 'S') };
 }
 
+// ---------- operatori ----------
+// Elenco ordinato in Impostazioni (record condiviso): il primo è quello proposto in pulizie e controllo merci.
+export const ID_OPERATORI = 'impostazione-operatori';
+export const OPERATORI_DEFAULT = ['LUCA FERRI'];
+export const operatoriDa = rec => (rec && !rec.eliminato && rec.nomi?.filter(Boolean).length ? rec.nomi.filter(Boolean) : OPERATORI_DEFAULT);
+// voci del menu: gli operatori, più il nome già salvato su un record vecchio se non è più in elenco
+export const opzioniOperatori = (nomi, scelto) => (scelto && !nomi.includes(scelto) ? [...nomi, scelto] : nomi);
+
 // ---------- controllo materie prime in arrivo ----------
 export const CONTROLLI_ARRIVO = [
   ['imballo', 'Imballi integri'],
