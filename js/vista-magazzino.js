@@ -4,7 +4,7 @@
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
 
@@ -202,6 +202,7 @@ export async function vistaArticolo(id) {
         <label>Scorta minima (${a.unita}) <input name="scortaMin" type="number" step="any" inputmode="decimal" value="${a.scortaMin || ''}"></label>
         <label>Prezzo (€/${a.unita}) <input name="prezzo" type="number" step="any" inputmode="decimal" value="${a.prezzo || ''}" title="Usato per il costo delle cotte se le bolle non hanno il prezzo"></label>
         <label>1 pezzo / sacco = (${a.unita}) <input name="pesoPezzo" type="number" step="any" inputmode="decimal" value="${a.pesoPezzo || ''}" placeholder="es. 20" title="Per le bolle che riportano solo i pezzi"></label>
+        <label>Densità (kg/L) <input name="densita" type="number" step="any" inputmode="decimal" value="${a.densita || ''}" placeholder="${densitaArticolo({ nome: a.nome }) ? String(DENSITA_ACIDO).replace('.', ',') : 'solo liquidi'}" title="Per i liquidi: converte i ml delle schede cotta nell'unità dell'articolo (acido lattico 80% = 1,2)"></label>
         <label style="grid-column:1/-1">Altri nomi nelle schede cotta (separati da virgola)
           <input name="alias" value="${(a.alias || []).join(', ')}" placeholder="es. Pils Schuemma, pils shuema"></label>
       </div>
@@ -238,7 +239,7 @@ export async function vistaArticolo(id) {
     const fd = new FormData(e.target);
     await u.db.salva({
       ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'), unita: fd.get('unita'),
-      scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, prezzo: Number(fd.get('prezzo')) || null,
+      scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, densita: Number(fd.get('densita')) || null, prezzo: Number(fd.get('prezzo')) || null,
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
     });
     u.toast('Articolo salvato');
