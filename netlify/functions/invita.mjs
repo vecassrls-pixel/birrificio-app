@@ -40,7 +40,9 @@ export default async req => {
   // già registrato: email per impostare la password
   if (inv.status === 422 || /already/i.test(msg)) {
     const rec = await fetch(`${base}/auth/v1/recover`, { method: 'POST', headers: { apikey: anon, 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
-    return rec.ok ? json({ ok: true, tipo: 'recupero' }) : json({ errore: 'Utente già registrato, invio email non riuscito' }, 502);
+    if (rec.ok) return json({ ok: true, tipo: 'recupero' });
+    const e = await rec.json().catch(() => ({}));
+    return json({ errore: `Utente già registrato, email per la password non inviata (${e.msg || e.message || rec.statusText}). Da Supabase: Users → ⋯ → Send password recovery` }, 502);
   }
   return json({ errore: `Invito non riuscito: ${msg}` }, inv.status === 429 ? 429 : 502);
 };
