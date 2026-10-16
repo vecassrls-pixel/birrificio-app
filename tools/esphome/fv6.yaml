@@ -1,0 +1,29 @@
+# Termostato FV6: scheda ESP32 + relè al posto dell'Inkbird STC-1000.
+# Tutta la logica è in fv-termostato.yaml; qui solo i valori di questo fermentatore.
+# Validare:  esphome config fv6.yaml      Primo caricamento (via USB):  esphome run fv6.yaml
+
+substitutions:
+  nome: fv6                    # nome sulla rete: http://fv6.local
+  nome_fv: "FV6"               # scritto sul display
+
+  # --- piedini della scheda: DA VERIFICARE sulla scheda (serigrafia / scheda del venditore) ---
+  pin_rele: GPIO16              # relè (sulla "ESP32 Relay X1" di solito GPIO16) - DA VERIFICARE
+  pin_led: GPIO23               # LED di stato sulla scheda - DA VERIFICARE
+  led_invertito: "false"        # "true" se il LED si accende con il livello basso
+  pin_ntc: GPIO34               # ingresso analogico della sonda: DEVE essere ADC1 (GPIO32-39), solo ingresso - DA VERIFICARE che sia sul connettore
+  pin_sda: GPIO21               # display OLED, SDA - DA VERIFICARE
+  pin_scl: GPIO22               # display OLED, SCL - DA VERIFICARE
+
+  # --- sonda NTC dell'STC-1000 ---
+  ntc_beta: "3435"              # costante B della sonda STC-1000 (10 kΩ a 25 °C)
+  correzione_temp: "0.0"        # taratura: gradi da aggiungere (es. "-0.3") dopo il confronto con un termometro di riferimento
+  temp_min_valida: "-15"        # sotto: sonda in corto/scollegata → freddo spento
+  temp_max_valida: "50"         # sopra: sonda guasta → freddo spento
+
+  # --- termostato ---
+  setpoint_iniziale: "18"       # °C, solo al primo avvio; poi resta quello impostato
+  isteresi: "0.5°C"             # il freddo parte a setpoint + isteresi e si ferma al setpoint
+  min_spento: "3min"            # tempo minimo da spento prima che il freddo riparta
+
+packages:
+  termostato: !include fv-termostato.yaml
