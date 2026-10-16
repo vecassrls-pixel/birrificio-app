@@ -794,3 +794,62 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .tab-operatori { max-width: 520px; }
 .tab-operatori .op-n { width: 28px; color: var(--muted); font-weight: 600; text-align: center; }
 .tab-operatori tr:first-child .op-n { color: var(--accent); }
+
+/* ---------- Cantina: temperature dei fermentatori ---------- */
+.widget > header span > a.totale { text-decoration: none; color: var(--brand); white-space: nowrap; margin: 0 0 0 10px; }
+.cantina-griglia { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.fv-card {
+  --stato: var(--ok);
+  background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--stato); border-radius: var(--radius);
+  box-shadow: var(--ombra); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.fv-card.allarme { --stato: var(--warn); background: color-mix(in srgb, var(--warn) 6%, var(--surface)); }
+.fv-card.muto { --stato: var(--s-tank); }
+.fv-card.nessuno, .fv-card.spento { --stato: var(--border); }
+.fv-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fv-card .fv-stato { --c: var(--stato); }
+.fv-card.nessuno .fv-stato, .fv-card.spento .fv-stato { --c: var(--muted); }
+.fv-valori { display: flex; align-items: center; gap: 14px; }
+.fv-temp { font-size: 2.1rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.02em; }
+.fv-temp small { font-size: .95rem; font-weight: 500; color: var(--muted); }
+.fv-card.nessuno .fv-temp, .fv-card.muto .fv-temp { color: var(--muted); }
+.fv-dett { display: flex; flex-direction: column; gap: 2px; font-size: .85rem; color: var(--muted); }
+.fv-dett b { color: var(--text); font-variant-numeric: tabular-nums; }
+.fv-freddo.acceso { color: var(--s-pianificata); font-weight: 600; }
+.fv-cotta { display: block; text-decoration: none; color: var(--text); background: var(--surface-2); border-radius: 9px; padding: 7px 10px; }
+.fv-cotta small { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+.fv-vuoto { margin: 0; color: var(--muted); font-size: .9rem; background: var(--surface-2); border-radius: 9px; padding: 7px 10px; }
+.fv-card footer { display: flex; flex-direction: column; gap: 2px; margin-top: auto; }
+.fv-card footer .totale { margin: 0; font-size: .78rem; }
+.fv-motivi { color: var(--warn); font-size: .82rem; font-weight: 600; }
+.fv-card.muto .fv-motivi { color: var(--s-tank); }
+.fv-live { --c: var(--muted); }
+.fv-live.acceso { --c: var(--ok); }
+@media (max-width: 760px) { .cantina-griglia { grid-template-columns: 1fr 1fr; gap: 8px; } .fv-card { padding: 10px; } .fv-temp { font-size: 1.7rem; } .fv-valori { flex-direction: column; align-items: flex-start; gap: 6px; } }
+@media (max-width: 380px) { .cantina-griglia { grid-template-columns: 1fr; } }
+
+/* curva delle sonde nella scheda cotta (una sola scala in °C; il freddo è una striscia sotto) */
+.temp-sonde h3 { margin-top: 4px; }
+.tg-temp { fill: none; stroke: #dc2626; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tg-setpoint { fill: none; stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.tg-profilo { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 2 3; opacity: .8; }
+.tg-freddo rect { fill: #0ea5e9; }
+.tg-freddo-fondo { fill: var(--surface-2); }
+.tg-travaso { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 3; }
+.tg-legenda { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .8rem; font-weight: 600; margin: 2px 0 4px; }
+.tg-legenda span { display: inline-flex; align-items: center; gap: 6px; }
+.tg-segno { display: inline-block; width: 18px; height: 0; border-top: 3px solid #dc2626; }
+.tg-segno.tg-l-setpoint { border-top: 2px dashed #2563eb; }
+.tg-segno.tg-l-profilo { border-top: 2px dotted var(--muted); }
+.tg-segno.tg-l-freddo { height: 9px; border: none; background: #0ea5e9; border-radius: 2px; }
+.tg-p-temp { background: #dc2626; } .tg-p-setpoint { background: #2563eb; } .tg-p-freddo { background: #0ea5e9; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tg-temp { stroke: #f87171; } :root:not([data-theme="light"]) .tg-setpoint { stroke: #60a5fa; } :root:not([data-theme="light"]) .tg-segno.tg-l-temp { border-color: #f87171; } :root:not([data-theme="light"]) .tg-segno.tg-l-setpoint { border-color: #60a5fa; } }
+:root[data-theme="dark"] .tg-temp { stroke: #f87171; }
+:root[data-theme="dark"] .tg-setpoint { stroke: #60a5fa; }
+:root[data-theme="dark"] .tg-segno.tg-l-temp { border-color: #f87171; }
+:root[data-theme="dark"] .tg-segno.tg-l-setpoint { border-color: #60a5fa; }
+@media print {
+  .tg-temp { stroke: #dc2626 !important; } .tg-setpoint { stroke: #2563eb !important; }
+  .tg-freddo rect, .tg-freddo-fondo, .tg-segno { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cantina-griglia { grid-template-columns: repeat(3, 1fr); }
+}

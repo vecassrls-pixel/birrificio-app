@@ -18,6 +18,8 @@ import * as home from './vista-home.js';
 import { ID_OPERATORI, operatoriDa } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
+import * as cantina from './vista-cantina.js';
+import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
@@ -86,6 +88,7 @@ listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, cop
 preventivi.init({ $app, html, raw, db, toast, chiedi, dataIT, numIT, oggiISO, copia });
 haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
+cantina.init({ $app, html, raw, stato, dataIT, oggiISO, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
@@ -181,6 +184,7 @@ const routes = [
   [/^#\/cotte$/, vistaCotte],
   [/^#\/cotta\/(.+)$/, vistaCotta],
   [/^#\/planning$/, vistaPlanning],
+  [/^#\/cantina$/, () => cantina.vistaCantina().then(f => { if (f) pulizia = f; })],
   [/^#\/materie-prime$/, () => magazzino.vistaMagazzino()],
   [/^#\/materia\/(.+)$/, id => magazzino.vistaArticolo(id)],
   [/^#\/bolla\/(.+)$/, id => magazzino.vistaBolla(id)],
@@ -473,6 +477,42 @@ async function vistaCotta(id) {
     if (capo.id !== c.id) c.confezionato = JSON.parse(JSON.stringify(capo.confezionato || []));
   }
 
+  // temperature misurate dalle sonde nei FV occupati dalla cotta (gateway in birrificio, vedi js/temperature.js)
+  const sonde = { chiave: null, stato: 'nessuno', curva: null, intervalli: [] };
+  function htmlSonde() {
+    if (!auth.configurato() || !c.data || c.data > oggiISO() || sonde.stato === 'nessuno') return '';
+    if (sonde.stato === 'carico') return html`<p class="totale non-stampa">Carico le temperature delle sonde…</p>`;
+    if (sonde.stato === 'errore') return html`<p class="totale non-stampa">Temperature delle sonde non disponibili${sonde.errore ? ` (${sonde.errore})` : ''}.</p>`;
+    const g = graficoTemperature(sonde.curva, sonde.intervalli, profiloCotta(c, stato.cotte.map(x => (x.id === c.id ? c : x))));
+    if (!g) return html`<p class="totale non-stampa">Nessuna lettura delle sonde per ${sonde.intervalli.map(p => p.fv).join(' e ')} in questo periodo.</p>`;
+    return html`<h3>Temperatura misurata in ${sonde.intervalli.map(p => p.fv).join(' → ')}</h3>${raw(g)}`;
+  }
+  function mostraSonde() {
+    const box = document.getElementById('temp-sonde');
+    if (!box) return;
+    box.innerHTML = htmlSonde().toString();
+    if (sonde.stato === 'ok') attivaGraficoTemp(box.querySelector('.graf-temp'), sonde.curva.punti);
+  }
+  async function caricaSonde() {
+    if (!auth.configurato() || !c.data || c.data > oggiISO()) return;
+    const intervalli = intervalliCotta(c, stato.durate, stato.fv);
+    const chiave = JSON.stringify(intervalli.map(p => [p.fv, p.da, p.giorni]));
+    if (chiave === sonde.chiave) return;
+    Object.assign(sonde, { chiave, intervalli, stato: intervalli.length ? 'carico' : 'nessuno' });
+    mostraSonde();
+    if (!intervalli.length) return;
+    try {
+      const curva = await caricaCurva(intervalli);
+      if (sonde.chiave !== chiave) return;
+      Object.assign(sonde, { curva, stato: 'ok' });
+    } catch (e) {
+      if (sonde.chiave !== chiave) return;
+      // tabelle non ancora create o modalità locale: niente da mostrare
+      Object.assign(sonde, { stato: e.codice === 'mancante' || e.codice === 'locale' ? 'nessuno' : 'errore', errore: e.codice === 'offline' ? 'senza internet' : '' });
+    }
+    mostraSonde();
+  }
+
   let timer, salvataggio = Promise.resolve();
   const salvaPresto = () => {
     clearTimeout(timer);
@@ -753,6 +793,7 @@ async function vistaCotta(id) {
       <div class="scheda" id="sez-ferm">
         <h2>Fermentazione</h2>
         ${raw(graficoFermentazione(c, diffGiorni, c.data ? diffGiorni(c.data, oggiISO()) + 1 : null, valoriCotta))}
+        <div id="temp-sonde" class="temp-sonde">${htmlSonde()}</div>
         <div class="scroll-x"><table class="tab-edit">
           <thead><tr><th style="width:44px">G.</th><th style="width:150px">Data</th><th>T° °C</th><th>Densità °P</th><th>pH</th><th>psi</th><th title="Spurgo">${SIMBOLI.spurgo}</th><th title="Bubbling">${SIMBOLI.bubbling}</th><th>Nota (DH, CC, spurgo…)</th><th></th></tr></thead>
           <tbody>${c.fermentazione.map((e, i) => (!fermTutte && !rigaFermUtile(i) ? '' : html`<tr ${e.data === oggiISO() ? raw('style="background:var(--surface-2)"') : ''}>
@@ -838,6 +879,8 @@ async function vistaCotta(id) {
       </div>
     `;
     attivaGrafico(c, diffGiorni, dataIT, valoriCotta);
+    if (sonde.stato === 'ok') attivaGraficoTemp(document.querySelector('#temp-sonde .graf-temp'), sonde.curva.punti);
+    caricaSonde();
     $app.querySelector('.indice').onclick = e => {
       const a = e.target.closest('[data-vai]');
       if (a) document.getElementById(a.dataset.vai)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

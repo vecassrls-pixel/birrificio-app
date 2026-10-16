@@ -185,7 +185,7 @@ export async function vistaHome() {
       </section>
 
       <section class="widget w-fv">
-        <header><h2>Fermentatori</h2><a class="totale" href="#/planning">Planning →</a></header>
+        <header><h2>Fermentatori</h2><span><a class="totale" href="#/cantina">Temperature →</a> <a class="totale" href="#/planning">Planning →</a></span></header>
         ${fvOccupati.length ? html`<ul class="w-lista">${fvOccupati.map(x => html`<li><a href="#/cotta/${encodeURIComponent(x.c0.id)}">
           <span class="w-fvnome">${x.fv}</span>
           <span class="w-testo"><b>${x.c0.birra}</b> <span class="totale">${x.cc.length > 1 ? lottoGruppo(x.cc) : x.c0.lotto}</span>
