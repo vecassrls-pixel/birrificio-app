@@ -1,9 +1,15 @@
-// Preventivi per beerfirm: voci, prezzi e formule copiati dal file Numbers "Americo" di Romain (ottobre 2026).
+// Preventivi per beerfirm.
 //   costo cotta = malti + luppoli + trasporto forniture + lievito e additivi + costi di produzione + accise
-//   accise = ettolitri × °Plato × aliquota (1,49 € microbirrifici; nei fogli più vecchi 1,794)
+//   accise = ettolitri × °Plato × aliquota (1,49 € microbirrifici)
 //   preventivo = costo cotta + guadagno; prezzo al litro = preventivo / litri finali
 //   prezzo di un formato = prezzo al litro × litri del formato + contenitore + lavoro
-//     (lattina: litri 1/3 come nel foglio, lattina + cartone 0,20 €, lavoro 0,06 €; fusto 25 L +12,30 €; fusto 20 L +12 €)
+//     (lattina: litri 1/3, lattina + cartone 0,20 €, lavoro 0,06 €; fusto 25 L +12,30 €; fusto 20 L +12 €)
+// Ogni nuovo preventivo parte dal "modello base" (record ID_MODELLO, modificabile come un preventivo):
+// costi fissi, trasporto, aliquota, guadagno e formati già scritti; materie prime vuote, da riempire a mano
+// (prezzo preso dal magazzino quando si sceglie l'articolo) o da una ricetta Brewfather.
+
+import { articoloSimile, converti, convertiPer, trovaArticolo } from './magazzino.js';
+import { prezzoArticolo } from './costi.js';
 
 export const SEZIONI = [
   { k: 'malti', titolo: 'Malti', qta: 'kg', prezzo: '€/kg' },
@@ -12,105 +18,69 @@ export const SEZIONI = [
   { k: 'lievito', titolo: 'Lievito e additivi', qta: 'qtà', prezzo: '€/unità' },
   { k: 'costi', titolo: 'Costi di produzione', qta: 'qtà', prezzo: '€/unità' },
 ];
+// sezioni con le materie prime del magazzino, e le categorie di articoli proposte in ognuna
+export const CATEGORIE_SEZIONE = { malti: ['malto', 'zucchero'], luppoli: ['luppolo'], lievito: ['lievito', 'sale', 'aggiunta', 'coadiuvante', 'zucchero', 'spezia'] };
 export const STATI = [['bozza', 'Bozza'], ['inviato', 'Inviato'], ['accettato', 'Accettato'], ['rifiutato', 'Rifiutato']];
 export const ALIQUOTA_ACCISE = 1.49;
+export const ID_MODELLO = 'preventivo-modello';
 
 const righe = l => l.map(([nome, qta, prezzo]) => ({ nome, qta, prezzo }));
-const formati = (lattine, fusti25, fusti20 = 0) => [
-  { nome: 'Lattine 0,33 L', litri: 1 / 3, contenitore: 0.2, lavoro: 0.06, qta: lattine },
-  { nome: 'Fusti 25 L', litri: 25, contenitore: 12.3, lavoro: 0, qta: fusti25 },
-  { nome: 'Fusti 20 L', litri: 20, contenitore: 12, lavoro: 0, qta: fusti20 },
-];
-const additivi = (polygel, extra = []) => [
-  ['LP 652', 0, 776.6], ['zucchero', 0, 2.1], ['gypsum', 0.1, 4], ['Cloruro', 0.2, 4], ['magnesio', 0.2, 4],
-  ['acido lattico', 0.5, 6], ['brewmix', 0.15, 46.22], ['spindasol', 0.33, 5.58], ['Protafloc', 0.05, 30],
-  ['antioxin sbt', 0.1, 26.07], ['sale', 0, 1.15], ['coriandolo', 0, 7.7], ['Polygel', polygel, 26.2], ...extra,
-];
-const costi = (corrente, gas, affitto, rata, prezzoCorrente = 0.5) => [
-  ['Acqua', 1, 10], ['Corrente (kWh)', corrente, prezzoCorrente], ['Gas', gas, 1.5], ['Affitto', 1, affitto],
-  ['CO2', 1, 25], ['Detergenti', 1, 10], ['Rata', 1, rata], ['Lavoro', 1, 500],
-];
-const cambia = (lista, nome, qta) => lista.map(r => (r[0] === nome ? [r[0], qta, r[2]] : r));
+// costi fissi dell'ultimo preventivo fatto a mano da Romain (ottobre 2026): si cambiano nel modello base
+export const MODELLO_BASE = {
+  id: ID_MODELLO, tipo: 'preventivo', modello: true, cliente: '', birra: '', stato: 'bozza',
+  litri: 1000, hl: 10, plato: 0, aliquota: ALIQUOTA_ACCISE, guadagno: 450,
+  malti: [], luppoli: [], trasporto: righe([['Trasporto forniture', 1, 70]]), lievito: [],
+  costi: righe([['Acqua', 1, 10], ['Corrente (kWh)', 250, 0.6], ['Gas', 12, 1.5], ['Affitto', 1, 100],
+    ['CO2', 1, 25], ['Detergenti', 1, 10], ['Rata', 1, 383], ['Lavoro', 1, 500]]),
+  formati: [
+    { nome: 'Lattine 0,33 L', litri: 1 / 3, contenitore: 0.2, lavoro: 0.06, qta: 0 },
+    { nome: 'Fusti 25 L', litri: 25, contenitore: 12.3, lavoro: 0, qta: 0 },
+    { nome: 'Fusti 20 L', litri: 20, contenitore: 12, lavoro: 0, qta: 0 },
+  ],
+  note: '',
+};
 
-// I fogli del file Americo. Dove il foglio aveva un totale scritto a mano (gas 15 € invece di 12 × 1,50) la quantità è sistemata per dare lo stesso totale.
-export const MODELLI = [
-  {
-    id: 'cold-ipa', birra: 'Cold IPA', litri: 970, hl: 10, plato: 14, aliquota: 1.49, guadagno: 450,
-    malti: [['Lola', 10, 0.42], ['PILS Dingemans', 150, 0.8], ['Carapils', 10, 1.5], ['Golden Promise', 45, 1.3], ['Oat naked', 7, 1.7], ['Vienna', 16, 1]],
-    luppoli: [['Citra', 3, 36], ['Nectaron', 2.5, 36], ['Strata', 3, 36], ['Mosaic', 3, 36]],
-    trasporto: 70,
-    lievito: [['Lievito', 1, 100], ['LP 652', 0, 776.6], ['destrosio', 10, 1.59], ['gypsum', 0.1, 4], ['Cloruro', 0.1, 4], ['magnesio', 0.1, 4],
-      ['acido lattico', 0.35, 6], ['brewmix', 0.1, 77], ['spindasol', 0.25, 7], ['Protafloc', 0.06, 30], ['antioxin sbt', 0.1, 26.07],
-      ['bicarbonato', 0, 5.5], ['AMS', 0, 2.4], ['Polygel', 0.17, 26.2]],
-    costi: costi(250, 12, 100, 383, 0.6),
-    formati: formati(600, 31),
-    note: 'Lattina 0,33 sleek nera 1,20 € compresa di lattina e cartone (no etichetta) e fusto 25 litri Dolium 80 €. Se vuoi Polykeg 1 € in più.',
-  },
-  {
-    id: 'american-ipa-3', birra: 'American IPA 3', litri: 975, hl: 10, plato: 13.8, aliquota: 1.794, guadagno: 650,
-    malti: [['Lola', 7, 0.42], ['PILS Monfarm', 247, 0.92], ['Vienna', 17, 1.08], ['Caramalt', 0, 1.32]],
-    luppoli: [['Azacca', 2, 36.8], ['Citra Cryo', 1, 83], ['Citra', 3, 36.8], ['Nectaron Cryo', 3, 83]],
-    trasporto: 100,
-    lievito: [['Lievito', 1, 83], ...additivi(0.125)],
-    costi: costi(300, 10, 70, 330),
-    formati: formati(0, 39),
-  },
-  {
-    id: 'american-ipa-2', birra: 'American IPA 2', litri: 975, hl: 10, plato: 13.4, aliquota: 1.794, guadagno: 650,
-    malti: [['Lola', 7, 0.42], ['PILS Monfarm', 247, 0.92], ['Vienna', 17, 1.08], ['Caramalt', 0, 1.32]],
-    luppoli: [['Azacca', 3, 36.8], ['Citra', 3, 36.8], ['Cryo', 5, 83]],
-    trasporto: 100,
-    lievito: [['Lievito', 1, 94], ...additivi(0.25)],
-    costi: costi(250, 12, 90, 350),
-    formati: formati(0, 39),
-  },
-  {
-    id: 'american-ipa-1', birra: 'American IPA 1', litri: 991, hl: 10, plato: 13.4, aliquota: 1.794, guadagno: 700,
-    malti: [['Lola', 7, 0.42], ['PILS Monfarm', 245, 1.02], ['Vienna', 19, 1.08], ['Caramalt', 0, 1.32]],
-    luppoli: [['Azacca', 4, 36.8], ['Citra', 3, 36.8], ['Cryo', 2.5, 80]],
-    trasporto: 100,
-    lievito: [['Lievito', 1, 94], ...additivi(0.25)],
-    costi: costi(250, 12, 90, 350),
-    formati: formati(1488, 20),
-  },
-  {
-    id: 'double-ipa-2', birra: 'Double IPA 2', litri: 981, hl: 10, plato: 15.7, aliquota: 1.794, guadagno: 650,
-    malti: [['Lola', 8, 0.42], ['PILS Monfarm', 275, 0.94], ['Cara PILS', 0, 1.55], ['Caramalt', 25, 1.32]],
-    luppoli: [['Citra Cryo', 2, 83.5], ['Citra', 1.5, 36.2], ['Galaxy', 5, 45.9], ['Nelson Sauvin', 2, 41.8], ['Herkules', 0.3, 17.6]],
-    trasporto: 100,
-    lievito: [['Lievito', 1, 90], ...cambia(cambia(cambia(additivi(0.125), 'zucchero', 25), 'gypsum', 0.2), 'acido lattico', 0.6)],
-    costi: costi(300, 12, 70, 330),
-    formati: formati(1080, 24),
-  },
-  {
-    id: 'double-ipa-1', birra: 'Double IPA 1', litri: 981, hl: 10, plato: 15.7, aliquota: 1.794, guadagno: 700,
-    malti: [['Lola', 8, 0.42], ['PILS Monfarm', 275, 0.94], ['Cara PILS', 0, 1.55], ['Caramalt', 25, 1.32]],
-    luppoli: [['Citra Cryo', 2, 83.5], ['Citra', 1.5, 36.2], ['Galaxy', 4, 45.9], ['Nelson Sauvin', 2, 41.8], ['Nelson Sauvin Cryo', 2, 90.9]],
-    trasporto: 100,
-    lievito: [['Lievito', 1, 90], ...cambia(cambia(cambia(additivi(0.25), 'zucchero', 25), 'gypsum', 0.2), 'acido lattico', 0.6)],
-    costi: costi(250, 12, 90, 266),
-    formati: formati(1080, 24),
-  },
-  {
-    id: 'rauch', birra: 'Rauch', litri: 1000, hl: 10, plato: 14, aliquota: 1.794, guadagno: 650,
-    malti: [['Lola', 7, 0.42], ['PILS Monfarm', 58, 0.92], ['Munich Best', 85, 1.07], ['Weyermann Caramunich I', 10, 1.57], ['Chocolate', 6, 1.67], ['Smoked Weyermann', 100, 1.69]],
-    luppoli: [['Perle', 1, 18.4], ['Magnum', 0.7, 17.4], ['Citra', 0, 36.8], ['Nectaron Cryo', 0, 83]],
-    trasporto: 100,
-    lievito: [['Lievito', 2, 66], ...additivi(0.125)],
-    costi: costi(300, 10, 70, 330),
-    formati: formati(0, 39),
-  },
-];
-// nel foglio Cold IPA il Vienna era 16 kg × "1.2" scritto come testo, contato 16 €: qui 1 €/kg per avere lo stesso totale
+// nuovo preventivo da un modello o da un preventivo salvato
+export function nuovoDa(da, id, oggi) {
+  const { aggiornato: _a, modello: _m, ...resto } = structuredClone(da);
+  return { ...resto, id, tipo: 'preventivo', data: oggi, stato: 'bozza' };
+}
 
-export function daModello(m, id, oggi) {
-  return {
-    id, tipo: 'preventivo', cliente: '', birra: m.birra.replace(/ \d$/, ''), data: oggi, stato: 'bozza',
-    litri: m.litri, hl: m.hl, plato: m.plato, aliquota: m.aliquota, guadagno: m.guadagno,
-    malti: righe(m.malti), luppoli: righe(m.luppoli), trasporto: righe([['Trasporto forniture', 1, m.trasporto]]),
-    lievito: righe(m.lievito), costi: righe(m.costi),
-    formati: m.formati.map(f => ({ ...f })), note: m.note || '',
+// ---------- materie prime dal magazzino ----------
+const FAMIGLIA_BASE = { kg: 'kg', g: 'kg', L: 'L', ml: 'L', pz: 'pz' };
+// unità della riga di preventivo: kg per malti e luppoli, altrimenti kg / L / pz secondo l'articolo
+export const unitaRiga = (sez, art, unita) => (sez === 'malti' || sez === 'luppoli' ? 'kg' : FAMIGLIA_BASE[art?.unita] || FAMIGLIA_BASE[unita] || 'pz');
+// prezzo dell'articolo (ultima bolla o scheda articolo) in € per unità della riga, oppure null
+export function prezzoRiga(art, unita, oggi, storico) {
+  const p = art && prezzoArticolo(art, oggi, storico);
+  if (!p) return null;
+  const quanti = convertiPer(art, 1, unita); // unità dell'articolo in 1 unità della riga
+  return quanti > 0 ? Math.round(p.prezzo * quanti * 10000) / 10000 : null;
+}
+export const articoloPer = (sez, articoli, nome) => trovaArticolo(articoli, nome) || (sez === 'malti' || sez === 'luppoli' ? articoloSimile(articoli, nome) : null);
+
+// Righe del preventivo da una ricetta Brewfather già convertita in scheda cotta (ricettaPerCotta):
+// malti e luppoli in kg (lo stesso luppolo usato più volte = una riga), lievito e sali/additivi nella loro unità.
+export function righeDaRicetta(x, articoli, oggi, storico) {
+  const out = { malti: [], luppoli: [], lievito: [] };
+  const metti = (sez, r) => {
+    const n = Number(r.qta);
+    if (!r.nome || !(n > 0)) return;
+    const art = articoloPer(sez, articoli, r.nome);
+    const da = r.unita || (sez === 'malti' ? 'kg' : sez === 'luppoli' ? 'g' : 'pz');
+    let unita = unitaRiga(sez, art, da);
+    const inArt = art ? convertiPer(art, n, da) : null;
+    let q = inArt !== null ? converti(inArt, art.unita, unita) : converti(n, da, unita);
+    if (q === null) { q = n; unita = da; } // es. lievito in bustine e articolo in grammi senza peso a pezzo
+    const nome = art ? art.nome : r.nome;
+    const riga = out[sez].find(y => y.nome === nome && y.unita === unita);
+    if (riga) { riga.qta = Math.round((riga.qta + q) * 1000) / 1000; return; }
+    out[sez].push({ nome, qta: Math.round(q * 1000) / 1000, prezzo: prezzoRiga(art, unita, oggi, storico) ?? 0, unita });
   };
+  for (const r of x.malti || []) metti('malti', r);
+  for (const r of x.luppoli || []) metti('luppoli', r);
+  for (const r of [...(x.lievito || []), ...(x.sali || [])]) metti('lievito', r);
+  return out;
 }
 
 const n = v => Number(v) || 0;
