@@ -4,6 +4,7 @@
 
 import { categoriaDa, chiaveNome, converti, lievitoRecuperato, trovaArticolo } from './magazzino.js';
 import { addGiorni, diffGiorni, periodiCotta } from './dominio.js';
+import { dialogUnisci } from './vista-magazzino.js';
 
 let u; // { $app, html, db, stato, dataIT, numIT, oggiISO }
 export function init(strumenti) { u = strumenti; }
@@ -11,6 +12,8 @@ export function init(strumenti) { u = strumenti; }
 const filtri = { gruppo: 'mese', anno: '', dettaglio: '', scheda: 'birre', ingr: 'malto' };
 // riquadro materie prime usate: periodo libero (default ultimi 12 mesi) e categoria (Romain 2026-10-16)
 const mp = { da: '', a: '', cat: 'luppolo' };
+// unione dei doppioni dal riquadro: nomi spuntati (null = spento)
+let mpScelti = null;
 
 const MESI = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
 // settimana ISO (lunedì-domenica): "2026-S41"
@@ -101,7 +104,7 @@ export function movimentiStatistiche(cotte, articoli, oggi) {
         const ml = g === null ? converti(r.qta, r.unita, 'ml') : null;
         if (g === null && ml === null) continue;
         const nome = art?.nome || chiaveNome(r.nome).replace(/\b\w/g, l => l.toUpperCase()) || r.nome;
-        ingredienti.push({ data: c.data, cat, nome, g: g ?? 0, ml: ml ?? 0, id: c.id });
+        ingredienti.push({ data: c.data, cat, nome, g: g ?? 0, ml: ml ?? 0, id: c.id, artId: art?.id || null, orig: r.nome });
       }
     }
   }
@@ -227,17 +230,17 @@ export async function vistaStatistiche() {
 
   // tabella con barra della percentuale: righe [{ nome, valore (testo), quota (0-1), extra: [testi] }]
   // la barra è lunga rispetto alla riga più grande, il numero è la quota sul totale; oltre 12 righe si apre a richiesta
-  const tabella = (colonne, righe, vuoto, chiave = filtri.scheda + filtri.ingr) => {
+  const tabella = (colonne, righe, vuoto, chiave = filtri.scheda + filtri.ingr, scelti = null) => {
     if (!righe.length) return html`<p class="vuoto">${vuoto}</p>`;
     const max = Math.max(...righe.map(r => r.quota)) || 1;
-    const aperta = filtri.tutte === chiave;
+    const aperta = filtri.tutte === chiave || scelti;
     const mostrate = aperta ? righe : righe.slice(0, 12);
     return html`<div class="scroll-x"><table class="tab-mag tab-quote">
       <thead><tr>${colonne.map((c, i) => html`<th class="${i ? 'n' : ''}">${c}</th>`)}<th class="quota">Quota</th></tr></thead>
-      <tbody>${mostrate.map(r => html`<tr><td class="nome">${r.nome}</td>${r.celle.map(x => html`<td class="n">${x}</td>`)}
+      <tbody>${mostrate.map(r => html`<tr><td class="nome">${scelti ? html`<label class="spunta"><input type="checkbox" data-mpsel="${r.nome}" ${scelti.has(r.nome) ? 'checked' : ''}> ${r.nome}</label>` : r.nome}</td>${r.celle.map(x => html`<td class="n">${x}</td>`)}
         <td class="quota"><div><span class="quota-barra"><span style="width:${Math.max(1, Math.round(r.quota / max * 100))}%"></span></span><span class="n">${u.numIT(r.quota * 100, 1)}%</span></div></td></tr>`)}</tbody>
     </table></div>
-    ${righe.length > 12 ? html`<p style="text-align:center;margin:10px 0 0"><button class="piccolo st-libero" data-tutte="${aperta ? '' : chiave}">${aperta ? 'Mostra solo le prime 12' : `Mostra tutte (${righe.length})`}</button></p>` : ''}`;
+    ${righe.length > 12 && !scelti ? html`<p style="text-align:center;margin:10px 0 0"><button class="piccolo st-libero" data-tutte="${aperta ? '' : chiave}">${aperta ? 'Mostra solo le prime 12' : `Mostra tutte (${righe.length})`}</button></p>` : ''}`;
   };
 
   const perChiave = chiave => {
@@ -268,7 +271,6 @@ export async function vistaStatistiche() {
   if (!mp.a) mp.a = oggi;
   if (!mp.da) mp.da = addGiorni(`${Number(oggi.slice(0, 4)) - 1}${oggi.slice(4)}`, 1);
   const mpIngr = tutti.ingredienti.filter(i => i.data >= mp.da && i.data <= mp.a);
-  const mpCotte = new Set(mpIngr.map(i => i.id)).size;
   const mpTot = cat => ({ tot: tot(mpIngr.filter(i => i.cat === cat), i => i.g), ml: tot(mpIngr.filter(i => i.cat === cat), i => i.ml) });
   const mpScelte = mpIngr.filter(i => i.cat === mp.cat);
   const mpT = mpTot(mp.cat).tot;
@@ -276,14 +278,17 @@ export async function vistaStatistiche() {
   const boxMp = html`<div class="scheda st-mp">
       <div class="barra" style="margin-bottom:8px;align-items:flex-end">
         <h2 style="margin:0">Materie prime usate</h2><span class="spazio"></span>
+        ${mpScelti ? '' : html`<button class="piccolo st-libero solo-editori" id="mp-unisci" title="Spunta i nomi che sono la stessa materia prima">⇄ Unisci doppioni</button>`}
         <label style="max-width:160px">Dal <input type="date" id="mp-da" class="st-libero" value="${mp.da}"></label>
         <label style="max-width:160px">Al <input type="date" id="mp-a" class="st-libero" value="${mp.a}"></label>
       </div>
-      <p class="totale" style="margin:0 0 10px">${mpCotte} cotte dal ${u.dataIT(mp.da)} al ${u.dataIT(mp.a)}. Quantità scritte nelle schede cotta (il lievito recuperato non conta).</p>
+      <p class="totale" style="margin:0 0 10px">Dal ${u.dataIT(mp.da)} al ${u.dataIT(mp.a)}. Quantità scritte nelle schede cotta (il lievito recuperato non conta).</p>
+      ${mpScelti ? html`<div class="barra st-libero" style="margin:0 0 10px"><span>Spunta i nomi che sono la stessa materia prima: <b id="mp-n">${mpScelti.size}</b> scelti</span><span class="spazio"></span>
+        <button class="piccolo" id="mp-annulla">Annulla</button><button class="piccolo primario" id="mp-unisci-via">Unisci…</button></div>` : ''}
       <div class="segmenti st-libero" role="group" aria-label="Tipo di materia prima">
         ${ORDINE_MP.map(c => GRUPPI_INGR.find(([k]) => k === c)).map(([c, n]) => html`<button class="st-libero ${c === mp.cat ? 'attivo' : ''}" data-mp="${c}" aria-pressed="${c === mp.cat}">${n} <b>${qtaIngr(c, mpTot(c))}</b></button>`)}
       </div>
-      ${tabella(['', 'Cotte', 'Quantità'], somma(mpScelte, i => i.nome, i => i.g).map(x => ({ nome: x.chiave, quota: mpT ? x.tot / mpT : 0, celle: [x.cotte.size, qtaIngr(mp.cat, x)] })), 'Niente in questo periodo.', `mp${mp.cat}`)}
+      ${tabella(['', 'Quantità'], somma(mpScelte, i => i.nome, i => i.g).map(x => ({ nome: x.chiave, quota: mpT ? x.tot / mpT : 0, celle: [qtaIngr(mp.cat, x)] })), 'Niente in questo periodo.', `mp${mp.cat}`, mpScelti)}
     </div>`;
 
   u.$app.innerHTML = html`
@@ -380,10 +385,27 @@ export async function vistaStatistiche() {
     if (b.dataset.periodo) { filtri.dettaglio = filtri.dettaglio === b.dataset.periodo ? '' : b.dataset.periodo; return ridisegna(); }
     if (b.dataset.scheda) { filtri.scheda = b.dataset.scheda; return ridisegna(); }
     if (b.dataset.ingr) { filtri.ingr = b.dataset.ingr; return ridisegna(); }
-    if (b.dataset.mp) { mp.cat = b.dataset.mp; return ridisegna(); }
+    if (b.dataset.mp) { mp.cat = b.dataset.mp; if (mpScelti) mpScelti = new Set(); return ridisegna(); }
+    if (b.id === 'mp-unisci') { mpScelti = new Set(); return ridisegna(); }
+    if (b.id === 'mp-annulla') { mpScelti = null; return ridisegna(); }
+    if (b.id === 'mp-unisci-via') {
+      // una voce per nome mostrato: l'articolo del magazzino se c'è, altrimenti i nomi scritti nelle schede cotta
+      const voci = [...mpScelti].map(nome => {
+        const righe = tutti.ingredienti.filter(i => i.cat === mp.cat && i.nome === nome);
+        const art = articoli.find(a => a.id === righe.find(i => i.artId)?.artId);
+        return art ? { art } : { nome, nomi: [...new Set(righe.map(i => i.orig))], categoria: mp.cat };
+      });
+      if (voci.length < 2) return u.toast('Spunta almeno due nomi');
+      return dialogUnisci(voci).then(ok => { if (ok) { mpScelti = null; ridisegna(); } });
+    }
     if (b.dataset.tutte !== undefined) { filtri.tutte = b.dataset.tutte; return ridisegna(); }
   };
   u.$app.onchange = e => {
+    if (e.target.dataset.mpsel !== undefined) {
+      mpScelti[e.target.checked ? 'add' : 'delete'](e.target.dataset.mpsel);
+      document.getElementById('mp-n').textContent = mpScelti.size;
+      return;
+    }
     if (e.target.id !== 'mp-da' && e.target.id !== 'mp-a') return;
     if (!e.target.value) return;
     mp[e.target.id === 'mp-da' ? 'da' : 'a'] = e.target.value;
