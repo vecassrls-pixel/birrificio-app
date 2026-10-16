@@ -13,6 +13,8 @@ Primo modulo del tool globale: **schede cotta** e **planning dei fermentatori**.
 - `js/app.js` interfaccia (Cotte, Scheda cotta, Planning, Impostazioni)
 - `js/dominio.js` regole: stato cotta, fine in FV, durate tipiche per birra, conflitti FV, copia ricetta
 - `js/db.js` archivio locale; `js/sync.js` sincronizzazione
+- `js/vista-cantina.js` pagina Cantina (temperature dei FV in tempo reale); `js/temperature.js` dati delle sonde e curva della cotta
+- `tools/gateway-temperature/` programma del mini PC in birrificio che legge le sonde; `tools/esphome/` firmware dei termostati ESP32 di FV6-FV7
 - `data/storico.json` cotte storiche, generato da `tools/importa_storico.py`
 
 ## Rigenerare lo storico
@@ -28,3 +30,11 @@ Ricette e cotte si scrivono in Brewfather; l'app le importa (Impostazioni > Brew
 - Proxy server: `netlify/functions/brewfather.mjs` (solo lettura: batches, readings, recipes). Credenziali come variabili d'ambiente Netlify `BREWFATHER_USER_ID` e `BREWFATHER_API_KEY` (Brewfather > Impostazioni > API, permessi batches.read e recipes.read). Mai nei file del progetto.
 - Conversione e abbinamento in `js/brewfather.js`. Il planning si fa prima nell'app: una cotta Brewfather si collega da sola alla cotta pianificata con birra simile entro 14 giorni (o stesso n°/anno), spostando fine in FV e profilo se la data è cambiata. Altrimenti si collega a mano dalla scheda cotta ("Collega a Brewfather").
 - Limite API: 500 chiamate/ora. "Aggiorna cotte in corso" scarica solo Planning/Brewing/Fermenting/Conditioning.
+
+## Temperature dei fermentatori
+Pagina **Cantina**: temperatura, setpoint, freddo acceso/spento e cotta di ogni FV, con allarmi (dati vecchi, sonda guasta, lontano dal setpoint).
+Nella scheda cotta, sezione Fermentazione, la curva misurata nei FV occupati dalla cotta (anche dopo il travaso), inclusa nel PDF.
+- Dati scritti dal gateway in birrificio (`tools/gateway-temperature`, Node senza dipendenze) con la chiave segreta di Supabase che sta solo lì; l'app legge con il login (tutti i ruoli, anche il lettore).
+- Tabelle e regole: `supabase/migrazione_temperature.sql` (da eseguire una volta). Senza tabelle, offline o in modalità locale la pagina mostra un avviso e il resto dell'app non cambia.
+- Tempo reale con Supabase Realtime (WebSocket in `js/sync.js`, senza librerie), con lettura di riserva ogni minuto.
+- Installazione, cablaggi e taratura passo passo: `GUIDA-TEMPERATURE.md`.

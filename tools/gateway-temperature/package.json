@@ -1,0 +1,16 @@
+{
+  "name": "gateway-temperature",
+  "version": "1.0.0",
+  "description": "Gateway in birrificio: legge le temperature dei fermentatori (Modbus TK4S, ESP32 ESPHome, PLC S7-200 SMART in sola lettura) e le invia a Supabase.",
+  "type": "module",
+  "private": true,
+  "main": "gateway.mjs",
+  "engines": { "node": ">=18.17" },
+  "scripts": {
+    "start": "node gateway.mjs",
+    "test": "node --test --test-timeout=20000 test/prova.test.mjs",
+    "prova": "node gateway.mjs --test",
+    "simula": "node gateway.mjs --simula"
+  },
+  "dependencies": {}
+}

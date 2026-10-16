@@ -1,0 +1,29 @@
+# Servizio systemd del gateway temperature (lo installa installa.sh).
+# Comandi utili:
+#   sudo systemctl status gateway-temperature       stato
+#   journalctl -u gateway-temperature -f            log in diretta
+#   sudo systemctl restart gateway-temperature      riavvio dopo aver cambiato config.json
+[Unit]
+Description=Gateway temperature fermentatori (Modbus, ESP32, PLC -> Supabase)
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=gateway
+Group=gateway
+WorkingDirectory=/opt/gateway-temperature
+ExecStart=/usr/bin/node /opt/gateway-temperature/gateway.mjs --config /etc/gateway-temperature/config.json
+Restart=always
+RestartSec=10
+# buffer offline in /var/lib/gateway-temperature (creata da systemd, sopravvive ai riavvii)
+StateDirectory=gateway-temperature
+# protezioni: il servizio non può modificare il sistema
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/etc/gateway-temperature
+
+[Install]
+WantedBy=multi-user.target
