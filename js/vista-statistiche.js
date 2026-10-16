@@ -9,6 +9,8 @@ let u; // { $app, html, db, stato, dataIT, numIT, oggiISO }
 export function init(strumenti) { u = strumenti; }
 
 const filtri = { gruppo: 'mese', anno: '', dettaglio: '', scheda: 'birre', ingr: 'malto' };
+// riquadro materie prime usate: periodo libero (default ultimi 12 mesi) e categoria (Romain 2026-10-16)
+const mp = { da: '', a: '', cat: 'luppolo' };
 
 const MESI = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
 // settimana ISO (lunedì-domenica): "2026-S41"
@@ -225,17 +227,17 @@ export async function vistaStatistiche() {
 
   // tabella con barra della percentuale: righe [{ nome, valore (testo), quota (0-1), extra: [testi] }]
   // la barra è lunga rispetto alla riga più grande, il numero è la quota sul totale; oltre 12 righe si apre a richiesta
-  const tabella = (colonne, righe, vuoto) => {
+  const tabella = (colonne, righe, vuoto, chiave = filtri.scheda + filtri.ingr) => {
     if (!righe.length) return html`<p class="vuoto">${vuoto}</p>`;
     const max = Math.max(...righe.map(r => r.quota)) || 1;
-    const aperta = filtri.tutte === filtri.scheda + filtri.ingr;
+    const aperta = filtri.tutte === chiave;
     const mostrate = aperta ? righe : righe.slice(0, 12);
     return html`<div class="scroll-x"><table class="tab-mag tab-quote">
       <thead><tr>${colonne.map((c, i) => html`<th class="${i ? 'n' : ''}">${c}</th>`)}<th class="quota">Quota</th></tr></thead>
       <tbody>${mostrate.map(r => html`<tr><td class="nome">${r.nome}</td>${r.celle.map(x => html`<td class="n">${x}</td>`)}
         <td class="quota"><div><span class="quota-barra"><span style="width:${Math.max(1, Math.round(r.quota / max * 100))}%"></span></span><span class="n">${u.numIT(r.quota * 100, 1)}%</span></div></td></tr>`)}</tbody>
     </table></div>
-    ${righe.length > 12 ? html`<p style="text-align:center;margin:10px 0 0"><button class="piccolo st-libero" data-tutte="${aperta ? '' : filtri.scheda + filtri.ingr}">${aperta ? 'Mostra solo le prime 12' : `Mostra tutte (${righe.length})`}</button></p>` : ''}`;
+    ${righe.length > 12 ? html`<p style="text-align:center;margin:10px 0 0"><button class="piccolo st-libero" data-tutte="${aperta ? '' : chiave}">${aperta ? 'Mostra solo le prime 12' : `Mostra tutte (${righe.length})`}</button></p>` : ''}`;
   };
 
   const perChiave = chiave => {
@@ -261,6 +263,28 @@ export async function vistaStatistiche() {
       </div>
       ${tabella(['', 'Cotte', 'Quantità'], righe.map(x => ({ nome: x.chiave, quota: t ? x.tot / t : 0, celle: [x.cotte.size, qtaIngr(cat, x)] })), 'Niente in questo periodo.')}`;
   };
+
+  // materie prime usate tra due date scelte
+  if (!mp.a) mp.a = oggi;
+  if (!mp.da) mp.da = addGiorni(`${Number(oggi.slice(0, 4)) - 1}${oggi.slice(4)}`, 1);
+  const mpIngr = tutti.ingredienti.filter(i => i.data >= mp.da && i.data <= mp.a);
+  const mpCotte = new Set(mpIngr.map(i => i.id)).size;
+  const mpTot = cat => ({ tot: tot(mpIngr.filter(i => i.cat === cat), i => i.g), ml: tot(mpIngr.filter(i => i.cat === cat), i => i.ml) });
+  const mpScelte = mpIngr.filter(i => i.cat === mp.cat);
+  const mpT = mpTot(mp.cat).tot;
+  const ORDINE_MP = ['luppolo', 'malto', 'lievito', 'zucchero'];
+  const boxMp = html`<div class="scheda st-mp">
+      <div class="barra" style="margin-bottom:8px;align-items:flex-end">
+        <h2 style="margin:0">Materie prime usate</h2><span class="spazio"></span>
+        <label style="max-width:160px">Dal <input type="date" id="mp-da" class="st-libero" value="${mp.da}"></label>
+        <label style="max-width:160px">Al <input type="date" id="mp-a" class="st-libero" value="${mp.a}"></label>
+      </div>
+      <p class="totale" style="margin:0 0 10px">${mpCotte} cotte dal ${u.dataIT(mp.da)} al ${u.dataIT(mp.a)}. Quantità scritte nelle schede cotta (il lievito recuperato non conta).</p>
+      <div class="segmenti st-libero" role="group" aria-label="Tipo di materia prima">
+        ${ORDINE_MP.map(c => GRUPPI_INGR.find(([k]) => k === c)).map(([c, n]) => html`<button class="st-libero ${c === mp.cat ? 'attivo' : ''}" data-mp="${c}" aria-pressed="${c === mp.cat}">${n} <b>${qtaIngr(c, mpTot(c))}</b></button>`)}
+      </div>
+      ${tabella(['', 'Cotte', 'Quantità'], somma(mpScelte, i => i.nome, i => i.g).map(x => ({ nome: x.chiave, quota: mpT ? x.tot / mpT : 0, celle: [x.cotte.size, qtaIngr(mp.cat, x)] })), 'Niente in questo periodo.', `mp${mp.cat}`)}
+    </div>`;
 
   u.$app.innerHTML = html`
     <div class="barra st-testa">
@@ -332,6 +356,8 @@ export async function vistaStatistiche() {
       </details>` : html`<p class="vuoto">Nessuna cotta in questo periodo.</p>`}
     </div>
 
+    ${boxMp}
+
     <div class="scheda st-dettagli">
       <div class="barra" style="margin-bottom:10px">
         <h2 style="margin:0">Dettagli · ${titoloDet}</h2>
@@ -354,7 +380,15 @@ export async function vistaStatistiche() {
     if (b.dataset.periodo) { filtri.dettaglio = filtri.dettaglio === b.dataset.periodo ? '' : b.dataset.periodo; return ridisegna(); }
     if (b.dataset.scheda) { filtri.scheda = b.dataset.scheda; return ridisegna(); }
     if (b.dataset.ingr) { filtri.ingr = b.dataset.ingr; return ridisegna(); }
+    if (b.dataset.mp) { mp.cat = b.dataset.mp; return ridisegna(); }
     if (b.dataset.tutte !== undefined) { filtri.tutte = b.dataset.tutte; return ridisegna(); }
+  };
+  u.$app.onchange = e => {
+    if (e.target.id !== 'mp-da' && e.target.id !== 'mp-a') return;
+    if (!e.target.value) return;
+    mp[e.target.id === 'mp-da' ? 'da' : 'a'] = e.target.value;
+    if (mp.da > mp.a) [mp.da, mp.a] = [mp.a, mp.da];
+    ridisegna();
   };
   // il grafico parte dal periodo più recente
   const g = u.$app.querySelector('.st-grafico');
