@@ -1,0 +1,5 @@
+# configurazione reale (contiene la chiave segreta di Supabase) e buffer offline: restano solo sul mini PC
+config.json
+buffer.jsonl
+buffer.jsonl.tmp
+node_modules/
