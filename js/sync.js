@@ -97,3 +97,74 @@ export function avvia() {
   let timer;
   db.onCambio(() => { clearTimeout(timer); timer = setTimeout(sincronizza, 3000); });
 }
+
+// ---------- letture dirette dal cloud (temperature dei fermentatori) ----------
+// Tabelle scritte dal gateway in birrificio (supabase/migrazione_temperature.sql): l'app le legge e basta,
+// non passano dall'archivio locale. Errore con .codice: 'locale' (cloud non configurato), 'offline',
+// 'mancante' (tabelle non ancora create), 'http'.
+const erroreCloud = (msg, codice) => Object.assign(new Error(msg), { codice });
+
+export async function interroga(percorso, { method = 'GET', body, range } = {}) {
+  if (!auth.configurato()) throw erroreCloud('App in modalità solo locale', 'locale');
+  if (!navigator.onLine) throw erroreCloud('Senza internet', 'offline');
+  const token = await auth.token();
+  if (!token) throw erroreCloud('Accesso al cloud non disponibile', 'offline');
+  let res;
+  try {
+    res = await fetch(CONFIG.supabaseUrl.replace(/\/$/, '') + '/rest/v1/' + percorso, {
+      method,
+      headers: { apikey: CONFIG.supabaseAnonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(range ? { Range: range } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch { throw erroreCloud('Cloud non raggiungibile', 'offline'); }
+  if (!res.ok) {
+    const t = await res.text();
+    // tabella o funzione inesistente: la migrazione non è ancora stata eseguita
+    if (res.status === 404 || /PGRST20[25]|42P01|42883|does not exist|Could not find/i.test(t)) throw erroreCloud('Tabelle delle temperature non ancora create', 'mancante');
+    throw erroreCloud(`Lettura fallita (${res.status}): ${t.slice(0, 200)}`, 'http');
+  }
+  return res.json();
+}
+
+// Aggiornamenti in tempo reale di una tabella (Supabase Realtime, protocollo Phoenix su WebSocket, senza librerie).
+// suRiga(record) per ogni riga inserita o modificata; suStato('collegato' | 'scollegato').
+// Restituisce la funzione per chiudere. Se la connessione cade riprova da sola.
+export function ascoltaTabella(tabella, suRiga, suStato = () => {}) {
+  if (!auth.configurato() || typeof WebSocket === 'undefined') return () => {};
+  let ws = null, battito = null, riprova = null, chiuso = false, ref = 0, attesa = 2000;
+  const invia = (topic, event, payload) => ws?.readyState === 1 && ws.send(JSON.stringify({ topic, event, payload, ref: String(++ref) }));
+  const topic = `realtime:temperature-${tabella}`;
+  async function apri() {
+    if (chiuso) return;
+    const token = navigator.onLine ? await auth.token() : null;
+    if (!token) { riprova = setTimeout(apri, 30_000); return; }
+    const url = CONFIG.supabaseUrl.replace(/^http/, 'ws').replace(/\/$/, '') + `/realtime/v1/websocket?apikey=${encodeURIComponent(CONFIG.supabaseAnonKey)}&vsn=1.0.0`;
+    try { ws = new WebSocket(url); } catch { riprova = setTimeout(apri, attesa); return; }
+    ws.onopen = () => {
+      attesa = 2000;
+      invia(topic, 'phx_join', { config: { broadcast: { self: false }, presence: { key: '' }, postgres_changes: [{ event: '*', schema: 'public', table: tabella }] }, access_token: token });
+      // battito ogni 25 s, e il token rinnovato prima che scada
+      battito = setInterval(async () => {
+        invia('phoenix', 'heartbeat', {});
+        const t = await auth.token();
+        if (t) invia(topic, 'access_token', { access_token: t });
+      }, 25_000);
+    };
+    ws.onmessage = e => {
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m.topic !== topic) return;
+      if (m.event === 'phx_reply' && m.payload?.status === 'ok') suStato('collegato');
+      if (m.event === 'phx_reply' && m.payload?.status === 'error') suStato('scollegato');
+      if (m.event === 'postgres_changes' && m.payload?.data?.record) suRiga(m.payload.data.record);
+    };
+    ws.onclose = () => {
+      clearInterval(battito);
+      suStato('scollegato');
+      if (!chiuso) { riprova = setTimeout(apri, attesa); attesa = Math.min(attesa * 2, 60_000); }
+    };
+    ws.onerror = () => { try { ws.close(); } catch { /* già chiuso */ } };
+  }
+  apri();
+  return () => { chiuso = true; clearTimeout(riprova); clearInterval(battito); try { ws?.close(); } catch { /* già chiuso */ } };
+}

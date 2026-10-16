@@ -12,6 +12,8 @@ let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, a
 export function init(strumenti) { u = strumenti; }
 
 const filtri = { q: '', categoria: '' };
+// modalità "Unisci doppioni" dell'elenco: id degli articoli spuntati (null = spento)
+let scelti = null;
 
 async function datiMagazzino() {
   const [articoli, bolle, inventari, scarichi] = await Promise.all(['articolo', 'bolla', 'inventario', 'scarico'].map(t => u.db.tutti(t)));
@@ -69,13 +71,18 @@ export async function vistaMagazzino() {
       <select id="cat" style="flex:1;min-width:140px"><option value="">Tutte le categorie</option>
         ${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === filtri.categoria ? 'selected' : ''}>${v}</option>`)}</select>
       <label class="spunta"><input type="checkbox" id="nascondi-zero" ${nascondiZero ? 'checked' : ''}> Nascondi le materie prime a 0</label>
+      ${dati.articoli.length > 1 && !scelti ? html`<button class="solo-editori" id="unisci-modo" title="Spunta due o più articoli che sono lo stesso prodotto">⇄ Unisci doppioni</button>` : ''}
     </div>` : ''}
+    ${scelti ? html`<div class="scheda barra unisci-barra" style="position:sticky;top:0;z-index:5">
+      <span>Spunta gli articoli che sono lo stesso prodotto: <b id="unisci-n">${scelti.size}</b> scelti</span><span class="spazio"></span>
+      <button id="unisci-annulla">Annulla</button><button class="primario" id="unisci-via">Unisci…</button></div>` : ''}
     ${Object.entries(CATEGORIE).map(([cat, titolo]) => {
       const rr = righe.filter(x => x.articolo.categoria === cat);
       if (!rr.length) return '';
       return html`<div class="scheda"><h2>${titolo}</h2><div class="scroll-x"><table class="tab-mag">
-        <thead><tr><th>Articolo</th><th class="n">Giacenza</th><th class="n" title="Serve alle cotte pianificate e ai DH ancora da fare">Impegnato</th><th class="n">Disponibile</th><th class="n">Scorta min.</th><th>Scadenza</th><th>Inventario</th></tr></thead>
+        <thead><tr>${scelti ? html`<th></th>` : ''}<th>Articolo</th><th class="n">Giacenza</th><th class="n" title="Serve alle cotte pianificate e ai DH ancora da fare">Impegnato</th><th class="n">Disponibile</th><th class="n">Scorta min.</th><th>Scadenza</th><th>Inventario</th></tr></thead>
         <tbody>${rr.map(x => html`<tr class="${x.disponibile < 0 ? 'neg' : x.sottoScorta ? 'basso' : ''}">
+          ${scelti ? html`<td><input type="checkbox" data-sel="${x.articolo.id}" ${scelti.has(x.articolo.id) ? 'checked' : ''} aria-label="Scegli ${x.articolo.nome}"></td>` : ''}
           <td><a href="#/materia/${encodeURIComponent(x.articolo.id)}">${x.articolo.nome}</a>${x.nonConvertibili ? html` <span class="totale" title="Alcune righe hanno un'unità non convertibile">⚠</span>` : ''}</td>
           <td class="n">${fmt(x.giacenza, x.articolo.unita)}</td>
           <td class="n">${x.impegnato ? fmt(x.impegnato, x.articolo.unita) : '—'}</td>
@@ -117,7 +124,19 @@ export async function vistaMagazzino() {
     u.toast(`${proposti.length} articoli creati`);
     location.hash = '#/inventario';
   });
+  $('unisci-modo')?.addEventListener('click', () => { scelti = new Set(); vistaMagazzino(); });
+  $('unisci-annulla')?.addEventListener('click', () => { scelti = null; vistaMagazzino(); });
+  $('unisci-via')?.addEventListener('click', async () => {
+    const voci = dati.articoli.filter(a => scelti.has(a.id)).map(art => ({ art }));
+    if (voci.length < 2) return u.toast('Spunta almeno due articoli');
+    if (await dialogUnisci(voci)) { scelti = null; vistaMagazzino(); }
+  });
   u.$app.onchange = async e => {
+    if (e.target.dataset.sel) {
+      scelti[e.target.checked ? 'add' : 'delete'](e.target.dataset.sel);
+      $('unisci-n').textContent = scelti.size;
+      return;
+    }
     const i = e.target.dataset.collega;
     if (i === undefined || !e.target.value) return;
     const a = dati.articoli.find(x => x.id === e.target.value);
@@ -166,6 +185,62 @@ function dialogArticolo(pre, vai = true) {
   return fatto;
 }
 export const nuovoArticolo = pre => dialogArticolo(pre, false);
+
+// ---------- unisci doppioni (Materie prime e Statistiche) ----------
+// voci: [{ art }] articoli del magazzino, oppure [{ nome, nomi, categoria }] nomi delle schede cotta senza articolo.
+// Si sceglie quale tenere: gli altri articoli gli vengono uniti (bolle, inventari, scarichi, nome → alias),
+// i nomi non collegati diventano suoi alias. Tenendo un nome non collegato si crea l'articolo.
+// Restituisce true se l'unione è fatta.
+export function dialogUnisci(voci) {
+  const { html } = u;
+  const etichetta = v => (v.art ? `${v.art.nome} (${CATEGORIE[v.art.categoria] || ''}, ${v.art.unita})` : `${v.nome} (solo nelle schede cotta, nuovo articolo)`);
+  const d = document.createElement('dialog');
+  d.innerHTML = html`<form method="dialog">
+    <h2 style="margin-top:0">Unisci ${voci.length} doppioni</h2>
+    <p class="totale">Scegli il nome da tenere. Bolle, inventari e scarichi degli altri passano a lui, i loro nomi diventano suoi alias e le cotte li trovano ancora.</p>
+    ${voci.map((v, i) => html`<label class="spunta" style="display:flex;gap:8px;margin:8px 0"><input type="radio" name="tieni" value="${i}" ${i === Math.max(0, voci.findIndex(x => x.art)) ? 'checked' : ''}> ${etichetta(v)}</label>`)}
+    <div class="barra" style="margin-top:14px"><span class="spazio"></span>
+      <button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">Unisci</button></div>
+  </form>`.s;
+  document.body.appendChild(d);
+  const fatto = new Promise(ok => d.addEventListener('close', async () => {
+    const i = Number(new FormData(d.querySelector('form')).get('tieni'));
+    d.remove();
+    if (d.returnValue !== 'ok') return ok(false);
+    ok(await eseguiUnione(voci, i));
+  }));
+  d.showModal();
+  return fatto;
+}
+
+async function eseguiUnione(voci, i) {
+  const t = voci[i];
+  let tieni = t.art;
+  if (!tieni) {
+    const cat = t.categoria || 'malto';
+    tieni = await u.db.salva({
+      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome: t.nome, categoria: cat, unita: ['malto', 'zucchero'].includes(cat) ? 'kg' : 'g',
+      scortaMin: 0, alias: [...new Set(t.nomi || [])], creato: u.oggiISO(),
+    });
+  }
+  for (const [j, v] of voci.entries()) {
+    if (j === i || !v.art) continue;
+    const dati = await datiMagazzino(); // ogni unione parte dai dati aggiornati dalla precedente
+    const a = dati.articoli.find(x => x.id === tieni.id), togli = dati.articoli.find(x => x.id === v.art.id);
+    if (!a || !togli) continue;
+    const r = unisciArticoli(a, togli, dati);
+    if (r.errore) { u.toast(r.errore); return false; }
+    await u.db.salvaMolti(r.modificati.map(({ aggiornato: _a, ...x }) => x)); // ora nuova: vince nella sincronizzazione
+    await u.db.elimina(togli.id);
+  }
+  const nomi = voci.filter((v, j) => j !== i && !v.art).flatMap(v => v.nomi || [v.nome]);
+  if (nomi.length) {
+    const a = await u.db.leggi(tieni.id);
+    await u.db.salva({ ...a, alias: [...new Set([...(a.alias || []), ...nomi])] });
+  }
+  u.toast(`${voci.length - 1} ${voci.length === 2 ? 'doppione unito' : 'doppioni uniti'} in ${tieni.nome}`);
+  return true;
+}
 
 // articoli del magazzino per scegliere gli ingredienti di una ricetta, anche quelli a zero
 export async function articoliRicetta() {

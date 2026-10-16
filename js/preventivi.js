@@ -108,6 +108,14 @@ export function calcola(p) {
 
 const soldi = v => Number(v).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const numero = v => Number(v).toLocaleString('it-IT', { maximumFractionDigits: 2 });
+// cosa comprende il confezionamento, scritto sotto il preventivo al cliente (Romain 2026-10-16)
+export function noteConfezionamento(formati) {
+  const nomi = formati.map(f => f.nome || '');
+  return [
+    nomi.some(x => /lattin/i.test(x)) && 'Lattine: comprese di cartone neutro da 12 pezzi.',
+    nomi.some(x => /fust/i.test(x)) && 'Fusti: Polykeg compreso.',
+  ].filter(Boolean);
+}
 // testo da mandare al cliente: solo formati, prezzi unitari e totale (niente costi interni)
 export function testoCliente(p, c, dataIT) {
   const usati = (p.formati || []).map((f, i) => ({ f, x: c.formati[i] })).filter(({ f }) => n(f.qta) > 0);
@@ -119,6 +127,7 @@ export function testoCliente(p, c, dataIT) {
     ...usati.map(({ f, x }) => `- ${numero(f.qta)} × ${f.nome}: ${soldi(x.unita)} € cad. = ${soldi(x.totale)} €`),
     '',
     `Totale: ${soldi(c.totalePreventivo)} € + IVA`,
+    ...(t => (t.length ? ['', ...t] : []))(noteConfezionamento(usati.map(({ f }) => f))),
     ...(p.note ? ['', p.note] : []),
   ].join('\n');
 }

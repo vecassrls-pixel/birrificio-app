@@ -1,0 +1,87 @@
+{
+  "_leggimi": "Copiare in config.json e compilare. I campi che iniziano con _ sono solo note. DA VERIFICARE = valore di partenza da controllare sul posto (vedi GUIDA-TEMPERATURE.md).",
+
+  "supabase": {
+    "url": "https://XXXX.supabase.co",
+    "chiave": "INCOLLA_QUI_LA_CHIAVE_SECRET",
+    "_nota": "Project Settings > API Keys > secret (sb_secret_...) oppure la vecchia service_role. Solo qui, mai nell'app o in chat."
+  },
+
+  "intervalli": {
+    "lettura_s": 15,
+    "storico_min": 5,
+    "_nota": "Ogni 15 s si aggiorna la pagina Cantina; ogni 5 min si salva una riga di storico per FV (media del periodo)."
+  },
+
+  "offline": {
+    "file": "/var/lib/gateway-temperature/buffer.jsonl",
+    "max_righe": 200000,
+    "_nota": "Se internet cade, lo storico si accumula qui e si invia al ritorno. 200.000 righe = circa 2 mesi con 11 FV."
+  },
+
+  "validita": {
+    "temp_min": -10,
+    "temp_max": 60,
+    "_nota": "Letture fuori da questo intervallo sono scartate come sonda guasta o scollegata."
+  },
+
+  "modbus": {
+    "attivo": true,
+    "host": "192.168.1.200",
+    "porta": 502,
+    "timeout_ms": 2000,
+    "_nota_host": "DA VERIFICARE: indirizzo IP del Waveshare RS485 TO WIFI/ETH (impostarlo fisso dalla sua pagina web), modalita Modbus TCP <-> RTU.",
+    "registri": {
+      "_nota": "Autonics TK4S: valori di partenza, VERIFICARE SUL MANUALE (mappa Modbus). 1000 = 0x03E8, 1001 = 0x03E9.",
+      "pv": { "indirizzo": 1000, "funzione": 4 },
+      "punto_decimale": { "indirizzo": 1001, "funzione": 4 },
+      "punto_decimale_fisso": null,
+      "sv": { "indirizzo": 0, "funzione": 3 },
+      "uscita": null,
+      "_nota_uscita": "Registro dello stato dell'uscita relè (freddo acceso), se esiste: es. { \"indirizzo\": 1005, \"funzione\": 4, \"bit\": 0 }. null = non letto.",
+      "errore_da": 30000,
+      "_nota_errore": "Il TK4S segnala OPEN / HHHH / LLLL con valori molto grandi: da questo valore in su (in valore assoluto) e' sonda guasta."
+    },
+    "dispositivi": [
+      { "fv": "FV1", "unita": 1 },
+      { "fv": "FV2", "unita": 2 },
+      { "fv": "FV3", "unita": 3 },
+      { "fv": "FV4", "unita": 4 },
+      { "fv": "FV5", "unita": 5 }
+    ]
+  },
+
+  "esp32": {
+    "attivo": true,
+    "timeout_ms": 3000,
+    "_nota": "Termostati ESPHome (tools/esphome). host = nome o IP della scheda; utente/password = web_utente/web_password di secrets.yaml.",
+    "dispositivi": [
+      { "fv": "FV6", "host": "fv6.local", "utente": "admin", "password": "CAMBIARE" },
+      { "fv": "FV7", "host": "fv7.local", "utente": "admin", "password": "CAMBIARE" }
+    ]
+  },
+
+  "plc": {
+    "attivo": true,
+    "host": "192.168.1.10",
+    "porta": 102,
+    "tsap_locale": "0x0100",
+    "tsap_remoto": "0x0101",
+    "area_ai": "AI200",
+    "timeout_ms": 3000,
+    "_nota_host": "DA VERIFICARE: IP del PLC S7-200 SMART (si vede in STEP 7-Micro/WIN SMART > Comunicazione, o con: node gateway.mjs --cerca-plc 192.168.1.0/24).",
+    "_nota_tsap": "S7-200 SMART: rack 0 slot 1 = tsap_remoto 0x0101. Se la connessione e' rifiutata provare tsap_locale 0x0200 e tsap_remoto 0x0201 (o 0x0300/0x0301).",
+    "_nota_area": "Area degli ingressi analogici AIW: AI200 (0x06) o P (0x80). --test le prova tutte e due e dice quale risponde.",
+    "_nota_canali": "SOLO LETTURA. Il PLC non viene mai scritto. Modulo 0 (EM AE08) da AIW16, modulo 1 (EM AE04) da AIW32: DA VERIFICARE. Quale canale e' quale FV: DA VERIFICARE confrontando con il pannello MCGS (1#=FV10, 3#=FV8, 4#=FV9).",
+    "_nota_scala": "4-20 mA = grezzo 5530..27648 (0-20 mA o 0-10 V = 0..27648). temp_min/temp_max = intervallo del trasmettitore della sonda, DA VERIFICARE. offset = correzione di taratura in gradi, per far coincidere la lettura con il pannello.",
+    "_nota_setpoint": "setpoint: indirizzo nella memoria V (es. VD200 se e' un numero reale in gradi, VW200 con fattore 0.1). null = non letto. raffreddamento: bit dell'uscita dell'elettrovalvola (es. Q0.3), null = non letto.",
+    "canali": [
+      { "fv": "FV10", "ingresso": "AIW16", "grezzo_min": 5530, "grezzo_max": 27648, "temp_min": -50, "temp_max": 150, "offset": 0, "setpoint": null, "setpoint_fattore": 1, "raffreddamento": null },
+      { "fv": "FV8",  "ingresso": "AIW20", "grezzo_min": 5530, "grezzo_max": 27648, "temp_min": -50, "temp_max": 150, "offset": 0, "setpoint": null, "setpoint_fattore": 1, "raffreddamento": null },
+      { "fv": "FV9",  "ingresso": "AIW22", "grezzo_min": 5530, "grezzo_max": 27648, "temp_min": -50, "temp_max": 150, "offset": 0, "setpoint": null, "setpoint_fattore": 1, "raffreddamento": null },
+      { "fv": "FV11", "ingresso": null,    "grezzo_min": 5530, "grezzo_max": 27648, "temp_min": -50, "temp_max": 150, "offset": 0, "setpoint": null, "setpoint_fattore": 1, "raffreddamento": null, "_nota": "da collegare: ingresso null = saltato" }
+    ]
+  },
+
+  "log": { "livello": "info", "_nota": "info oppure debug (piu' dettagli, per la messa in servizio)" }
+}

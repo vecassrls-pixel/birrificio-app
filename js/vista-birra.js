@@ -74,6 +74,8 @@ export async function vistaBirra() {
     <div class="barra b-testa">
       <h1 style="margin:0">Birra</h1>
       <span class="spazio"></span>
+      <button id="b-copia-lista" class="st-libero" title="Copia la lista delle birre disponibili da mandare ai clienti">📋 Copia lista</button>
+      <a class="btn" href="#/birra-lista?stampa=1" title="Lista delle birre disponibili per i clienti, da stampare o salvare in PDF">🖨 Lista PDF</a>
       <a class="btn" href="#/movbirra/carico">+ Carico</a>
       <a class="btn primario" href="#/movbirra/scarico">− Scarico</a>
     </div>
@@ -144,6 +146,7 @@ export async function vistaBirra() {
   $('b-q').oninput = e => { filtri.q = e.target.value; vistaBirra().then(() => { const el = $('b-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }); };
   $('b-formati').onclick = e => { const b = e.target.closest('[data-formato]'); if (b) { filtri.formato = b.dataset.formato; vistaBirra(); } };
   $('b-scad').onclick = () => { filtri.scad = !filtri.scad; vistaBirra(); };
+  $('b-copia-lista').onclick = () => u.copia(testoLista(listaClienti(dati)), 'Lista delle birre copiata');
   $('b-zero').onchange = e => { scriviPref(e.target.checked); vistaBirra(); };
   const $avvia = $('b-avvia');
   if ($avvia) $avvia.onclick = async () => {
@@ -500,6 +503,75 @@ export async function vistaInventario() {
     u.toast(`Inventario salvato: ${contati.size} birre`);
     location.hash = '#/birra';
   };
+}
+
+// ---------- lista delle birre disponibili per i clienti (copia / stampa) ----------
+// Solo pezzi di lotti non scaduti; per ogni birra stile e grado alcolico.
+function listaClienti(dati, oggi = u.oggiISO()) {
+  const perBirra = new Map();
+  for (const x of giacenzeBirra(dati).values()) {
+    const pezzi = x.lotti.filter(l => !l.scadenza || l.scadenza >= oggi).reduce((t, l) => t + l.pezzi, 0);
+    if (pezzi <= 0) continue;
+    if (!perBirra.has(x.birra)) {
+      const c = caratteristiche(x.birra, dati.prodotti, dati.cotte);
+      perBirra.set(x.birra, { birra: x.birra, stile: c.stileVale, abv: c.abvVale, formati: [] });
+    }
+    perBirra.get(x.birra).formati.push({ tipo: x.tipo, litri: x.litri, pezzi });
+  }
+  const lista = [...perBirra.values()].sort((a, b) => a.birra.localeCompare(b.birra, 'it'));
+  for (const b of lista) b.formati.sort((a, c) => (a.tipo === c.tipo ? a.litri - c.litri : a.tipo === 'fusto' ? 1 : -1)); // prima le lattine
+  return lista;
+}
+const formatoCliente = f => (f.tipo === 'fusto' ? `Fusti ${u.numIT(f.litri, 0)} L` : `Lattine ${Math.round(f.litri * 100)} cl`);
+const titoloCase = s => s.toLowerCase().replace(/(^|[\s'(-])\p{L}/gu, m => m.toUpperCase());
+function testoLista(lista) {
+  const righe = [`Birre disponibili · Kashmir Brewing Company · ${u.dataIT(u.oggiISO())}`, ''];
+  for (const b of lista) {
+    righe.push([titoloCase(b.birra), b.stile, b.abv !== null ? `${u.numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · '));
+    for (const f of b.formati) righe.push(`   ${formatoCliente(f)}: ${u.numIT(f.pezzi, 0)}`);
+    righe.push('');
+  }
+  if (!lista.length) righe.push('Al momento non ci sono birre disponibili.');
+  return righe.join('\n').trim();
+}
+export async function vistaListaClienti(stampaSubito = false) {
+  const { html } = u;
+  const dati = await datiBirra();
+  const lista = listaClienti(dati);
+  u.$app.innerHTML = html`
+    <div class="barra">
+      <a href="#/birra" class="btn">← Birra</a><span class="spazio"></span>
+      <button id="lc-copia" class="st-libero">📋 Copia lista</button>
+      <button id="lc-stampa" class="primario st-libero">🖨 Stampa / Salva PDF</button>
+    </div>
+    <div class="lista-clienti">
+      <div class="lc-testa">
+        <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
+        <div><h1>Birre disponibili</h1><div class="lc-data">aggiornata al ${u.dataIT(u.oggiISO())}</div></div>
+      </div>
+      ${lista.length ? html`<table class="lc-tab">
+        <thead><tr><th>Birra</th><th>Stile</th><th class="n">Alcol</th><th>Disponibili</th></tr></thead>
+        <tbody>${lista.map(b => html`<tr>
+          <td class="lc-nome">${titoloCase(b.birra)}</td>
+          <td>${b.stile || ''}</td>
+          <td class="n">${b.abv !== null ? `${u.numIT(b.abv, 1)}%` : ''}</td>
+          <td>${b.formati.map(f => html`<div class="lc-formato"><span>${formatoCliente(f)}</span><b>${u.numIT(f.pezzi, 0)}</b></div>`)}</td>
+        </tr>`)}</tbody></table>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
+      <p class="lc-piede">Kashmir Brewing Company · disponibilità soggetta a variazioni</p>
+    </div>`;
+  const stampa = () => {
+    const titolo = document.title;
+    document.title = `Birre disponibili Kashmir ${u.oggiISO()}`;
+    addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
+    window.print();
+  };
+  u.$app.querySelector('#lc-copia').onclick = () => u.copia(testoLista(lista), 'Lista delle birre copiata');
+  u.$app.querySelector('#lc-stampa').onclick = stampa;
+  if (stampaSubito) {
+    history.replaceState(null, '', '#/birra-lista');
+    const img = u.$app.querySelector('.lc-testa img');
+    if (img.complete) setTimeout(stampa, 300); else img.addEventListener('load', () => setTimeout(stampa, 100), { once: true });
+  }
 }
 
 // ---------- registro carico/scarico (da stampare) ----------
