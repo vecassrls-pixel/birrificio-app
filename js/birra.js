@@ -251,7 +251,9 @@ const pulito = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-
 
 // Cerca il prodotto di una riga: prima tra i codici salvati, poi dal nome (birra + formato)
 // Ritorna { prodotto, x } oppure { ignora: true } oppure null
-export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp) {
+// formato: quello da usare quando il nome non lo dice (Shopify vende solo lattine da 33 cl)
+export const FORMATO_SHOPIFY = { tipo: 'lattina/bottiglia', litri: 0.33 };
+export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp, formato = null) {
   const cod = [codice, nome].map(s => String(s || '').trim().toLowerCase()).filter(Boolean);
   if (imp.codiciIgnorati.some(c => cod.includes(String(c).toLowerCase()))) return { ignora: true };
   for (const p of prodotti) {
@@ -275,6 +277,7 @@ export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp) {
   if (/\d\s*(l|lt|litri|cl)\b/.test(n) || perFormato.length > 1) return null;
   const perParola = migliori.filter(p => (p.tipo === 'fusto' ? /\b(fust|keg)/ : /\b(lattin|can|bottigl|bott)/).test(n));
   if (perParola.length === 1) return { prodotto: perParola[0].chiave, x: 1 };
+  if (formato && new Set(migliori.map(p => p.birra)).size === 1) return { prodotto: chiaveProdotto(migliori[0].birra, formato.tipo, formato.litri), x: 1 };
   if (migliori.length === 1) return { prodotto: migliori[0].chiave, x: 1 };
   return null;
 }
