@@ -2,7 +2,7 @@
 // Calcoli in preventivi.js.
 
 import {
-  SEZIONI, STATI, MODELLO_BASE, ID_MODELLO, CATEGORIE_SEZIONE, nuovoDa, calcola, testoCliente, unitaRiga, prezzoRiga, articoloPer, righeDaRicetta,
+  SEZIONI, STATI, MODELLO_BASE, ID_MODELLO, CATEGORIE_SEZIONE, nuovoDa, calcola, testoCliente, noteConfezionamento, unitaRiga, prezzoRiga, articoloPer, righeDaRicetta,
 } from './preventivi.js';
 import { storicoPrezzi } from './costi.js';
 import * as bf from './brewfather.js';
@@ -79,7 +79,8 @@ function foglioCliente(p, c) {
     <p>Produzione di <b>${u.numIT(p.litri, 0)} litri</b>.</p>
     ${usati.length ? html`<table class="tab-mag"><thead><tr><th>Formato</th><th class="n">Quantità</th><th class="n">Prezzo unitario</th><th class="n">Totale</th></tr></thead>
       <tbody>${usati.map(({ f, x }) => html`<tr><td>${f.nome}</td><td class="n">${u.numIT(f.qta, 0)}</td><td class="n">${euro(x.unita)}</td><td class="n">${euro(x.totale)}</td></tr>`)}</tbody>
-      <tfoot><tr><td colspan="3"><b>Totale IVA esclusa</b></td><td class="n"><b>${euro(c.totalePreventivo)}</b></td></tr></tfoot></table>`
+      <tfoot><tr><td colspan="3"><b>Totale IVA esclusa</b></td><td class="n"><b>${euro(c.totalePreventivo)}</b></td></tr></tfoot></table>
+      ${noteConfezionamento(usati.map(({ f }) => f)).map(t => html`<p class="pv-conf" style="margin:6px 0 0">${t}</p>`)}`
     : html`<p class="vuoto">Scrivi le quantità dei formati (lattine, fusti) per vedere il preventivo.</p>`}
     ${p.note ? html`<p class="pv-note">${p.note}</p>` : ''}
   </div>`;
