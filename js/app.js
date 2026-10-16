@@ -1360,6 +1360,8 @@ function vistaPlanning() {
             const lotti = (b.travaso ? '↳ ' : '') + (b.cotte.length > 1 ? b.cotte.map(c => c.numero).join('/') : c0.lotto || '');
             const mp = ['pianificata', 'tank'].includes(s) && b.cotte.some(c => c.materiePrime);
             const conflitto = b.cotte.some(c => inConflitto.has(c.id));
+            // giorni totali della cotta: nella prima barra contano anche quelli dopo il travaso (Romain 2026-10-16)
+            const fineTot = b.travaso ? b.a : b.cotte.reduce((m, c) => { const f = fineCotta(c, stato.durate); return f > m ? f : m; }, b.a);
             // sfondo a fasi: arancione fermentazione, viola DH, celeste maturazione
             const da = b.da < plan.inizio ? plan.inizio : b.da, a = b.a > fineVista ? fineVista : b.a;
             const tot = diffGiorni(da, a) + 1;
@@ -1383,7 +1385,7 @@ function vistaPlanning() {
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
               title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)} · ${testoLottoScadenza(c0, stato.cotte, stato.durate)}">
-              <b>${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span>
+              <b>${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · <span title="${fineTot > b.a ? `In totale, compreso il travaso (${diffGiorni(b.da, b.a) + 1} gg in questo FV)` : ''}">${diffGiorni(b.da, fineTot) + 1} gg</span></span>
               ${giorniFasi.map(f => html`<span class="g-fase" style="right:${Math.max(right - left - f.x1, 0) + 3}px" title="${FASI[f.fase]}: ${f.giorni} giorni">${f.giorni} gg</span>`)}
               ${(c0.fermentazione || []).filter(e => e.data && e.data >= da && e.data <= a && eventiGiorno(e).length).map(e => html`<span class="g-ev" style="left:${diffGiorni(plan.inizio, e.data) * W - left - 1}px;width:${W}px" title="${eventiGiorno(e).join(' + ')} il ${dataIT(e.data)}">${eventiGiorno(e).map(k => SIMBOLI[k]).join('')}</span>`)}
               ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
