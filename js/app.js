@@ -1329,10 +1329,18 @@ function vistaPlanning() {
               return [`${colori[0]} ${pos(g0)}`, ...colori.map((col, i) => `${col} ${pos(g0 + i + 0.5)}`), `${colori[n - 1]} ${pos(g0 + n)}`];
             });
             const sfondoFasi = stops.length ? `background:linear-gradient(to right, ${stops.join(', ')});` : '';
+            // giorni di ogni fase dentro la barra (Romain 2026-10-16), scritti alla fine del suo tratto visibile
+            const giorniFasi = fasiCotta(conGiorniDh(b.cotte), stato.durate).filter(f => f.a >= da && f.da <= a).map(f => ({
+              fase: f.fase,
+              giorni: diffGiorni(f.da < b.da ? b.da : f.da, f.a > b.a ? b.a : f.a) + 1,
+              x0: diffGiorni(plan.inizio, f.da < da ? da : f.da) * W - left,
+              x1: (diffGiorni(plan.inizio, f.a > a ? a : f.a) + 1) * W - left,
+            })).filter(f => f.x1 - f.x0 >= 2 * W && f.x1 >= 110); // non sopra nome e lotto all'inizio della barra
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
               title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)} · ${testoLottoScadenza(c0, stato.cotte, stato.durate)}">
               <b>${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · ${diffGiorni(b.da, b.a) + 1} gg</span>
+              ${giorniFasi.map(f => html`<span class="g-fase" style="right:${Math.max(right - left - f.x1, 0) + 3}px" title="${FASI[f.fase]}: ${f.giorni} giorni">${f.giorni} gg</span>`)}
               ${(c0.fermentazione || []).filter(e => e.data && e.data >= da && e.data <= a && eventiGiorno(e).length).map(e => html`<span class="g-ev" style="left:${diffGiorni(plan.inizio, e.data) * W - left - 1}px;width:${W}px" title="${eventiGiorno(e).join(' + ')} il ${dataIT(e.data)}">${eventiGiorno(e).map(k => SIMBOLI[k]).join('')}</span>`)}
               ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
                 ? html`<span class="g-eta" style="left:${diffGiorni(plan.inizio, oggi) * W - left - 1}px;width:${W}px" title="Cotta del ${dataIT(c0.data)}: giorno ${diffGiorni(c0.data, oggi) + 1}">${diffGiorni(c0.data, oggi) + 1}</span>` : ''}</a>`;
