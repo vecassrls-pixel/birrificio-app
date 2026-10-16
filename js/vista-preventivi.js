@@ -72,17 +72,27 @@ export async function vistaPreventivi() {
 function foglioCliente(p, c) {
   const { html } = u;
   const usati = (p.formati || []).map((f, i) => ({ f, x: c.formati[i] })).filter(({ f }) => num(f.qta) > 0);
+  const compresi = noteConfezionamento(usati.map(({ f }) => f));
   return html`<div class="pv-foglio">
-    <div class="pv-foglio-testa"><img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
-      <div><h2>Preventivo${p.birra ? ` ${p.birra}` : ''}</h2>
-      <div>${p.cliente ? html`Per <b>${p.cliente}</b> · ` : ''}${u.dataIT(p.data)} · VECAS SRLS</div></div></div>
-    <p>Produzione di <b>${u.numIT(p.litri, 0)} litri</b>.</p>
-    ${usati.length ? html`<table class="tab-mag"><thead><tr><th>Formato</th><th class="n">Quantità</th><th class="n">Prezzo unitario</th><th class="n">Totale</th></tr></thead>
+    <header class="pv-foglio-testa">
+      <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
+      <div class="pv-foglio-titolo"><h2>Preventivo</h2><div>${u.dataIT(p.data)}</div></div>
+    </header>
+    <div class="pv-parti">
+      <div><span>Da</span><b>VECAS SRLS</b>Kashmir Brewing Company</div>
+      <div><span>Spett.le</span><b>${p.cliente || '—'}</b></div>
+    </div>
+    <p class="pv-oggetto"><span>Oggetto</span>Produzione${p.birra ? html` della birra <b>${p.birra}</b>` : ''}, <b>${u.numIT(p.litri, 0)} litri</b></p>
+    ${usati.length ? html`<table>
+      <thead><tr><th>Formato</th><th class="n">Quantità</th><th class="n">Prezzo unitario</th><th class="n">Totale</th></tr></thead>
       <tbody>${usati.map(({ f, x }) => html`<tr><td>${f.nome}</td><td class="n">${u.numIT(f.qta, 0)}</td><td class="n">${euro(x.unita)}</td><td class="n">${euro(x.totale)}</td></tr>`)}</tbody>
-      <tfoot><tr><td colspan="3"><b>Totale IVA esclusa</b></td><td class="n"><b>${euro(c.totalePreventivo)}</b></td></tr></tfoot></table>
-      ${noteConfezionamento(usati.map(({ f }) => f)).map(t => html`<p class="pv-conf" style="margin:6px 0 0">${t}</p>`)}`
+    </table>
+    <div class="pv-totale"><span>Totale IVA esclusa</span><b>${euro(c.totalePreventivo)}</b></div>`
     : html`<p class="vuoto">Scrivi le quantità dei formati (lattine, fusti) per vedere il preventivo.</p>`}
-    ${p.note ? html`<p class="pv-note">${p.note}</p>` : ''}
+    ${compresi.length ? html`<div class="pv-blocco"><h3>Il prezzo comprende</h3><ul>${compresi.map(t => html`<li>${t}</li>`)}</ul></div>` : ''}
+    ${p.note ? html`<div class="pv-blocco"><h3>Note</h3><p class="pv-note">${p.note}</p></div>` : ''}
+    <div class="pv-firma"><span>Per accettazione</span></div>
+    <footer class="pv-piede">VECAS SRLS · Kashmir Brewing Company</footer>
   </div>`;
 }
 
