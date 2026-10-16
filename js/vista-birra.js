@@ -523,11 +523,12 @@ function listaClienti(dati, oggi = u.oggiISO()) {
   return lista;
 }
 const formatoCliente = f => (f.tipo === 'fusto' ? `Fusti ${u.numIT(f.litri, 0)} L` : `Lattine ${Math.round(f.litri * 100)} cl`);
-const titoloCase = s => s.toLowerCase().replace(/(^|[\s'(-])\p{L}/gu, m => m.toUpperCase());
+// "session ipa" → "Session Ipa" non va: solo la prima lettera di ogni parola se è tutto minuscolo
+const maiuscole = s => (s === s.toLowerCase() ? s.replace(/(^|\s)\p{L}/gu, m => m.toUpperCase()).replace(/\bIpa\b/g, 'IPA').replace(/\bNeipa\b/g, 'NEIPA').replace(/\bApa\b/g, 'APA') : s);
 function testoLista(lista) {
   const righe = [`Birre disponibili · Kashmir Brewing Company · ${u.dataIT(u.oggiISO())}`, ''];
   for (const b of lista) {
-    righe.push([titoloCase(b.birra), b.stile, b.abv !== null ? `${u.numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · '));
+    righe.push([b.birra, b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${u.numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · '));
     for (const f of b.formati) righe.push(`   ${formatoCliente(f)}: ${u.numIT(f.pezzi, 0)}`);
     righe.push('');
   }
@@ -547,16 +548,13 @@ export async function vistaListaClienti(stampaSubito = false) {
     <div class="lista-clienti">
       <div class="lc-testa">
         <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
-        <div><h1>Birre disponibili</h1><div class="lc-data">aggiornata al ${u.dataIT(u.oggiISO())}</div></div>
+        <div><h1>Birre disponibili</h1><div class="lc-data">Disponibilità aggiornata al ${u.dataIT(u.oggiISO())}</div></div>
       </div>
-      ${lista.length ? html`<table class="lc-tab">
-        <thead><tr><th>Birra</th><th>Stile</th><th class="n">Alcol</th><th>Disponibili</th></tr></thead>
-        <tbody>${lista.map(b => html`<tr>
-          <td class="lc-nome">${titoloCase(b.birra)}</td>
-          <td>${b.stile || ''}</td>
-          <td class="n">${b.abv !== null ? `${u.numIT(b.abv, 1)}%` : ''}</td>
-          <td>${b.formati.map(f => html`<div class="lc-formato"><span>${formatoCliente(f)}</span><b>${u.numIT(f.pezzi, 0)}</b></div>`)}</td>
-        </tr>`)}</tbody></table>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
+      ${lista.length ? html`<div class="lc-griglia">${lista.map(b => html`<section class="lc-birra">
+        <h2>${b.birra}</h2>
+        ${b.stile || b.abv !== null ? html`<p class="lc-info">${[b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${u.numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · ')}</p>` : ''}
+        ${b.formati.map(f => html`<div class="lc-formato"><span>${formatoCliente(f)}</span><span class="lc-punti"></span><b>${u.numIT(f.pezzi, 0)}</b></div>`)}
+      </section>`)}</div>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
       <p class="lc-piede">Kashmir Brewing Company · disponibilità soggetta a variazioni</p>
     </div>`;
   const stampa = () => {

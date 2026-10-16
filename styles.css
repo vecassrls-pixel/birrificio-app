@@ -776,11 +776,12 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .pv-firma { margin: 44px 0 0 auto; width: 260px; border-top: 1px solid #999; padding-top: 6px; text-align: center; break-inside: avoid; }
 .pv-piede { margin-top: 40px; padding-top: 10px; border-top: 1px solid #e5e5e5; font-size: .78em; color: #888; text-align: center; }
 @media (max-width: 760px) { .pv-foglio { padding: 20px 16px; font-size: 13px; } .pv-parti { grid-template-columns: 1fr; gap: 12px; } .pv-foglio-testa img { height: 46px; } }
-@page preventivo { size: A4; margin: 18mm 20mm; }
+/* margini dati dal contenuto (non da @page): restano anche se in Chrome si sceglie Margini: Nessuno */
+@page preventivo { size: A4; margin: 0; }
 @media print {
   .pv-anteprima { border: none; padding: 0; margin: 0; }
   .pv-anteprima > summary { display: none !important; }
-  .pv-foglio { page: preventivo; padding: 0; margin: 0; max-width: none; border-radius: 0; font-size: 11pt; }
+  .pv-foglio { page: preventivo; padding: 16mm 18mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; margin: 0; max-width: none; border-radius: 0; font-size: 11pt; }
   .pv-foglio th, .pv-oggetto, .pv-foglio-testa { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 @media (max-width: 760px) { .tab-preventivi .pv-extra { display: none; } .tab-preventivi td { white-space: nowrap; } }
@@ -816,33 +817,41 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .tab-operatori tr:first-child .op-n { color: var(--accent); }
 
 /* ---------- lista birre per i clienti (copia / stampa) ---------- */
-.lista-clienti { background: #fff; color: #1c1917; padding: 28px 32px; border-radius: 10px; max-width: 820px; margin: 0 auto; box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
-.lc-testa { display: flex; align-items: center; gap: 20px; padding-bottom: 14px; border-bottom: 2px solid #1c1917; margin-bottom: 8px; }
-.lc-testa img { height: 64px; }
-.lc-testa h1 { margin: 0; font-size: 1.6rem; letter-spacing: .02em; }
-.lc-data { color: #57534e; font-size: .9rem; margin-top: 2px; }
-.lc-tab { width: 100%; border-collapse: collapse; font-size: .98rem; }
-.lc-tab th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #78716c; padding: 10px 8px 6px; border-bottom: 1px solid #d6d3d1; }
-.lc-tab td { padding: 10px 8px; border-bottom: 1px solid #e7e5e4; vertical-align: top; }
-.lc-tab tr { break-inside: avoid; }
-.lc-tab .n { text-align: right; white-space: nowrap; }
-.lc-nome { font-weight: 700; font-size: 1.05rem; }
-.lc-formato { display: flex; justify-content: space-between; gap: 16px; white-space: nowrap; }
-.lc-formato + .lc-formato { margin-top: 3px; }
-.lc-formato b { font-variant-numeric: tabular-nums; }
-.lc-piede { margin: 16px 0 0; color: #78716c; font-size: .8rem; text-align: center; }
+@page lista { size: A4; margin: 0; }
+.lista-clienti { --lc-ink: #111; --lc-soft: #555; --lc-line: #d4d4d4; background: #fff; color: var(--lc-ink); padding: 32px 36px 24px; border-radius: 10px; max-width: 860px; margin: 0 auto; box-shadow: 0 1px 3px rgb(0 0 0 / .08);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+.lc-testa { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 16px; border-bottom: 3px solid var(--lc-ink); margin-bottom: 22px; }
+.lc-testa img { height: 70px; order: 2; }
+.lc-testa h1 { margin: 0; font-size: 2rem; font-weight: 800; letter-spacing: -.01em; color: var(--lc-ink); text-transform: uppercase; }
+.lc-data { color: var(--lc-soft); font-size: .95rem; margin-top: 4px; }
+.lc-griglia { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 28px; }
+.lc-birra { break-inside: avoid; border-top: 1px solid var(--lc-line); padding-top: 10px; }
+.lc-birra h2 { margin: 0; font-size: 1.2rem; font-weight: 800; color: var(--lc-ink); letter-spacing: .01em; text-transform: uppercase; }
+.lc-info { margin: 2px 0 0; color: var(--lc-soft); font-size: .92rem; }
+.lc-birra h2 + :is(.lc-info, .lc-formato), .lc-info + .lc-formato { margin-top: 6px; }
+.lc-formato { display: flex; align-items: baseline; gap: 6px; font-size: 1rem; color: var(--lc-ink); padding: 2px 0; }
+.lc-punti { flex: 1; border-bottom: 1px dotted #999; transform: translateY(-4px); }
+.lc-formato b { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.lc-piede { margin: 26px 0 0; padding-top: 10px; border-top: 1px solid var(--lc-line); color: var(--lc-soft); font-size: .82rem; text-align: center; }
 @media (max-width: 600px) {
-  .lista-clienti { padding: 18px 14px; }
-  .lc-testa img { height: 44px; }
-  .lc-testa h1 { font-size: 1.25rem; }
-  .lc-tab th:nth-child(2), .lc-tab td:nth-child(2) { display: none; }
+  .lista-clienti { padding: 18px 16px; }
+  .lc-testa img { height: 46px; }
+  .lc-testa h1 { font-size: 1.35rem; }
+  .lc-griglia { grid-template-columns: 1fr; }
 }
 @media print {
-  .lista-clienti { box-shadow: none; padding: 0; max-width: none; border-radius: 0; }
-  .lc-testa img { height: 56px; }
-  .lc-tab { font-size: 11pt; }
-  .lc-tab th, .lc-testa { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .lista-clienti { page: lista; box-shadow: none; padding: 15mm 16mm; -webkit-box-decoration-break: clone; box-decoration-break: clone; max-width: none; border-radius: 0; font-size: 12pt; }
+  .lista-clienti, .lista-clienti * { color: #000 !important; }
+  .lc-data, .lc-info, .lc-piede { color: #444 !important; }
+  .lc-testa h1 { font-size: 24pt; }
+  .lc-testa img { height: 22mm; }
+  .lc-birra h2 { font-size: 14pt; }
+  .lc-info { font-size: 10.5pt; }
+  .lc-formato { font-size: 12pt; }
+  .lc-piede { font-size: 9pt; }
+  .lc-testa { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
 /* ---------- Cantina: temperature dei fermentatori ---------- */
 .widget > header span > a.totale { text-decoration: none; color: var(--brand); white-space: nowrap; margin: 0 0 0 10px; }
 .cantina-griglia { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
