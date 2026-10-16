@@ -86,7 +86,7 @@ listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, cop
 preventivi.init({ $app, html, raw, db, toast, chiedi, dataIT, numIT, oggiISO, copia });
 haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
-magBirra.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
+magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   if (await correggiRegula()) stato.cotte = await db.tutti('cotta');
@@ -199,6 +199,7 @@ const routes = [
   [/^#\/birra-inventario$/, () => magBirra.vistaInventario()],
   [/^#\/birra-prodotti-fic$/, () => magBirra.vistaProdottiFic()],
   [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
+  [/^#\/birra-lista(\?stampa=1)?$/, st => magBirra.vistaListaClienti(!!st)],
   [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
   [/^#\/listini$/, () => listini.vistaListini()],
   [/^#\/preventivi$/, () => preventivi.vistaPreventivi()],
