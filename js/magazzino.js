@@ -372,8 +372,13 @@ export function registroS6(dati, da, a) {
 
 // Unisce un doppione: tutto ciò che era di `togli` (bolle, inventari, scarichi manuali) passa a `tieni`,
 // il nome e gli alias di `togli` diventano alias di `tieni` (così le cotte lo trovano ancora).
+// Un inventario vale come giacenza dell'articolo: se in un inventario c'è solo uno dei due, la riga unita
+// prende anche la giacenza che l'altro aveva in quel giorno, così le quantità si sommano (Romain 2026-10-16).
 // Restituisce i record da salvare, oppure { errore } se le quantità degli inventari non sono convertibili.
-export function unisciArticoli(tieni, togli, { bolle, inventari, scarichi = [] }) {
+export function unisciArticoli(tieni, togli, dati) {
+  const { bolle, inventari, scarichi = [] } = dati;
+  // giacenza di un articolo in un giorno, calcolata sui dati prima dell'unione (mai sotto zero)
+  const giacenzaAl = (art, data) => Math.max(0, giacenze({ ...dati, articoli: [art], scarichi }, data).get(art.id)?.giacenza || 0);
   const k = chiaveNome(tieni.nome);
   const alias = [...new Set([...(tieni.alias || []), togli.nome, ...(togli.alias || [])])].filter(x => chiaveNome(x) !== k);
   const art = {
@@ -388,12 +393,23 @@ export function unisciArticoli(tieni, togli, { bolle, inventari, scarichi = [] }
     modificati.push({ ...b, righe: b.righe.map(r => (r.articoloId === togli.id ? { ...r, articoloId: tieni.id, ...(r.nome !== undefined ? { nome: tieni.nome } : {}) } : r)) });
   }
   for (const inv of inventari) {
+    const ha = id => (inv.righe || []).some(r => r.articoloId === id && r.qta !== null && r.qta !== '' && r.qta !== undefined);
+    if (ha(tieni.id) && !ha(togli.id) && inv.data) {
+      // contato solo `tieni`: si aggiunge la giacenza di `togli` in quel giorno
+      const extra = converti(giacenzaAl(togli, inv.data), togli.unita, tieni.unita);
+      if (extra === null) return { errore: `${togli.nome} è in ${togli.unita} e non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      if (extra) modificati.push({ ...inv, righe: inv.righe.map(r => (r.articoloId === tieni.id ? { ...r, qta: Number(r.qta) + extra } : r)) });
+      continue;
+    }
     if (!(inv.righe || []).some(r => r.articoloId === togli.id)) continue;
+    // contato solo `togli`: alla sua riga (che passa a `tieni`) si aggiunge la giacenza di `tieni` in quel giorno
+    const extraTieni = ha(togli.id) && !ha(tieni.id) && inv.data ? giacenzaAl(tieni, inv.data) : 0;
     const righe = [];
     for (const r of inv.righe) {
       if (r.articoloId !== togli.id) { righe.push(r); continue; }
-      const q = r.qta === null || r.qta === '' || r.qta === undefined ? r.qta : converti(r.qta, togli.unita, tieni.unita);
-      if (q === null && r.qta !== null) return { errore: `L'inventario del ${inv.data} ha ${togli.nome} in ${togli.unita}: non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      const q0 = r.qta === null || r.qta === '' || r.qta === undefined ? r.qta : converti(r.qta, togli.unita, tieni.unita);
+      if (q0 === null && r.qta !== null) return { errore: `L'inventario del ${inv.data} ha ${togli.nome} in ${togli.unita}: non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      const q = typeof q0 === 'number' ? q0 + extraTieni : q0;
       const gia = righe.find(x => x.articoloId === tieni.id);
       if (gia) gia.qta = (Number(gia.qta) || 0) + (Number(q) || 0);
       else righe.push({ ...r, articoloId: tieni.id, qta: q });
