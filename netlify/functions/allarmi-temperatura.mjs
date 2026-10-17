@@ -1,4 +1,4 @@
-// Funzione programmata: ogni 5 minuti controlla le temperature dei fermentatori e manda gli allarmi su Telegram.
+// Funzione programmata: ogni ora controlla le temperature dei fermentatori e manda gli allarmi su Telegram.
 // Non fa niente finché il gateway in birrificio non manda dati. Vedi netlify/lib/automazioni.mjs
 import { controllaTemperature } from '../lib/automazioni.mjs';
 import * as db from '../lib/db.mjs';
@@ -10,4 +10,4 @@ export default async () => {
   return new Response('ok');
 };
 
-export const config = { schedule: '*/5 * * * *' };
+export const config = { schedule: '@hourly' };

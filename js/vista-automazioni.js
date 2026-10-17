@@ -52,7 +52,7 @@ export async function scheda(box) {
     const oraSel = (k, sotto, v) => html`<select data-imp="${k}.${sotto}">${ORE.map(h => html`<option value="${h}" ${h === v ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`)}</select>`;
     box.innerHTML = html`
       <h2>Automazioni e Telegram</h2>
-      <p class="totale">Il server lavora anche ad app chiusa: ogni mattina manda l'agenda su Telegram, il lunedì il report della settimana, di notte importa vendite e acquisti, e ogni 5 minuti controlla le temperature dei fermentatori.</p>
+      <p class="totale">Il server lavora anche ad app chiusa: ogni mattina manda l'agenda su Telegram, il lunedì il report della settimana, di notte importa vendite e acquisti, e ogni ora controlla le temperature dei fermentatori.</p>
       ${conf ? html`<p class="totale">Sul server: Telegram ${ok(conf.telegram)} · database ${ok(conf.database)} · Fatture in Cloud ${ok(conf.fic)} · Shopify ${ok(conf.shopify)} · AI ${ok(conf.ai)}</p>
         ${!conf.telegram ? html`<p class="avviso">Telegram non è collegato: crea un bot con @BotFather, metti il suo token in TELEGRAM_BOT_TOKEN su Netlify e aggiungi il bot al gruppo del birrificio.</p>` : ''}`
       : html`<p class="totale">${errConf}</p>`}
@@ -73,7 +73,7 @@ export async function scheda(box) {
           <td class="totale">${st.importa?.ultimo ? `ultimo il ${quando(st.importa.ultimo)}: ${st.importa.movimenti || 0} movimenti, ${st.importa.sospesi || 0} da controllare, ${st.importa.acquisti || 0} acquisti${st.importa.errori?.length ? ` · errori: ${st.importa.errori.join('; ')}` : ''}` : 'mai'}</td>
           <td class="az"><button class="piccolo" data-manda="importa">Importa ora</button></td></tr>
         <tr><td><label class="spunta"><input type="checkbox" data-imp="allarmi.attivi" ${imp.allarmi.attivi ? 'checked' : ''}> 🚨 Allarmi temperatura FV</label></td>
-          <td>ogni 5 minuti</td><td class="totale">${aperti.length ? `aperti: ${aperti.map(([fv]) => fv).join(', ')}` : 'nessun allarme aperto'}</td><td></td></tr>
+          <td>ogni ora</td><td class="totale">${aperti.length ? `aperti: ${aperti.map(([fv]) => fv).join(', ')}` : 'nessun allarme aperto'}</td><td></td></tr>
       </tbody></table>
       <div class="griglia" style="margin-top:8px">
         <label>Vendite da Fatture in Cloud<select data-imp="importa.vendite">

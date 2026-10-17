@@ -162,7 +162,7 @@ export async function importa({ imp } = {}) {
 }
 
 // ---------- allarmi temperatura ----------
-// Ogni 5 minuti: per i FV con una cotta dentro, allarme se
+// Ogni ora (allarmi-temperatura.mjs): per i FV con una cotta dentro, allarme se
 //   - nessun dato dal sensore da più dei minuti_offline del sensore (o il gateway non manda niente)
 //   - errore della sonda
 //   - fuori da temp_min / temp_max

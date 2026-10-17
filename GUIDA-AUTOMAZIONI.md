@@ -32,6 +32,6 @@ Il link di ogni cliente si crea in **Birra → Clienti → 🔗 Link ordini**.
 | Agenda del mattino | ogni giorno all'ora scelta (default 7:00) | Impostazioni → Automazioni |
 | Report della settimana | il lunedì (default 8:00) | Impostazioni → Automazioni |
 | Import vendite (Fatture in Cloud, Shopify) e acquisti | ogni notte (default 3:00) | Impostazioni → Automazioni |
-| Allarmi temperatura FV | ogni 5 minuti, solo per i FV con una cotta | Impostazioni → Automazioni (i limiti sono quelli dei sensori) |
+| Allarmi temperatura FV | ogni ora, solo per i FV con una cotta (un problema che dura arriva entro 1-2 ore) | Impostazioni → Automazioni (i limiti sono quelli dei sensori) |
 
 Le funzioni programmate usano anche `SUPABASE_SERVICE_KEY` (già impostata per gli inviti): deve valere per la produzione.
