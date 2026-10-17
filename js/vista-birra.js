@@ -88,6 +88,7 @@ export async function vistaBirra() {
       <a href="#/preventivi">📄 Preventivi</a>
       <a href="#/copertura">📉 Copertura</a>
       <a href="#/clienti">📞 Clienti</a>
+      <a href="#/ordini-clienti">🛒 Ordini clienti</a>
       <a href="#/scansiona">📷 Scansiona QR</a>
       <span class="b-sep" aria-hidden="true"></span>
       <a href="#/birra-importa/fic" class="solo-editori">⬇ Fatture in Cloud</a>

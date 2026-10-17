@@ -27,6 +27,7 @@ import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, pr
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
 import * as qr from './vista-qr.js';
+import * as ordiniClienti from './vista-ordini.js';
 import { conGiorniDh } from './agenda.js';
 import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
@@ -98,7 +99,8 @@ haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, 
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 cantina.init({ $app, html, raw, stato, dataIT, oggiISO, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
-previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre) });
+previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre), linkOrdini: (nome, scheda) => ordiniClienti.dialogLink(nome, scheda) });
+ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT });
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
@@ -226,6 +228,7 @@ const routes = [
   [/^#\/clienti$/, () => previsioni.vistaClienti()],
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
   [/^#\/cassa$/, () => cassa.vistaCassa()],
+  [/^#\/ordini-clienti$/, () => ordiniClienti.vistaOrdini()],
   [/^#\/scansiona$/, () => { pulizia = qr.vistaScansiona(); }],
   [/^#\/qr\?/, () => qr.vistaQr()],
   [/^#\/costi$/, () => costi.vistaCosti()],
@@ -241,7 +244,7 @@ async function render() {
   $app.oninput = $app.onchange = $app.onclick = null;
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));

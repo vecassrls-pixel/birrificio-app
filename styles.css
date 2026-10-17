@@ -963,3 +963,19 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .qr-n { min-width: 2.2em; text-align: center; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
 .qr-motivi { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 10px; }
 .qr-motivi button { min-height: 52px; font-size: 1rem; }
+/* pagina pubblica degli ordini (ordina.html) */
+body.ordina { background: var(--bg); }
+.or-testa { background: #fff; padding: 14px 16px; text-align: center; border-bottom: 1px solid var(--border); }
+.or-testa img { height: 56px; }
+.or-corpo { max-width: 640px; margin: 0 auto; padding: 16px; }
+.or-birra h2 { margin: 0; }
+.or-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.or-formato { display: flex; flex-direction: column; }
+.or-formato small { color: var(--muted); }
+.or-qta { display: inline-flex; align-items: center; gap: 10px; }
+.or-qta button { width: 44px; min-height: 44px; padding: 0; font-size: 1.2rem; }
+.or-qta b { min-width: 2ch; text-align: center; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.or-elenco { padding-left: 18px; margin: 6px 0 10px; }
+#or-invia label { display: block; margin-top: 8px; }
+#or-invia button.primario { width: 100%; margin-top: 12px; min-height: 48px; }
+.ln-link code { word-break: break-all; font-size: .82rem; }

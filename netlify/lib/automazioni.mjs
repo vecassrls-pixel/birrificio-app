@@ -40,7 +40,7 @@ async function salvaStato(stato, patch) {
 }
 
 // Tutti i dati che servono ad agenda e report
-const TIPI = ['cotta', 'fv', 'articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra', 'scadenzahaccp', 'pulizia', 'importsospeso', 'cliente'];
+const TIPI = ['cotta', 'fv', 'articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra', 'scadenzahaccp', 'pulizia', 'importsospeso', 'cliente', 'ordinecliente', 'movcassa'];
 export async function datiBirrificio() {
   const [t, impBirra, prezzi] = await Promise.all([db.tipi(TIPI), db.leggi(ID_IMPOSTAZIONI), db.leggi(ID_PREZZI)]);
   const cotte = t.cotta;
@@ -48,7 +48,7 @@ export async function datiBirrificio() {
     cotte, fv: t.fv.sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true })), durate: durateTipiche(cotte),
     articoli: t.articolo, bolle: t.bolla, inventari: t.inventario, scarichi: t.scarico, movimenti: t.movbirra,
     inventariBirra: t.inventariobirra, prodotti: t.prodottobirra, impBirra: impBirra && !impBirra.eliminato ? impBirra : null,
-    scadenze: t.scadenzahaccp, pulizie: t.pulizia, sospesi: t.importsospeso, clienti: t.cliente,
+    scadenze: t.scadenzahaccp, pulizie: t.pulizia, sospesi: t.importsospeso, clienti: t.cliente, ordini: t.ordinecliente, cassa: t.movcassa,
     prezzi: prezzi && !prezzi.eliminato ? prezziDa(prezzi) : null,
   };
 }

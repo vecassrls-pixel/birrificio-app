@@ -52,6 +52,14 @@ export function contestoDati(dati, oggi) {
   sez.push(tabella('Clienti (dalle vendite)', 'cliente;ordini;ultimo_ordine;giorni_dall_ultimo;ordina_di_solito_ogni_giorni;da_richiamare;litri_totali;birre_preferite',
     clienti.map(c => [pulisci(c.nome), c.ordini, c.ultimo, c.giorni, c.ritmo ?? '', c.daRichiamare ? 'si' : 'no', n(c.litri, 0), c.birre.join(', ')].join(';'))));
 
+  // prima nota di cassa (contanti) degli ultimi 2 anni e ordini dei clienti online
+  sez.push(tabella('Prima nota di cassa, contanti (ultimi 2 anni)', 'data;descrizione;categoria;entrata_euro;uscita_euro',
+    (dati.cassa || []).filter(m => !m.eliminato && m.data >= daBolle).sort((a, b) => a.data.localeCompare(b.data))
+      .map(m => [m.data, pulisci(m.descrizione), m.categoria || '', n(m.entrata, 2), n(m.uscita, 2)].join(';'))));
+  sez.push(tabella('Ordini dei clienti dal link online', 'data;cliente;stato;consegna;righe',
+    (dati.ordini || []).filter(o => !o.eliminato).sort((a, b) => a.data.localeCompare(b.data))
+      .map(o => [o.data, pulisci(o.cliente), o.stato, o.consegna || '', o.righe.map(r => `${r.pezzi}x ${r.prodotto}`).join(', ')].join(';'))));
+
   // cotte: le più recenti per prime se bisogna tagliare
   const righeCotte = cotte.map(c => {
     const fine = fineCotta(c, durate);

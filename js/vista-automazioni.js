@@ -12,14 +12,14 @@ export function init(strumenti) { u = strumenti; }
 
 // I dati per agenda e Home, letti da questo dispositivo (stessa forma di datiBirrificio sul server)
 export async function datiLocali() {
-  const tipi = ['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra', 'scadenzahaccp', 'pulizia', 'importsospeso', 'cliente'];
+  const tipi = ['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra', 'scadenzahaccp', 'pulizia', 'importsospeso', 'cliente', 'ordinecliente'];
   const [l, impBirra] = await Promise.all([Promise.all(tipi.map(t => u.db.tutti(t))), u.db.leggi(ID_IMPOSTAZIONI)]);
   const t = Object.fromEntries(tipi.map((k, i) => [k, l[i]]));
   return {
     cotte: u.stato.cotte, fv: u.stato.fv, durate: u.stato.durate,
     articoli: t.articolo, bolle: t.bolla, inventari: t.inventario, scarichi: t.scarico, movimenti: t.movbirra,
     inventariBirra: t.inventariobirra, prodotti: t.prodottobirra, impBirra: impBirra && !impBirra.eliminato ? impBirra : null,
-    scadenze: t.scadenzahaccp, pulizie: t.pulizia, sospesi: t.importsospeso, clienti: t.cliente,
+    scadenze: t.scadenzahaccp, pulizie: t.pulizia, sospesi: t.importsospeso, clienti: t.cliente, ordini: t.ordinecliente,
   };
 }
 

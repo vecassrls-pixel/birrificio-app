@@ -4,7 +4,7 @@
 import { ID_IMPOSTAZIONI, giacenzeBirra, listaDisponibili, testoListaBirre } from './birra.js';
 import { coperturaBirre, statoClienti, messaggioCliente, numeroWhatsApp, SETTIMANE_VENDITE } from './previsioni.js';
 
-let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica }
+let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica, linkOrdini }
 export function init(strumenti) { u = strumenti; }
 
 async function datiBirra() {
@@ -82,6 +82,7 @@ export async function vistaClienti() {
         <button class="primario" data-wa="${c.id}">📲 WhatsApp</button>
         <button data-rimanda="${c.id}" title="Sparisce dalla lista per due settimane">✓ Sentito, rimanda</button>
         <label class="spunta" style="min-height:auto"><input type="checkbox" data-k="nonRichiamare" ${c.scheda?.nonRichiamare ? 'checked' : ''}> Non richiamare</label>
+        <button data-link="${c.id}" title="Link personale per ordinare online">🔗 Link ordini${c.scheda?.portale?.token && c.scheda.portale.attivo !== false ? ' ✓' : ''}</button>
       </div>
     </section>`)}</div>`}`;
   const salva = async (id, patch) => {
@@ -107,6 +108,8 @@ export async function vistaClienti() {
       window.open(`https://wa.me/${tel}?text=${encodeURIComponent(messaggioCliente(c, lista))}`, '_blank');
       return;
     }
+    const l = e.target.closest('[data-link]');
+    if (l) { const c = clienti.find(x => x.id === l.dataset.link); return u.linkOrdini(c.nome, c.scheda); }
     const r = e.target.closest('[data-rimanda]');
     if (r) { await salva(r.dataset.rimanda, { rimandaFino: u.addGiorni(oggi, 14), ultimoContatto: oggi }); u.toast('Rimandato di due settimane'); vistaClienti(); }
   };

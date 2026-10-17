@@ -3,7 +3,7 @@
 // e l'app li mostra in anteprima in Impostazioni → Automazioni.
 //
 // dati: { cotte, fv, durate, articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti,
-//         impBirra, scadenze, pulizie, sospesi, clienti }
+//         impBirra, scadenze, pulizie, sospesi, clienti, ordini }
 // Il testo usa l'HTML di Telegram (<b>, <i>, <a>): i valori passano da esc().
 
 import { attivitaGiorno, etichetteDaOrdinare } from './agenda.js';
@@ -59,6 +59,8 @@ export function testoAgenda(dati, oggi, { url = '' } = {}) {
   sez('📉 Birre da ripianificare', c.copertura.filter(b => b.stato !== 'ok').slice(0, 5).map(b => `${esc(b.birra)}: ${b.esaurita ? 'esaurita' : `finisce verso il ${dataIT(b.esaurimento)}`}, cotta ${b.stato === 'ritardo' ? '<b>in ritardo</b>' : `entro il ${dataIT(b.cottaEntro)}`}`));
   const fermi = c.clienti.filter(x => x.daRichiamare);
   if (fermi.length) sez(`📞 Clienti da richiamare (${fermi.length})`, [`${fermi.slice(0, 5).map(x => esc(x.nome)).join(', ')}${fermi.length > 5 ? '…' : ''}`]);
+  const ordini = (dati.ordini || []).filter(o => !o.eliminato && ['nuovo', 'confermato'].includes(o.stato));
+  if (ordini.length) sez(`🛒 Ordini dei clienti da gestire (${ordini.length})`, ordini.slice(0, 6).map(o => `${esc(o.cliente)}: ${o.stato === 'nuovo' ? '<b>da confermare</b>' : 'confermato'}${o.consegna ? `, consegna ${dataIT(o.consegna)}` : ''}`));
   const sospesi = (dati.sospesi || []).filter(s => !s.eliminato);
   if (sospesi.length) sez('📥 Documenti importati da controllare', [`${sospesi.length} documenti di Fatture in Cloud o Shopify aspettano una scelta nell'app.`]);
   if (url) out.push('', `<a href="${esc(url)}">Apri Global Brewing</a>`);

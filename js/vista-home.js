@@ -36,9 +36,9 @@ export { attivitaGiorno };
 export async function vistaHome() {
   const { html, stato, numIT, dataIT, oggiISO, addGiorni, diffGiorni } = u;
   const oggi = oggiISO(), domani = addGiorni(oggi, 1);
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze, pulizie, sospesi, clienti] = await Promise.all([
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze, pulizie, sospesi, clienti, ordiniClienti] = await Promise.all([
     ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
-    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'), u.db.tutti('importsospeso'), u.db.tutti('cliente'),
+    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'), u.db.tutti('importsospeso'), u.db.tutti('cliente'), u.db.tutti('ordinecliente'),
   ]);
   const scadHaccp = scadenzeDaFare(scadenze, oggi);
   const sporchi = fvDaPulire(statoFermentatori(stato.cotte, stato.durate, stato.fv, pulizie, oggi), pulizie, oggi);
@@ -127,6 +127,7 @@ export async function vistaHome() {
         <a class="btn" href="#/chiedi">💬 Chiedi ai dati</a>
       </div>
     </section>
+    ${ordiniClienti.some(o => o.stato === 'nuovo') ? html`<a class="avviso-riga" href="#/ordini-clienti">🛒 ${ordiniClienti.filter(o => o.stato === 'nuovo').length} ${ordiniClienti.filter(o => o.stato === 'nuovo').length === 1 ? 'ordine nuovo' : 'ordini nuovi'} dai clienti da confermare →</a>` : ''}
     ${daControllare ? html`<a class="avviso-riga" href="#/birra-importa/sospesi">📥 ${daControllare} ${daControllare === 1 ? 'documento importato aspetta' : 'documenti importati aspettano'} una scelta (prodotti non riconosciuti) →</a>` : ''}
     ${acquisti ? html`<a class="avviso-riga" href="#/materie-prime">🧾 ${acquisti} ${acquisti === 1 ? 'fattura di un fornitore da caricare' : 'fatture dei fornitori da caricare'} in magazzino →</a>` : ''}
 
