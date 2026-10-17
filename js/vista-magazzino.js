@@ -7,6 +7,7 @@ import {
   CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
+import { chiediAi, fotoBase64 } from './ai.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -46,6 +47,8 @@ export async function vistaMagazzino() {
   const scadenze = [...g.values()].filter(x => x.statoScadenza);
   const scollegati = daCollegare(dati.cotte, dati.articoli, inizioControllo(dati.inventari)).slice(0, 40);
   const bolle = [...dati.bolle].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 8);
+  // fatture dei fornitori arrivate con l'import automatico notturno (netlify/lib/automazioni.mjs)
+  const acquisti = (await u.db.tutti('importsospeso')).filter(x => x.fonte === 'acquisti').sort((a, b) => String(b.doc?.data).localeCompare(String(a.doc?.data)));
 
   u.$app.innerHTML = html`
     <div class="barra">
@@ -63,6 +66,11 @@ export async function vistaMagazzino() {
       <a class="btn" href="#/scarico/nuovo">− Scarico manuale</a>
       <a class="btn primario" href="#/bolla/nuova">+ Bolla di carico</a>
     </div>
+    ${acquisti.length ? html`<div class="scheda solo-editori" id="acquisti"><h2>📥 Acquisti da Fatture in Cloud <span class="totale">${acquisti.length} da controllare</span></h2>
+      <p class="totale">Fatture dei fornitori importate di notte. "Carica" apre la bolla già compilata con righe e prezzi: controlli e salvi. "Scarta" per spese, servizi e tutto quello che non è materia prima.</p>
+      <ul class="w-lista">${acquisti.map(x => html`<li class="acq-riga"><span class="w-testo"><b>${x.doc.fornitore || 'Fornitore'}</b> · ${x.doc.numero || ''} · ${u.dataIT(x.doc.data)}<small>${x.doc.righe.slice(0, 4).map(r => r.descrizione).join(' · ')}${x.doc.righe.length > 4 ? ` e altre ${x.doc.righe.length - 4}` : ''}</small></span>
+        <span class="barra" style="margin:0"><button class="piccolo primario" data-acq="${x.id}">Carica</button><button class="piccolo" data-acq-via="${x.id}">Scarta</button></span></li>`)}</ul>
+    </div>` : ''}
     ${!dati.articoli.length ? html`<div class="scheda"><h2>Per iniziare</h2>
       <p>Crea gli articoli partendo dagli ingredienti delle cotte degli ultimi 12 mesi, poi fai l'inventario iniziale con le quantità che hai in magazzino. Le cotte già fatte prima della creazione dell'articolo o dell'inventario non vengono scaricate.</p>
       <button class="primario" id="da-ricette">Crea articoli dalle ricette</button></div>` : ''}
@@ -149,6 +157,27 @@ export async function vistaMagazzino() {
     const s = scollegati[i];
     dialogArticolo({ nome: s.chiave.replace(/\b\w/g, l => l.toUpperCase()), categoria: categoriaDa(s.sezione, s.nome), unita: unitaDa(s.sezione), alias: [s.nome] });
   };
+  const $acq = document.getElementById('acquisti');
+  if ($acq) $acq.addEventListener('click', async e => {
+    const b = e.target.closest('[data-acq], [data-acq-via]');
+    if (!b) return;
+    e.stopPropagation();
+    const x = acquisti.find(a => a.id === (b.dataset.acq || b.dataset.acqVia));
+    if (b.dataset.acqVia) {
+      if (!(await u.chiedi(`Scartare ${x.doc.fornitore} ${x.doc.numero}? Non verrà importato di nuovo.`, 'Scarta'))) return;
+      await u.db.elimina(x.id);
+      return vistaMagazzino();
+    }
+    apriBozzaBolla({ ...x.doc, rifEsterno: x.rifEsterno, sospesoId: x.id });
+  });
+}
+
+// Bolla nuova già compilata (fattura d'acquisto importata, foto letta dall'AI): stesso formato di leggiDdt
+// { fornitore, numero, data, righe: [{ codice, descrizione, um, qta, prezzo, lotto, scadenza }], rifEsterno?, sospesoId? }
+let bozzaBolla = null;
+export function apriBozzaBolla(ddt) {
+  bozzaBolla = ddt;
+  if (location.hash === '#/bolla/nuova') vistaBolla('nuova'); else location.hash = '#/bolla/nuova';
 }
 
 // ---------- dialogo nuovo articolo ----------
@@ -348,7 +377,10 @@ export async function vistaBolla(id) {
   const operatori = operatoriDa(await u.db.leggi(ID_OPERATORI));
   const nomeControllo = () => operatori[0];
   if (id !== 'nuova' && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Bolla non trovata. <a href="#/materie-prime">Torna alle materie prime</a></p>`; return; }
+  const bozza = id === 'nuova' ? bozzaBolla : null;
+  bozzaBolla = null;
   const b = esistente ? JSON.parse(JSON.stringify(esistente))
+    : bozza ? { tipo: 'bolla', data: bozza.data || u.oggiISO(), fornitore: bozza.fornitore || '', numero: bozza.numero || '', righe: proponiRighe(bozza, dati.articoli).map(r => ({ ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) })), ...(bozza.rifEsterno ? { rifEsterno: bozza.rifEsterno } : {}) }
     : { tipo: 'bolla', data: u.oggiISO(), fornitore: '', numero: '', righe: [{ nome: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
   const perId = new Map(dati.articoli.map(a => [a.id, a]));
   for (const r of b.righe) if (r.articoloId && !r.nome) r.nome = perId.get(r.articoloId)?.nome || '';
@@ -369,6 +401,27 @@ export async function vistaBolla(id) {
       const n = b.righe.filter(r => r.includi).length;
       pdfStato = `${file.name}: ${n} righe da caricare, ${b.righe.length - n} escluse (spese, imballi…).`;
     } catch (ex) {
+      // scansione o formato sconosciuto: ci prova Claude
+      return leggiAi(file, `${ex.message.split(':')[0]}: lo faccio leggere all'AI…`);
+    }
+    disegna();
+  }
+
+  // foto della bolla (o PDF scansionato) letta da Claude
+  async function leggiAi(file, attesa = 'Leggo la bolla con l\'AI… (qualche secondo)') {
+    pdfStato = attesa;
+    disegna();
+    try {
+      const { json: ddt } = await chiediAi({ azione: 'bolla', ...(await fotoBase64(file)) });
+      if (!ddt?.righe?.length) throw new Error('Non ho trovato righe articolo nella foto: rifalla più dritta e illuminata, o inserisci le righe a mano.');
+      b.data = /^\d{4}-\d{2}-\d{2}$/.test(ddt.data) ? ddt.data : b.data;
+      b.numero = ddt.numero || b.numero;
+      b.fornitore = ddt.fornitore || b.fornitore;
+      const righe = ddt.righe.map(r => ({ ...r, prezzo: r.prezzo ?? undefined, scadenza: /^\d{4}-\d{2}-\d{2}$/.test(r.scadenza) ? r.scadenza : '' }));
+      b.righe = proponiRighe({ ...ddt, righe }, dati.articoli).map(r => ({ ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) }));
+      const n = b.righe.filter(r => r.includi).length;
+      pdfStato = `Letta dall'AI: ${n} righe da caricare, ${b.righe.length - n} escluse. Controlla quantità e lotti prima di salvare.`;
+    } catch (ex) {
       pdfStato = ex.message;
     }
     disegna();
@@ -382,6 +435,7 @@ export async function vistaBolla(id) {
         <h1 style="margin-top:0">${esistente ? 'Bolla di carico' : 'Nuova bolla di carico'}</h1>
         ${esistente ? '' : html`<div class="barra">
           <label class="btn primario">📄 Leggi il PDF della bolla<input type="file" id="pdf" accept="application/pdf,.pdf" hidden></label>
+          <label class="btn" title="Fotografa la bolla di carta: la legge Claude">📷 Foto della bolla<input type="file" id="foto-bolla" accept="image/*" capture="environment" hidden></label>
           <span class="totale" id="pdf-stato" style="margin:0">${pdfStato}</span>
         </div>`}
         <div class="griglia">
@@ -431,6 +485,7 @@ export async function vistaBolla(id) {
   u.$app.oninput = u.$app.onchange = e => {
     const t = e.target;
     if (t.id === 'pdf' && e.type === 'change' && t.files[0]) return leggiPdf(t.files[0]);
+    if (t.id === 'foto-bolla' && e.type === 'change' && t.files[0]) return leggiAi(t.files[0]);
     if (t.dataset.b) b[t.dataset.b] = t.value;
     if (t.dataset.ck) {
       b.controllo = { chi: nomeControllo(), ...b.controllo, [t.dataset.ck]: t.type === 'checkbox' ? t.checked : t.value };
@@ -479,6 +534,7 @@ export async function vistaBolla(id) {
       });
       if (nuovi.length || aggiornati.size) await u.db.salvaMolti([...nuovi, ...aggiornati.values()].map(({ aggiornato: _a, ...a }) => a));
       await u.db.salva({ ...b, id: b.id || u.db.nuovoId('bolla'), righe: out });
+      if (bozza?.sospesoId) await u.db.elimina(bozza.sospesoId);
       u.toast(`Bolla salvata${nuovi.length ? ` · ${nuovi.length} articoli nuovi` : ''}`);
       location.hash = '#/materie-prime';
     }

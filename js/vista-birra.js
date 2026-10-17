@@ -6,6 +6,7 @@ import { LOGO_KASHMIR } from './logo-kashmir.js';
 import {
   ID_IMPOSTAZIONI, FORMATI, confezionamenti, MOTIVI_SCARICO, MOTIVI_CARICO, ORIGINI, nomeMotivo, testoScontrino, impostazioniDa, giacenzeBirra, elencoProdotti, nomeProdotto,
   nomeFormato, registroBirra, trovaProdotto, conCodice, idProdotto, chiaveProdotto, daChiave, indovinaProdotto, rinominati, FORMATO_SHOPIFY, caratteristiche,
+  listaDisponibili, testoListaBirre, formatoCliente, maiuscole,
 } from './birra.js';
 import { nomeBirra } from './dominio.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
@@ -51,6 +52,7 @@ export async function vistaBirra() {
     .sort((a, b) => a.birra.localeCompare(b.birra, 'it') || a.tipo.localeCompare(b.tipo) || b.litri - a.litri);
   const tot = tipo => g.filter(x => x.tipo === tipo).reduce((t, x) => t + Math.max(0, x.giacenza), 0);
   const inScadenza = g.filter(x => x.statoScadenza).length;
+  const sospesi = (await u.db.tutti('importsospeso')).filter(x => x.fonte !== 'acquisti').length;
   const ultimi = [...dati.movimenti].filter(m => !m.ignorato).sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 10);
   const testoCar = birra => {
     const c = caratteristiche(birra, dati.prodotti, dati.cotte);
@@ -84,11 +86,14 @@ export async function vistaBirra() {
       <a href="#/birra-registro">📒 Registro</a>
       <a href="#/listini">💶 Listini</a>
       <a href="#/preventivi">📄 Preventivi</a>
+      <a href="#/copertura">📉 Copertura</a>
+      <a href="#/clienti">📞 Clienti</a>
       <span class="b-sep" aria-hidden="true"></span>
       <a href="#/birra-importa/fic" class="solo-editori">⬇ Fatture in Cloud</a>
       <a href="#/birra-importa/shopify" class="solo-editori">⬇ Shopify</a>
     </nav>
 
+    ${sospesi ? html`<a class="avviso-riga solo-editori" href="#/birra-importa/sospesi">📥 ${sospesi} ${sospesi === 1 ? 'documento importato' : 'documenti importati'} di notte con righe da collegare a una birra →</a>` : ''}
     <div class="st-kpi b-kpi">
       <div class="st-tile"><span>Fusti</span><b>${u.numIT(tot('fusto'), 0)}</b><small>in magazzino</small></div>
       <div class="st-tile"><span>Lattine</span><b>${u.numIT(tot('lattina/bottiglia'), 0)}</b><small>in magazzino</small></div>
@@ -506,35 +511,9 @@ export async function vistaInventario() {
 }
 
 // ---------- lista delle birre disponibili per i clienti (copia / stampa) ----------
-// Solo pezzi di lotti non scaduti; per ogni birra stile e grado alcolico.
-function listaClienti(dati, oggi = u.oggiISO()) {
-  const perBirra = new Map();
-  for (const x of giacenzeBirra(dati).values()) {
-    const pezzi = x.lotti.filter(l => !l.scadenza || l.scadenza >= oggi).reduce((t, l) => t + l.pezzi, 0);
-    if (pezzi <= 0) continue;
-    if (!perBirra.has(x.birra)) {
-      const c = caratteristiche(x.birra, dati.prodotti, dati.cotte);
-      perBirra.set(x.birra, { birra: x.birra, stile: c.stileVale, abv: c.abvVale, formati: [] });
-    }
-    perBirra.get(x.birra).formati.push({ tipo: x.tipo, litri: x.litri, pezzi });
-  }
-  const lista = [...perBirra.values()].sort((a, b) => a.birra.localeCompare(b.birra, 'it'));
-  for (const b of lista) b.formati.sort((a, c) => (a.tipo === c.tipo ? a.litri - c.litri : a.tipo === 'fusto' ? 1 : -1)); // prima le lattine
-  return lista;
-}
-const formatoCliente = f => (f.tipo === 'fusto' ? `Fusti ${u.numIT(f.litri, 0)} L` : `Lattine ${Math.round(f.litri * 100)} cl`);
-// "session ipa" → "Session Ipa" non va: solo la prima lettera di ogni parola se è tutto minuscolo
-const maiuscole = s => (s === s.toLowerCase() ? s.replace(/(^|\s)\p{L}/gu, m => m.toUpperCase()).replace(/\bIpa\b/g, 'IPA').replace(/\bNeipa\b/g, 'NEIPA').replace(/\bApa\b/g, 'APA') : s);
-function testoLista(lista) {
-  const righe = [`Birre disponibili · Kashmir Brewing Company · ${u.dataIT(u.oggiISO())}`, ''];
-  for (const b of lista) {
-    righe.push([b.birra, b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${u.numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · '));
-    for (const f of b.formati) righe.push(`   ${formatoCliente(f)}: ${u.numIT(f.pezzi, 0)}`);
-    righe.push('');
-  }
-  if (!lista.length) righe.push('Al momento non ci sono birre disponibili.');
-  return righe.join('\n').trim();
-}
+// listaDisponibili e testoListaBirre stanno in birra.js (le usano anche i clienti da richiamare)
+const listaClienti = dati => listaDisponibili(dati, u.oggiISO());
+const testoLista = lista => testoListaBirre(lista, u.oggiISO());
 export async function vistaListaClienti(stampaSubito = false) {
   const { html } = u;
   const dati = await datiBirra();
@@ -623,8 +602,10 @@ export async function vistaRegistro() {
 const FONTI = {
   fic: { nome: 'Fatture in Cloud', proxy: '/.netlify/functions/fattureincloud', doc: 'documenti', tipi: { invoice: 'Fatture', delivery_note: 'DDT', receipt: 'Ricevute' } },
   shopify: { nome: 'Shopify', proxy: '/.netlify/functions/shopify', doc: 'ordini' },
+  // documenti dell'import automatico notturno con righe da collegare (record importsospeso, netlify/lib/automazioni.mjs)
+  sospesi: { nome: 'import automatico', sospesi: true },
 };
-const imp_ = { fic: { dal: null, tipo: 'invoice' }, shopify: { dal: null } };
+const imp_ = { fic: { dal: null, tipo: 'invoice' }, shopify: { dal: null }, sospesi: {} };
 export async function vistaImporta(fonte) {
   const { html } = u;
   const F = FONTI[fonte];
@@ -638,6 +619,10 @@ export async function vistaImporta(fonte) {
   let stato = { carica: false, errore: '', docs: null, altri: false };
   const prodotti = elencoProdotti(dati);
   const g = giacenzeBirra(dati);
+  if (F.sospesi) {
+    const sosp = (await u.db.tutti('importsospeso')).filter(x => x.fonte !== 'acquisti').sort((a, b) => String(a.doc?.data).localeCompare(String(b.doc?.data)));
+    stato.docs = sosp.map(x => ({ ...x.doc, sospeso: x, scegli: true, righe: x.doc.righe.map(r => ({ ...r, prodotto: r.prodotto || '', x: r.x || 1, auto: !!r.prodotto, lotto: '' })) }));
+  }
 
   async function cerca() {
     stato = { carica: true, errore: '', docs: null };
@@ -649,7 +634,7 @@ export async function vistaImporta(fonte) {
       let body = null;
       try { body = await res.json(); } catch { /* non JSON: app non online */ }
       if (!res.ok || !body) throw new Error(body?.errore || (res.status === 404 ? `${F.nome} si collega solo quando l'app è online sul suo sito.` : `${F.nome}: errore ${res.status}`));
-      const gia = new Set((await u.db.tutti('movbirra')).map(m => m.rifEsterno).filter(Boolean));
+      const gia = new Set([...(await u.db.tutti('movbirra')), ...(await u.db.tutti('importsospeso'))].map(m => m.rifEsterno).filter(Boolean));
       const docs = body.documenti.filter(d => !gia.has(`${fonte}:${d.id}`)).map(d => ({
         ...d,
         scegli: fonte !== 'shopify' || d.spedito,
@@ -672,19 +657,19 @@ export async function vistaImporta(fonte) {
     u.$app.innerHTML = html`
       <div class="barra"><a href="#/birra" class="btn">← Birra</a><span class="spazio"></span></div>
       <div class="scheda">
-        <h1 style="margin-top:0">Scarichi da ${F.nome}</h1>
-        <p class="totale">${fonte === 'fic' ? 'Ogni fattura (o DDT) con birra diventa uno scarico, con il cliente e il numero del documento.' : 'Ogni ordine con birra diventa uno scarico alla data di spedizione (o dell\'ordine se non ancora spedito: quelli non spediti restano da spuntare).'}
-        Le righe vengono collegate alla birra dal codice o dal nome; quelle che colleghi tu vengono ricordate. I documenti già importati non ricompaiono.</p>
-        <div class="barra" style="margin:0;align-items:flex-end">
+        <h1 style="margin-top:0">${F.sospesi ? 'Documenti da controllare' : `Scarichi da ${F.nome}`}</h1>
+        ${F.sospesi ? html`<p class="totale">Questi documenti sono arrivati di notte da Fatture in Cloud o Shopify, ma qualche riga non corrisponde a nessuna birra. Collega le righe (la scelta viene ricordata per le prossime volte) e salva. "Scarta" li toglie per sempre senza movimenti.</p>` : html`<p class="totale">${fonte === 'fic' ? 'Ogni fattura (o DDT) con birra diventa uno scarico, con il cliente e il numero del documento.' : 'Ogni ordine con birra diventa uno scarico alla data di spedizione (o dell\'ordine se non ancora spedito: quelli non spediti restano da spuntare).'}
+        Le righe vengono collegate alla birra dal codice o dal nome; quelle che colleghi tu vengono ricordate. I documenti già importati non ricompaiono.</p>`}
+        ${F.sospesi ? '' : html`<div class="barra" style="margin:0;align-items:flex-end">
           <label style="max-width:200px">Documenti dal <input type="date" id="imp-dal" value="${par.dal}"></label>
           ${F.tipi ? html`<label style="max-width:200px">Tipo <select id="imp-tipo">${Object.entries(F.tipi).map(([k, v]) => html`<option value="${k}" ${k === par.tipo ? 'selected' : ''}>${v}</option>`)}</select></label>` : ''}
           <button class="primario" id="imp-cerca" ${stato.carica ? 'disabled' : ''}>${stato.carica ? 'Cerco…' : `Cerca in ${F.nome}`}</button>
-        </div>
+        </div>`}
         ${stato.errore ? html`<p class="totale" style="color:var(--warn)">${stato.errore}</p>
           ${/configurat/i.test(stato.errore) ? html`<p class="totale">Per collegare ${F.nome} servono le chiavi nelle variabili d'ambiente di Netlify: ${fonte === 'fic' ? 'FIC_TOKEN e FIC_COMPANY_ID' : 'SHOPIFY_SHOP e SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET (oppure SHOPIFY_TOKEN)'}. Vedi la guida "Mettere online l'app".</p>` : ''}` : ''}
       </div>
       ${stato.docs ? html`
-        ${!docs.length ? html`<p class="vuoto">Nessun ${fonte === 'fic' ? 'documento' : 'ordine'} nuovo dal ${u.dataIT(par.dal)}${stato.gia ? ` (${stato.gia} già importati)` : ''}.</p>` : ''}
+        ${!docs.length ? html`<p class="vuoto">${F.sospesi ? '✓ Nessun documento da controllare.' : html`Nessun ${fonte === 'fic' ? 'documento' : 'ordine'} nuovo dal ${u.dataIT(par.dal)}${stato.gia ? ` (${stato.gia} già importati)` : ''}.`}</p>` : ''}
         ${stato.altri ? html`<p class="totale">Ce ne sono altri: dopo aver salvato questi, cerca di nuovo.</p>` : ''}
         ${docs.map((d, di) => {
           const daScegliere = d.righe.filter(r => !r.prodotto).length;
@@ -713,6 +698,7 @@ export async function vistaImporta(fonte) {
           </div>`;
         })}
         ${docs.length ? html`<div class="barra"><span class="spazio"></span><span class="totale" style="margin:0">${docs.filter(d => d.scegli).length} di ${docs.length} selezionati</span>
+          ${F.sospesi ? html`<button class="pericolo" id="imp-scarta">Scarta i selezionati</button>` : ''}
           <button class="primario" id="imp-salva">Scarica i selezionati</button></div>` : ''}` : ''}`;
   }
   disegna();
@@ -738,6 +724,13 @@ export async function vistaImporta(fonte) {
   u.$app.onclick = async e => {
     const t = e.target;
     if (t.id === 'imp-cerca') { if (!par.dal) return u.toast('Scegli la data'); cerca(); return; }
+    if (t.id === 'imp-scarta') {
+      const via = stato.docs.filter(d => d.scegli && d.sospeso);
+      if (!via.length || !(await u.chiedi(`Scartare ${via.length} documenti? Non diventano movimenti e non verranno importati di nuovo.`, 'Scarta'))) return;
+      for (const d of via) await u.db.elimina(d.sospeso.id);
+      u.toast(`${via.length} documenti scartati`);
+      return vistaImporta(fonte);
+    }
     if (t.id !== 'imp-salva') return;
     const scelti = stato.docs.filter(d => d.scegli);
     if (!scelti.length) return u.toast('Nessun documento selezionato');
@@ -756,12 +749,14 @@ export async function vistaImporta(fonte) {
     const nuoviProdotti = [...perProdotto.values()].filter(p => !dati.prodotti.includes(p)).map(({ aggiornato: _a, ...p }) => p);
     const movimenti = scelti.map(d => {
       const righe = d.righe.filter(r => r.prodotto !== '-' && r.qta > 0).map(r => ({ prodotto: r.prodotto, pezzi: r.qta * r.x, lotto: r.lotto || '' }));
+      const s = d.sospeso;
       return {
-        tipo: 'movbirra', id: u.db.nuovoId('movbirra'), verso: 'scarico', data: d.data, motivo: 'vendita', cliente: d.cliente || '',
-        documento: d.numero, note: '', origine: fonte, rifEsterno: `${fonte}:${d.id}`, righe, ...(righe.length ? {} : { ignorato: true }),
+        tipo: 'movbirra', id: u.db.nuovoId('movbirra'), verso: s?.verso || 'scarico', data: d.data, motivo: s?.motivo || 'vendita', cliente: d.cliente || '',
+        documento: d.numero, note: '', origine: s ? s.fonte : fonte, rifEsterno: s ? s.rifEsterno : `${fonte}:${d.id}`, righe, ...(righe.length ? {} : { ignorato: true }),
       };
     });
     await u.db.salvaMolti([...nuoviProdotti, ...movimenti]);
+    for (const d of scelti) if (d.sospeso) await u.db.elimina(d.sospeso.id);
     if (ignorati.size !== imp.codiciIgnorati.length) await salvaImpostazioni({ codiciIgnorati: [...ignorati] });
     const n = movimenti.filter(m => !m.ignorato).length;
     u.toast(`${n} scarichi salvati${movimenti.length - n ? ` · ${movimenti.length - n} senza birra segnati come visti` : ''}`);

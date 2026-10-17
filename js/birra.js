@@ -19,7 +19,7 @@
 // Lotti: lotto e scadenza sono quelli dell'etichetta, dalla sezione Confezionamento della cotta.
 // Gli scarichi senza lotto escono dal lotto che scade prima.
 
-import { abv, gruppoCotta, lottoGruppo, nomeBirra, numIT, oggiISO, scadenzaCotta } from './dominio.js';
+import { abv, dataIT, gruppoCotta, lottoGruppo, nomeBirra, numIT, oggiISO, scadenzaCotta } from './dominio.js';
 import { statoScadenza } from './magazzino.js';
 
 export const ID_IMPOSTAZIONI = 'impostazione-birra';
@@ -291,3 +291,35 @@ export function conCodice(prodotti, chiave, codice, x = 1) {
   return { ...p, codici: [...codici, { codice: c, x: Number(x) || 1 }] };
 }
 
+
+// ---------- lista delle birre disponibili per i clienti ----------
+// Solo pezzi di lotti non scaduti; per ogni birra stile e grado alcolico.
+// dati come giacenzeBirra (+ prodotti e cotte per le caratteristiche)
+export function listaDisponibili(dati, oggi = oggiISO()) {
+  const perBirra = new Map();
+  for (const x of giacenzeBirra(dati, oggi).values()) {
+    const pezzi = x.lotti.filter(l => !l.scadenza || l.scadenza >= oggi).reduce((t, l) => t + l.pezzi, 0);
+    if (pezzi <= 0) continue;
+    if (!perBirra.has(x.birra)) {
+      const c = caratteristiche(x.birra, dati.prodotti, dati.cotte);
+      perBirra.set(x.birra, { birra: x.birra, stile: c.stileVale, abv: c.abvVale, formati: [] });
+    }
+    perBirra.get(x.birra).formati.push({ tipo: x.tipo, litri: x.litri, pezzi, chiave: x.chiave });
+  }
+  const lista = [...perBirra.values()].sort((a, b) => a.birra.localeCompare(b.birra, 'it'));
+  for (const b of lista) b.formati.sort((a, c) => (a.tipo === c.tipo ? a.litri - c.litri : a.tipo === 'fusto' ? 1 : -1)); // prima le lattine
+  return lista;
+}
+export const formatoCliente = f => (f.tipo === 'fusto' ? `Fusti ${numIT(f.litri, 0)} L` : `Lattine ${Math.round(f.litri * 100)} cl`);
+// "session ipa" → "Session Ipa" non va: solo la prima lettera di ogni parola se è tutto minuscolo
+export const maiuscole = s => (s === s.toLowerCase() ? s.replace(/(^|\s)\p{L}/gu, m => m.toUpperCase()).replace(/\bIpa\b/g, 'IPA').replace(/\bNeipa\b/g, 'NEIPA').replace(/\bApa\b/g, 'APA') : s);
+export function testoListaBirre(lista, oggi = oggiISO()) {
+  const righe = [`Birre disponibili · Kashmir Brewing Company · ${dataIT(oggi)}`, ''];
+  for (const b of lista) {
+    righe.push([b.birra, b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · '));
+    for (const f of b.formati) righe.push(`   ${formatoCliente(f)}: ${numIT(f.pezzi, 0)}`);
+    righe.push('');
+  }
+  if (!lista.length) righe.push('Al momento non ci sono birre disponibili.');
+  return righe.join('\n').trim();
+}

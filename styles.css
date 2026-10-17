@@ -910,3 +910,45 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
   .tg-freddo rect, .tg-freddo-fondo, .tg-segno { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cantina-griglia { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ---------- automazioni, previsioni, AI ---------- */
+.avviso-riga { display: block; margin: 0 0 10px; padding: 10px 14px; border-radius: 10px; border-left: 4px solid var(--accent); background: var(--accent-tenue, var(--surface-2)); color: var(--text); text-decoration: none; font-size: .92rem; }
+.avviso-riga:hover { filter: brightness(.97); }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .74rem; font-weight: 600; background: var(--surface-2); color: var(--muted); white-space: nowrap; vertical-align: middle; }
+.cop-badge-ritardo { background: color-mix(in srgb, var(--warn) 15%, var(--surface)); color: var(--warn); }
+.cop-badge-presto { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); }
+.copertura tr.cop-ritardo td:first-child { box-shadow: inset 4px 0 var(--warn); }
+.copertura tr.cop-presto td:first-child { box-shadow: inset 4px 0 var(--accent); }
+.copertura td { white-space: nowrap; }
+/* pianificatore nel dialog della cotta */
+.proposte-fv { display: grid; gap: 6px; margin: 6px 0; }
+.proposta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.proposta > b { min-width: 92px; font-size: .88rem; text-transform: capitalize; }
+.proposta button.attivo, .barra button.attivo { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
+/* clienti da richiamare */
+.cl-griglia { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; margin-top: 12px; }
+.cl-card { margin: 0; }
+.cl-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cl-card > header h2 { margin: 0; font-size: 1.05rem; }
+.cl-ritardo { border-top: 4px solid var(--accent); }
+.cl-campi { grid-template-columns: 1fr 1fr; margin-top: 6px; }
+.acq-riga { display: flex; align-items: center; gap: 8px; }
+.acq-riga .w-testo { flex: 1; }
+/* automazioni */
+.au-tab td { vertical-align: middle; padding: 6px; }
+.au-tab td.totale { font-size: .8rem; margin: 0; }
+.au-tab select { min-height: 34px; padding: 2px 6px; width: auto; }
+.tg-msg { white-space: normal; background: var(--surface-2); border-radius: 12px; padding: 12px 14px; margin-top: 8px; font-size: .9rem; line-height: 1.45; max-width: 560px; }
+/* chiedi ai dati */
+.chiedi { display: grid; gap: 12px; max-width: 860px; }
+.chiedi-esempi { display: flex; flex-wrap: wrap; gap: 8px; }
+.chiedi-esempi button { text-align: left; white-space: normal; height: auto; }
+.ch-domanda { justify-self: end; max-width: 85%; background: var(--accent-tenue, var(--surface-2)); padding: 10px 14px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; }
+.ch-risposta { margin: 0; }
+.ch-risposta p { margin: 0 0 8px; } .ch-risposta p:last-child { margin-bottom: 0; }
+.ch-risposta ul, .ch-risposta ol { margin: 0 0 8px; padding-left: 22px; }
+.ch-risposta h3 { margin: 8px 0 6px; font-size: 1rem; }
+.ch-risposta table { margin: 4px 0 8px; }
+.ch-form { display: flex; gap: 8px; align-items: flex-end; position: sticky; bottom: 0; background: var(--bg); padding: 8px 0; }
+.ch-form textarea { flex: 1; resize: vertical; }
+@media (max-width: 640px) { .cl-campi { grid-template-columns: 1fr; } .au-tab td { display: block; padding: 2px 6px; } .au-tab tr { display: block; border-bottom: 1px solid var(--border); padding: 6px 0; } }
