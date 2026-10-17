@@ -1,8 +1,10 @@
-// Etichetta per i fusti da stampare sulla Brother QL-700 (rotolo continuo da 62 mm).
+// Etichetta per i fusti e per i cartoni di lattine da stampare sulla Brother QL-700 (rotolo continuo da 62 mm).
+// Con il QR di uso interno (js/qr.js): inquadrato apre il lotto nell'app e scarica il fusto o il cartone.
 // Si stampa dal browser: l'etichetta va in un iframe con il suo formato pagina (62 mm × lunghezza),
 // così non dipende dagli stili dell'app. Nella stampa scegliere la QL-700 e il rotolo 62 mm.
 
 import { LOGO_KASHMIR } from './logo-kashmir.js';
+import { linkQr, svgQr } from './qr.js';
 
 const PREF = 'gb-etichetta-2'; // -2: nuovi testi di default (Romain, 2026-10-13)
 const ALLERGENI = /\b(ORZO|FRUMENTO|AVENA|SEGALE|FARRO|KAMUT|GLUTINE|LATTOSIO|LATTE|SOLFITI)\b/g;
@@ -61,6 +63,10 @@ export function htmlEtichetta(d) {
   .lotto { font-size: 7.4pt; line-height: 1.3; text-align: left; }
   .prod { font-size: 6.2pt; line-height: 1.25; text-align: left; white-space: pre-line; margin-top: auto; }
   .cons { font-size: 6.2pt; text-align: left; }
+  .piede { display: flex; gap: 2mm; align-items: flex-end; margin-top: auto; }
+  .piede .prod { margin-top: 0; flex: 1; }
+  .qr { width: 16mm; height: 16mm; flex: none; }
+  .qr svg { width: 100%; height: 100%; display: block; }
 </style></head><body><div class="et">
   <img class="logo" src="${LOGO_KASHMIR}" alt="">
   <div class="nome">${esc(d.birra)}</div>
@@ -69,20 +75,25 @@ export function htmlEtichetta(d) {
   <div class="ingr"><b>Ingredienti:</b> ${ingr}</div>
   <div class="lotto"><b>Lotto:</b> ${esc(d.lotto)}<br><b>Da consumarsi preferibilmente entro fine:</b> ${esc(d.scadenza)}</div>
   ${d.conservazione ? `<div class="cons">${esc(d.conservazione)}</div>` : ''}
-  <div class="prod">${esc(d.produttore)}</div>
+  ${d.qr ? `<div class="piede"><div class="prod">${esc(d.produttore)}</div><div class="qr">${d.qr}</div></div>` : `<div class="prod">${esc(d.produttore)}</div>`}
 </div></body></html>`;
 }
 
 // Dialog con i campi già compilati dalla cotta, anteprima e stampa.
-// ctx: { html, abv, lotto, scadenzaMese, numIT }
-export function apriEtichetta(c, ctx) {
+// ctx: { html, abv, lotto, scadenzaMese, numIT, cartone (etichetta del cartone di lattine), qr: { prodotto(litri, tipo), lotto, cotta } }
+export async function apriEtichetta(c, ctx) {
   const pref = leggiPref();
-  const fusti = [...new Set((c.confezionato || []).filter(r => r.tipo === 'fusto' && Number(r.litri) > 0).map(r => Number(r.litri)))];
+  const cartone = !!ctx.cartone;
+  const formati = [...new Set((c.confezionato || []).filter(r => (cartone ? r.tipo !== 'fusto' : r.tipo === 'fusto') && Number(r.litri) > 0).map(r => Number(r.litri)))];
+  const litri = formati[0] || (cartone ? 0.33 : 20);
   const d = {
     birra: c.birra || '',
     stile: c.stile || '',
     alcol: ctx.abv ? ctx.numIT(ctx.abv, 1) : '',
-    formato: `${ctx.numIT(fusti[0] || 20, 0)} L`,
+    formato: cartone ? `${pref.pezziCartone || 24} × ${ctx.numIT(litri * 100, 0)} cl` : `${ctx.numIT(litri, 0)} L`,
+    pezzi: cartone ? Number(pref.pezziCartone) || 24 : 1,
+    conQr: pref.conQr !== false,
+    qr: '',
     ingredienti: ingredientiDa(c),
     lotto: ctx.lotto,
     scadenza: meseAnno(ctx.scadenzaMese),
@@ -95,7 +106,7 @@ export function apriEtichetta(c, ctx) {
   dlg.className = 'dlg-etichetta';
   const campo = (k, etichetta, attr = '') => html`<label>${etichetta} <input data-et="${k}" value="${d[k]}" ${ctx.raw(attr)}></label>`;
   dlg.innerHTML = html`<form method="dialog">
-    <h2>Etichetta fusto</h2>
+    <h2>${cartone ? 'Etichetta cartone lattine' : 'Etichetta fusto'}</h2>
     <div class="et-corpo">
       <div class="griglia" style="grid-template-columns:1fr 1fr">
         <label style="grid-column:1/-1">Birra <input data-et="birra" value="${d.birra}"></label>
@@ -108,10 +119,12 @@ export function apriEtichetta(c, ctx) {
         <label style="grid-column:1/-1">Ingredienti <span class="totale">(gli allergeni in MAIUSCOLO escono in grassetto)</span><textarea data-et="ingredienti" rows="3">${d.ingredienti}</textarea></label>
         <label style="grid-column:1/-1">Conservazione <input data-et="conservazione" value="${d.conservazione}"></label>
         <label style="grid-column:1/-1">Produttore e luogo di produzione <textarea data-et="produttore" rows="3">${d.produttore}</textarea></label>
+        <label class="spunta"><input type="checkbox" data-et="conQr" ${d.conQr ? 'checked' : ''}> QR per lo scarico (uso interno)</label>
+        ${cartone ? html`<label>Lattine per cartone <input data-et="pezzi" type="number" min="1" max="96" value="${d.pezzi}"></label>` : ''}
       </div>
       <div class="et-anteprima"><iframe title="Anteprima etichetta"></iframe></div>
     </div>
-    <datalist id="dl-formati-et">${[12, 20, 24, 25, 30].map(l => html`<option value="${l} L">`)}</datalist>
+    <datalist id="dl-formati-et">${(cartone ? ['24 × 33 cl', '12 × 33 cl', '24 × 44 cl', '12 × 44 cl'] : [12, 20, 24, 25, 30].map(l => `${l} L`)).map(f => html`<option value="${f}">`)}</datalist>
     <p class="totale">Nella finestra di stampa scegli la Brother QL-700, carta 62 mm (rotolo continuo), margini nessuno e scala 100%.</p>
     <div class="barra"><span class="spazio"></span>
       <button value="chiudi">Chiudi</button>
@@ -120,15 +133,20 @@ export function apriEtichetta(c, ctx) {
   </form>`.s;
   document.body.appendChild(dlg);
   const ant = dlg.querySelector('.et-anteprima iframe');
+  // il QR porta prodotto, lotto e pezzi per scansione (un cartone = tutte le sue lattine)
+  const disegnaQr = async () => {
+    d.qr = d.conQr && ctx.qr ? await svgQr(linkQr({ prodotto: `${ctx.qr.birra}|${cartone ? 'lattina/bottiglia' : 'fusto'}|${litri}`, lotto: ctx.qr.lotto, cotta: ctx.qr.cotta, pezzi: cartone ? d.pezzi : 1 })).catch(() => '') : '';
+  };
   const aggiorna = () => {
     ant.srcdoc = htmlEtichetta(d);
     ant.style.height = `${Math.max(40, Number(d.lunghezza) || 100) * 3.78 + 4}px`;
   };
-  dlg.addEventListener('input', e => {
+  dlg.addEventListener('input', async e => {
     const k = e.target.dataset.et;
     if (!k) return;
-    d[k] = e.target.value;
-    if (['produttore', 'conservazione', 'lunghezza'].includes(k)) scriviPref({ produttore: d.produttore, conservazione: d.conservazione, lunghezza: d.lunghezza });
+    d[k] = e.target.type === 'checkbox' ? e.target.checked : k === 'pezzi' ? Math.max(1, Number(e.target.value) || 1) : e.target.value;
+    if (['produttore', 'conservazione', 'lunghezza', 'conQr', 'pezzi'].includes(k)) scriviPref({ ...leggiPref(), produttore: d.produttore, conservazione: d.conservazione, lunghezza: d.lunghezza, conQr: d.conQr, ...(cartone ? { pezziCartone: d.pezzi } : {}) });
+    if (k === 'conQr' || k === 'pezzi') await disegnaQr();
     aggiorna();
   });
   dlg.querySelector('#et-stampa').onclick = () => {
@@ -143,6 +161,7 @@ export function apriEtichetta(c, ctx) {
     fr.srcdoc = htmlEtichetta(d);
   };
   dlg.addEventListener('close', () => dlg.remove());
+  await disegnaQr();
   aggiorna();
   dlg.showModal();
 }

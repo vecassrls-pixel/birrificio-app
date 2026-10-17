@@ -25,6 +25,8 @@ import * as automazioni from './vista-automazioni.js';
 import * as cassa from './vista-cassa.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
+import { lottoEtichetta } from './birra.js';
+import * as qr from './vista-qr.js';
 import { conGiorniDh } from './agenda.js';
 import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
@@ -100,6 +102,7 @@ previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, 
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
+qr.init({ $app, html, db, toast, stato, dataIT, oggiISO });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   if (await correggiRegula()) stato.cotte = await db.tutti('cotta');
@@ -223,6 +226,8 @@ const routes = [
   [/^#\/clienti$/, () => previsioni.vistaClienti()],
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
   [/^#\/cassa$/, () => cassa.vistaCassa()],
+  [/^#\/scansiona$/, () => { pulizia = qr.vistaScansiona(); }],
+  [/^#\/qr\?/, () => qr.vistaQr()],
   [/^#\/costi$/, () => costi.vistaCosti()],
   [/^#\/ordine$/, () => ordine.vistaOrdine()],
   [/^#\/cerca$/, () => cerca.vistaCerca()],
@@ -236,7 +241,7 @@ async function render() {
   $app.oninput = $app.onchange = $app.onclick = null;
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -900,6 +905,7 @@ async function vistaCotta(id) {
             <div class="scad-testo"><b class="num">${testo}</b>${sc?.stimata ? html`<span class="totale"> stimata ${c.confezionato.some(r => r.data) ? 'dal confezionamento' : 'dalla fine in FV'}</span>` : ''}</div>
             <button class="piccolo copia-lotto" data-copia="${testo}" title="Copia lotto e scadenza">⧉ Copia</button>
             <button class="piccolo" id="etichetta-fusto" title="Stampa l'etichetta per i fusti sulla Brother QL-700 (rotolo 62 mm)">🏷 Etichetta fusto</button>
+            <button class="piccolo" id="etichetta-cartone" title="Stampa l'etichetta per i cartoni di lattine sulla Brother QL-700 (rotolo 62 mm)">🏷 Etichetta cartone</button>
           </div>`;
         })()}
         ${litriConf ? (litriGruppo > 0 ? html`<div class="kpi resa">
@@ -1086,14 +1092,15 @@ async function vistaCotta(id) {
       await db.elimina(c.id);
       toast('Cotta eliminata');
       location.hash = '#/cotte';
-    } else if (t.id === 'etichetta-fusto') {
+    } else if (t.id === 'etichetta-fusto' || t.id === 'etichetta-cartone') {
       const cotte = stato.cotte.map(x => (x.id === c.id ? c : x));
       const g = gruppoCotta(c, cotte);
       const ogL = g.length > 1 ? ogMedia(g) : c.og;
       const ult = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
       const lotto = (testoLottoScadenza(c, cotte, stato.durate).match(/^Lotto (\S+)/) || [])[1] || c.lotto || '';
       apriEtichetta(c, {
-        html, raw, numIT, lotto,
+        html, raw, numIT, lotto, cartone: t.id === 'etichetta-cartone',
+        qr: { birra: nomeBirra(c.birra), lotto: lottoEtichetta(g), cotta: g[0].id },
         abv: abv(ogL, c.fg ?? (ult ? Number(ult.densita) : null)),
         scadenzaMese: scadenzaCotta(c, cotte, stato.durate)?.mese,
       });

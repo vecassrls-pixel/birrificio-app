@@ -956,3 +956,10 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .cs-kpi { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .cs-tab tr.cs-conta td { background: var(--surface-2); }
 .cs-tab td small { display: inline; }
+/* QR fusti e cartoni */
+.qr-video { max-width: 480px; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: #000; }
+.qr-video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qr-lotto { font-size: 1.1rem; margin: 6px 0; }
+.qr-n { min-width: 2.2em; text-align: center; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.qr-motivi { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 10px; }
+.qr-motivi button { min-height: 52px; font-size: 1rem; }
