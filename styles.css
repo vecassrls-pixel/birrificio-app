@@ -952,3 +952,7 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .ch-form { display: flex; gap: 8px; align-items: flex-end; position: sticky; bottom: 0; background: var(--bg); padding: 8px 0; }
 .ch-form textarea { flex: 1; resize: vertical; }
 @media (max-width: 640px) { .cl-campi { grid-template-columns: 1fr; } .au-tab td { display: block; padding: 2px 6px; } .au-tab tr { display: block; border-bottom: 1px solid var(--border); padding: 6px 0; } }
+/* cassa */
+.cs-kpi { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.cs-tab tr.cs-conta td { background: var(--surface-2); }
+.cs-tab td small { display: inline; }

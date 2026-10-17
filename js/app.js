@@ -22,6 +22,7 @@ import * as cantina from './vista-cantina.js';
 import * as previsioni from './vista-previsioni.js';
 import * as chiediDati from './vista-chiedi.js';
 import * as automazioni from './vista-automazioni.js';
+import * as cassa from './vista-cassa.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { conGiorniDh } from './agenda.js';
@@ -98,6 +99,7 @@ magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggi
 previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre) });
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
+cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   if (await correggiRegula()) stato.cotte = await db.tutti('cotta');
@@ -220,6 +222,7 @@ const routes = [
   [/^#\/copertura$/, () => previsioni.vistaCopertura()],
   [/^#\/clienti$/, () => previsioni.vistaClienti()],
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
+  [/^#\/cassa$/, () => cassa.vistaCassa()],
   [/^#\/costi$/, () => costi.vistaCosti()],
   [/^#\/ordine$/, () => ordine.vistaOrdine()],
   [/^#\/cerca$/, () => cerca.vistaCerca()],
@@ -233,7 +236,7 @@ async function render() {
   $app.oninput = $app.onchange = $app.onclick = null;
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi')) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
