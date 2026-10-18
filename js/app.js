@@ -19,8 +19,18 @@ import { ID_OPERATORI, operatoriDa } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
 import * as cantina from './vista-cantina.js';
+import * as previsioni from './vista-previsioni.js';
+import * as chiediDati from './vista-chiedi.js';
+import * as automazioni from './vista-automazioni.js';
+import * as cassa from './vista-cassa.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
+import { lottoEtichetta } from './birra.js';
+import * as qr from './vista-qr.js';
+import * as carrello from './vista-carrello.js';
+import * as ordiniClienti from './vista-ordini.js';
+import { conGiorniDh } from './agenda.js';
+import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino } from './magazzino.js';
@@ -90,6 +100,13 @@ haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, 
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 cantina.init({ $app, html, raw, stato, dataIT, oggiISO, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
+carrello.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, token: () => (auth.configurato() ? auth.token() : null) });
+previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre), linkOrdini: (nome, scheda) => ordiniClienti.dialogLink(nome, scheda) });
+ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT });
+chiediDati.init({ $app, html, raw, toast });
+automazioni.init({ html, raw, db, toast, stato, oggiISO });
+cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
+qr.init({ $app, html, db, toast, stato, dataIT, oggiISO });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   if (await correggiRegula()) stato.cotte = await db.tutti('cotta');
@@ -203,12 +220,20 @@ const routes = [
   [/^#\/birra-inventario$/, () => magBirra.vistaInventario()],
   [/^#\/birra-prodotti-fic$/, () => magBirra.vistaProdottiFic()],
   [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
+  [/^#\/birra-carrello$/, () => carrello.vistaCarrello()],
   [/^#\/birra-lista(\?stampa=1)?$/, st => magBirra.vistaListaClienti(!!st)],
   [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
   [/^#\/listini$/, () => listini.vistaListini()],
   [/^#\/preventivi$/, () => preventivi.vistaPreventivi()],
   [/^#\/preventivo\/(.+)$/, id => preventivi.vistaPreventivo(id).then(f => { if (f) pulizia = f; })],
   [/^#\/statistiche$/, () => statistiche.vistaStatistiche()],
+  [/^#\/copertura$/, () => previsioni.vistaCopertura()],
+  [/^#\/clienti$/, () => previsioni.vistaClienti()],
+  [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
+  [/^#\/cassa$/, () => cassa.vistaCassa()],
+  [/^#\/ordini-clienti$/, () => ordiniClienti.vistaOrdini()],
+  [/^#\/scansiona$/, () => { pulizia = qr.vistaScansiona(); }],
+  [/^#\/qr\?/, () => qr.vistaQr()],
   [/^#\/costi$/, () => costi.vistaCosti()],
   [/^#\/ordine$/, () => ordine.vistaOrdine()],
   [/^#\/cerca$/, () => cerca.vistaCerca()],
@@ -220,9 +245,10 @@ async function render() {
   if (h.includes('access_token=')) return; // link di invito: gestito all'avvio
   if (pulizia) { pulizia(); pulizia = null; }
   $app.oninput = $app.onchange = $app.onclick = null;
+  $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv)/.test(h)) || (a.dataset.tab === 'statistiche' && h.startsWith('#/costi')) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -331,6 +357,9 @@ function dialogNuovaCotta(pre = {}) {
       <p class="totale" style="margin:4px 0 0">Si copiano ingredienti, litri, OG prevista, acqua, profilo di temperatura, giorni del DH e durata in FV.</p>
       <h3>Fermentatore</h3>
       <div id="fv-scelta" class="griglia" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
+      <div class="barra" style="margin:8px 0 0"><button type="button" class="piccolo" id="trova-date" title="Cerca dalla data scritta in poi, senza sabato e domenica">🔎 Prime date con un FV libero</button></div>
+      <div id="proposte" class="proposte-fv"></div>
+      <p id="mp-check" class="totale"></p>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="dh" checked style="width:auto;min-height:auto"> Con dry hop (DH)</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="materiePrime" style="width:auto;min-height:auto"> Materie prime ordinate o in magazzino</label>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="lievitoOk" style="width:auto;min-height:auto"> ${SIMBOLI.lievito} Lievito ordinato o in magazzino</label>
@@ -368,7 +397,43 @@ function dialogNuovaCotta(pre = {}) {
     const r = dlg.querySelector(`input[name=fv][value="${target}"]`);
     if (r) r.checked = true;
     if (!f.dh.dataset.toccato) f.dh.checked = !(src0 && src0.dh === false);
+    controllaMp();
     dlg.querySelector('#origine').textContent = src0 ? `Copia da ${src0.birra}, lotto ${src0.lotto} del ${dataIT(src0.data)}: ${durata} giorni in FV` : f.copiaDa.value === 'no' ? 'Ricetta vuota, profilo standard.' : (birra ? 'Nessuna cotta precedente con ricetta per questa birra: ricetta vuota.' : '');
+  };
+  // pianificatore: prime date libere e materie prime che mancherebbero (js/pianificatore.js)
+  let travasoScelto = null, datiMag = null, timerMp;
+  const controllaMp = () => {
+    clearTimeout(timerMp);
+    timerMp = setTimeout(async () => {
+      const out = dlg.querySelector('#mp-check');
+      const src = srcScelta();
+      if (!out || !src || !f.data.value) { if (out) out.textContent = ''; return; }
+      datiMag ||= await Promise.all(['articolo', 'bolla', 'inventario', 'scarico'].map(t => db.tutti(t)))
+        .then(([articoli, bolle, inventari, scarichi]) => ({ articoli, bolle, inventari, scarichi }));
+      const { mancano } = materiePrimeMancanti({ ...datiMag, cotte: stato.cotte }, copiaDa(src, { data: f.data.value, numero: 0, anno: 0, fv: '' }), oggiISO());
+      out.innerHTML = !datiMag.articoli.length ? ''
+        : mancano.length ? html`<span style="color:var(--warn)">Materie prime che mancherebbero il ${dataIT(f.data.value)}:</span> ${mancano.map(m => `${m.articolo.nome} ${numIT(m.manca, m.unita === 'kg' ? 1 : 0)} ${m.unita}`).join(', ')} · <a href="#/ordine">Da ordinare →</a>`.s
+          : `✓ Materie prime: con le giacenze e gli ordini registrati c'è tutto per il ${dataIT(f.data.value)}.`;
+    }, 300);
+  };
+  dlg.querySelector('#trova-date').onclick = () => {
+    const src = srcScelta();
+    const durata = Number(f.durata.value) || durataDa(src, stato.durate);
+    const proposte = proponiDate({ fvs: stato.fv, cotte: stato.cotte, durate: stato.durate, durata, da: f.data.value || oggiISO(), giorniTravaso: giorniTravasoDa(src, stato.fv) });
+    dlg.querySelector('#proposte').innerHTML = proposte.length ? html`${proposte.map(p => html`<div class="proposta"><b>${dataIT(p.data, { weekday: 'short', day: 'numeric', month: 'short' })}</b>
+      ${p.opzioni.slice(0, 6).map(o => html`<button type="button" class="piccolo" data-prop="${p.data}|${o.fv}|${o.travaso?.fv || ''}|${o.travaso?.data || ''}">${o.fv}${o.travaso ? ` → ${o.travaso.fv}` : ''}</button>`)}</div>`)}`.s
+      : html`<p class="totale">Nessun FV libero per ${durata} giorni nei prossimi 4 mesi.</p>`.s;
+  };
+  dlg.querySelector('#proposte').onclick = e => {
+    const b = e.target.closest('[data-prop]');
+    if (!b) return;
+    const [d, fv, tfv, td] = b.dataset.prop.split('|');
+    f.data.value = d;
+    f.data.dispatchEvent(new Event('change'));
+    const r = dlg.querySelector(`input[name=fv][value="${fv}"]`);
+    if (r) r.checked = true;
+    travasoScelto = tfv ? { fv: tfv, data: td, perData: d, perFv: fv } : null;
+    dlg.querySelectorAll('[data-prop]').forEach(x => x.classList.toggle('attivo', x === b));
   };
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); });
   f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); });
@@ -409,6 +474,8 @@ function dialogNuovaCotta(pre = {}) {
     if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
     if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
     base.dh = !!fd.get('dh');
+    // travaso proposto dal pianificatore, se data e FV sono rimasti quelli della proposta
+    if (travasoScelto?.perData === data && travasoScelto.perFv === fv) base.travaso = { fv: travasoScelto.fv, data: travasoScelto.data };
     if (fd.get('materiePrime')) base.materiePrime = true;
     if (fd.get('lievitoOk')) base.lievitoOk = true;
     if (fd.get('etichetteOk')) base.etichetteOk = true;
@@ -845,6 +912,7 @@ async function vistaCotta(id) {
             <div class="scad-testo"><b class="num">${testo}</b>${sc?.stimata ? html`<span class="totale"> stimata ${c.confezionato.some(r => r.data) ? 'dal confezionamento' : 'dalla fine in FV'}</span>` : ''}</div>
             <button class="piccolo copia-lotto" data-copia="${testo}" title="Copia lotto e scadenza">⧉ Copia</button>
             <button class="piccolo" id="etichetta-fusto" title="Stampa l'etichetta per i fusti sulla Brother QL-700 (rotolo 62 mm)">🏷 Etichetta fusto</button>
+            <button class="piccolo" id="etichetta-cartone" title="Stampa l'etichetta per i cartoni di lattine sulla Brother QL-700 (rotolo 62 mm)">🏷 Etichetta cartone</button>
           </div>`;
         })()}
         ${litriConf ? (litriGruppo > 0 ? html`<div class="kpi resa">
@@ -1031,14 +1099,15 @@ async function vistaCotta(id) {
       await db.elimina(c.id);
       toast('Cotta eliminata');
       location.hash = '#/cotte';
-    } else if (t.id === 'etichetta-fusto') {
+    } else if (t.id === 'etichetta-fusto' || t.id === 'etichetta-cartone') {
       const cotte = stato.cotte.map(x => (x.id === c.id ? c : x));
       const g = gruppoCotta(c, cotte);
       const ogL = g.length > 1 ? ogMedia(g) : c.og;
       const ult = [...c.fermentazione].reverse().find(e => e.densita !== undefined && e.densita !== null && e.densita !== '');
       const lotto = (testoLottoScadenza(c, cotte, stato.durate).match(/^Lotto (\S+)/) || [])[1] || c.lotto || '';
       apriEtichetta(c, {
-        html, raw, numIT, lotto,
+        html, raw, numIT, lotto, cartone: t.id === 'etichetta-cartone',
+        qr: { birra: nomeBirra(c.birra), lotto: lottoEtichetta(g), cotta: g[0].id },
         abv: abv(ogL, c.fg ?? (ult ? Number(ult.densita) : null)),
         scadenzaMese: scadenzaCotta(c, cotte, stato.durate)?.mese,
       });
@@ -1145,14 +1214,6 @@ function set(o, path, v) {
 
 // ---------- Planning ----------
 const plan = { inizio: null, giorni: 84 };
-// cotta doppia/tripla: se i giorni del dry hop sono scritti solo su un'altra cotta del gruppo, valgono per la barra
-const conDh = x => (x.luppoli || []).some(r => r.uso === 'dry hop' && Number(r.giorno) > 0);
-function conGiorniDh(cotte) {
-  const c0 = cotte[0], altra = conDh(c0) ? null : cotte.find(conDh);
-  if (!altra) return c0;
-  const sposta = diffGiorni(c0.data, altra.data);
-  return { ...c0, luppoli: altra.luppoli.map(r => (r.uso === 'dry hop' && Number(r.giorno) > 0 ? { ...r, giorno: Number(r.giorno) + sposta } : r)) };
-}
 const W = 30; // pixel per giorno
 
 // Colore della barra secondo la temperatura misurata: stessa tinta della fase, più scura quando è più calda.
@@ -1561,6 +1622,8 @@ async function vistaImpostazioni() {
       <p class="totale">Carico…</p>
     </div>` : ''}
 
+    ${auth.configurato() ? html`<div class="scheda solo-editori" id="automazioni"><h2>Automazioni e Telegram</h2><p class="totale">Carico…</p></div>` : ''}
+
     <div class="scheda solo-editori">
       <h2>Brewfather</h2>
       <p class="totale">Ricette e cotte si scrivono in Brewfather. Qui arrivano birra, numero, data, ricetta, valori misurati e letture del densimetro; fermentatore, tacche e confezionamento restano quelli inseriti nell'app.</p>
@@ -1652,6 +1715,7 @@ async function vistaImpostazioni() {
     location.reload();
   };
   if (document.getElementById('utenti')) gestioneUtenti();
+  if (document.getElementById('automazioni')) automazioni.scheda(document.getElementById('automazioni'));
   document.getElementById('bf-attive').onclick = () => importaBrewfather(false);
   document.getElementById('bf-tutto').onclick = () => importaBrewfather(true);
   document.getElementById('bf-invia-tutte').onclick = () => inviaBrewfather();

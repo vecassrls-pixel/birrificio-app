@@ -1,0 +1,9 @@
+{
+  "name": "birrificio-app",
+  "private": true,
+  "description": "Global Brewing: le dipendenze servono solo alle funzioni Netlify (netlify/functions)",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0"
+  }
+}

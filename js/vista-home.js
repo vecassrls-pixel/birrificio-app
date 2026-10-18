@@ -7,8 +7,10 @@ import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
+import { attivitaGiorno, etichetteDaOrdinare } from './agenda.js';
+import { coperturaBirre, statoClienti } from './previsioni.js';
 import {
-  SIMBOLI, eventiGiorno, fasiCotta, fineCotta, gruppoCotta, litriConfezionati, lottoGruppo, periodiCotta, statoCotta, travasoCotta,
+  SIMBOLI, fasiCotta, fineCotta, gruppoCotta, litriConfezionati, lottoGruppo, periodiCotta, statoCotta,
 } from './dominio.js';
 
 let u; // { $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh }
@@ -29,48 +31,20 @@ function logoHome(imp) {
 const nomeSaluto = () => { try { return (localStorage.getItem(NOME_SALUTO) || '').trim(); } catch { return ''; } };
 const saluto = () => { const h = new Date().getHours(); const n = nomeSaluto(); return `${h < 13 ? 'Buongiorno' : h < 18 ? 'Buon pomeriggio' : 'Buonasera'}${n ? ` ${n}` : ''}`; };
 
-// Cosa c'è da fare in un giorno, per lotto (le cotte doppie una volta sola)
-export function attivitaGiorno(cotte, d, { durate, fv, addGiorni, conGiorniDh = g => g[0] }) {
-  const out = [];
-  const visti = new Set();
-  for (const c of cotte) {
-    if (c.eliminato || !c.data || visti.has(c.id)) continue;
-    const g = gruppoCotta(c, cotte);
-    g.forEach(x => visti.add(x.id));
-    const c0 = conGiorniDh(g);
-    const fine = fineCotta(g[0], durate);
-    if (d < g[0].data || d > fine) continue;
-    const nome = g[0].birra;
-    const lotto = g.length > 1 ? lottoGruppo(g) : g[0].lotto;
-    const base = { id: g[0].id, birra: nome, lotto, fv: g[0].fv };
-    if (g.some(x => x.data === d)) out.push({ ...base, tipo: 'cotta', icona: '🍺', testo: `Cotta${g.length > 1 ? ` ${g.length === 2 ? 'doppia' : 'tripla'}` : ''}`, dett: '' });
-    const dh = (c0.luppoli || []).filter(r => r.uso === 'dry hop' && Number(r.giorno) > 0 && addGiorni(c0.data, Number(r.giorno) - 1) === d);
-    const fasi = fasiCotta(c0, durate);
-    if (dh.length) out.push({ ...base, tipo: 'dh', icona: '🌿', testo: 'Dry hop', dett: dh.map(r => `${r.nome}${r.qta ? ` ${u.numIT(r.qta, 1)} ${r.unita || 'g'}` : ''}`).join(', ') });
-    else if (fasi.some(f => f.fase === 'dh' && f.da === d && d !== g[0].data)) out.push({ ...base, tipo: 'dh', icona: '🌿', testo: 'Inizio dry hop', dett: '' });
-    if (fasi.some(f => f.fase === 'maturazione' && f.da === d)) out.push({ ...base, tipo: 'freddo', icona: '❄️', testo: 'Crash cooling', dett: 'scendere a freddo, inizio maturazione' });
-    const t = travasoCotta(g[0], fv);
-    if (t?.data === d) out.push({ ...base, tipo: 'travaso', icona: '↪️', testo: 'Travaso', dett: `${g[0].fv} → ${t.fv || 'FV da scegliere'}${t.stimato ? ' (stimato)' : ''}` });
-    const ev = (g[0].fermentazione || []).filter(e => e.data === d).flatMap(eventiGiorno);
-    for (const k of new Set(ev)) out.push({ ...base, tipo: k, icona: SIMBOLI[k], testo: k === 'spurgo' ? 'Spurgo' : 'Bubbling', dett: '' });
-    if (fine === d && !g.some(x => (x.confezionato || []).length)) out.push({ ...base, tipo: 'fine', icona: '📦', testo: 'Ultimo giorno in FV', dett: 'da confezionare' });
-  }
-  const ordine = ['cotta', 'travaso', 'dh', 'freddo', 'spurgo', 'bubbling', 'fine'];
-  return out.sort((a, b) => ordine.indexOf(a.tipo) - ordine.indexOf(b.tipo) || String(a.fv).localeCompare(String(b.fv), 'it', { numeric: true }));
-}
+export { attivitaGiorno };
 
 export async function vistaHome() {
   const { html, stato, numIT, dataIT, oggiISO, addGiorni, diffGiorni } = u;
   const oggi = oggiISO(), domani = addGiorni(oggi, 1);
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze, pulizie] = await Promise.all([
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze, pulizie, sospesi, clienti, ordiniClienti] = await Promise.all([
     ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
-    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'),
+    u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'), u.db.tutti('importsospeso'), u.db.tutti('cliente'), u.db.tutti('ordinecliente'),
   ]);
   const scadHaccp = scadenzeDaFare(scadenze, oggi);
   const sporchi = fvDaPulire(statoFermentatori(stato.cotte, stato.durate, stato.fv, pulizie, oggi), pulizie, oggi);
   const logo = logoHome(impHome);
   const cotte = stato.cotte;
-  const ctx = { durate: stato.durate, fv: stato.fv, addGiorni, conGiorniDh: u.conGiorniDh };
+  const ctx = { durate: stato.durate, fv: stato.fv };
 
   // materie prime
   const datiMag = { articoli, bolle, inventari, scarichi, cotte };
@@ -86,7 +60,12 @@ export async function vistaHome() {
 
   // birra in magazzino
   const impB = impBirra && !impBirra.eliminato ? impBirra : null;
-  const gb = [...giacenzeBirra({ cotte, durate: stato.durate, movimenti, inventari: inventariBirra, prodotti, impostazioni: impB }).values()];
+  const giacB = giacenzeBirra({ cotte, durate: stato.durate, movimenti, inventari: inventariBirra, prodotti, impostazioni: impB });
+  const gb = [...giacB.values()];
+  // previsioni dalle vendite: birre da ripianificare, clienti fermi, documenti importati da controllare
+  const copertura = impB?.inizio ? coperturaBirre({ giac: giacB, cotte, durate: stato.durate }, { oggi }).filter(b => b.stato !== 'ok') : [];
+  const fermi = statoClienti(movimenti, clienti, prodotti, oggi).filter(c => c.daRichiamare);
+  const daControllare = sospesi.filter(x => x.fonte !== 'acquisti').length, acquisti = sospesi.length - daControllare;
   const litriMag = gb.reduce((t, x) => t + Math.max(0, x.litriTot), 0);
   const pezzi = tipo => gb.filter(x => x.tipo === tipo).reduce((t, x) => t + Math.max(0, x.giacenza), 0);
 
@@ -122,17 +101,7 @@ export async function vistaHome() {
     .sort((a, b) => a.data.localeCompare(b.data));
   const prossimeLotti = [];
   for (const c of prossime) if (!prossimeLotti.some(g => g.some(x => x.id === c.id))) prossimeLotti.push(gruppoCotta(c, cotte));
-  // etichette da ordinare: cotte pianificate o ancora nei fermentatori senza la spunta "Etichette pronte"
-  // (le etichette sono del lotto: basta la spunta su una cotta). Servono per il confezionamento: ordine per fine in FV.
-  const senzaEtichette = [];
-  for (const c of cotte) {
-    if (c.eliminato || !c.data || senzaEtichette.some(x => x.g.some(y => y.id === c.id))) continue;
-    if (!['pianificata', 'tank'].includes(statoCotta(c, stato.durate, oggi, cotte))) continue;
-    const g = gruppoCotta(c, cotte);
-    if (g.some(x => x.etichetteOk)) continue;
-    senzaEtichette.push({ g, fine: fineCotta(g[0], stato.durate), inFv: g[0].data <= oggi });
-  }
-  senzaEtichette.sort((x, y) => x.fine.localeCompare(y.fine));
+  const senzaEtichette = etichetteDaOrdinare(cotte, stato.durate, oggi);
 
   const att = [[oggi, 'Oggi'], [domani, 'Domani']].map(([d, titolo]) => ({ d, titolo, voci: attivitaGiorno(cotte, d, ctx) }));
   // DH, travasi e crash cooling previsti nei giorni dopo (fino a una settimana)
@@ -155,8 +124,12 @@ export async function vistaHome() {
         <a class="btn" href="#/planning">Planning</a>
         <a class="btn" href="#/bolla/nuova">+ Bolla</a>
         <a class="btn" href="#/movbirra/scarico">− Scarico birra</a>
+        <a class="btn" href="#/chiedi">💬 Chiedi ai dati</a>
       </div>
     </section>
+    ${ordiniClienti.some(o => o.stato === 'nuovo') ? html`<a class="avviso-riga" href="#/ordini-clienti">🛒 ${ordiniClienti.filter(o => o.stato === 'nuovo').length} ${ordiniClienti.filter(o => o.stato === 'nuovo').length === 1 ? 'ordine nuovo' : 'ordini nuovi'} dai clienti da confermare →</a>` : ''}
+    ${daControllare ? html`<a class="avviso-riga" href="#/birra-importa/sospesi">📥 ${daControllare} ${daControllare === 1 ? 'documento importato aspetta' : 'documenti importati aspettano'} una scelta (prodotti non riconosciuti) →</a>` : ''}
+    ${acquisti ? html`<a class="avviso-riga" href="#/materie-prime">🧾 ${acquisti} ${acquisti === 1 ? 'fattura di un fornitore da caricare' : 'fatture dei fornitori da caricare'} in magazzino →</a>` : ''}
 
     <div class="home-kpi">
       <a class="w-kpi" href="#/planning" style="--w:var(--s-tank)"><span>Nei fermentatori</span><b>${L(litriFv)}</b><small>${fvOccupati.length} FV occupati su ${fvTot}</small></a>
@@ -202,6 +175,21 @@ export async function vistaHome() {
           ${daOrdinare.length > 6 ? html`<p class="totale">e altri ${daOrdinare.length - 6}…</p>` : ''}`
           : html`<p class="w-vuoto">✓ Niente da ordinare per le cotte delle prossime 6 settimane.</p>`}
       </section>
+
+      ${copertura.length ? html`<section class="widget w-copertura">
+        <header><h2>📉 Birre da ripianificare</h2><a class="totale" href="#/copertura">Copertura →</a></header>
+        <ul class="w-lista">${copertura.slice(0, 6).map(b => html`<li><a href="#/copertura">
+          <span class="w-testo"><b>${b.birra}</b><small>${numIT(b.settimana, 0)} L a settimana · ${b.esaurita ? 'esaurita' : `finisce verso il ${dataIT(b.esaurimento)}`}</small></span>
+          <span class="w-num ${b.stato === 'ritardo' ? 'w-urgente' : ''}">${b.stato === 'ritardo' ? 'cotta in ritardo' : `cotta entro ${dataIT(b.cottaEntro)}`}</span></a></li>`)}</ul>
+      </section>` : ''}
+
+      ${fermi.length ? html`<section class="widget w-clienti">
+        <header><h2>📞 Clienti da richiamare</h2><a class="totale" href="#/clienti">Tutti →</a></header>
+        <ul class="w-lista">${fermi.slice(0, 6).map(c => html`<li><a href="#/clienti">
+          <span class="w-testo"><b>${c.nome}</b><small>di solito ogni ${c.ritmo} giorni${c.birre.length ? ` · ${c.birre.slice(0, 2).join(', ')}` : ''}</small></span>
+          <span class="w-num">${c.giorni} gg<small>dall'ultimo ordine</small></span></a></li>`)}</ul>
+        ${fermi.length > 6 ? html`<p class="totale">e altri ${fermi.length - 6}…</p>` : ''}
+      </section>` : ''}
 
       <section class="widget w-stat">
         <header><h2>${anno} fino a oggi</h2><a class="totale" href="#/statistiche">Statistiche →</a></header>
