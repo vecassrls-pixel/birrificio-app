@@ -32,6 +32,25 @@ function elencoFv() {
   return [...nomi].sort(ordinaFv);
 }
 
+// Disegno del fermentatore: tronco conico per gli isobarici, fondo piatto per gli altri (FV6-FV7).
+// Pieno di birra se c'è una cotta, fascia della camicia blu quando il freddo è acceso.
+function disegnoFv(conico, pieno, freddo) {
+  const corpo = conico
+    ? 'M10 22 Q10 8 30 6 Q50 8 50 22 L50 70 L32 90 L28 90 L10 70 Z'
+    : 'M10 22 Q10 8 30 6 Q50 8 50 22 L50 84 L10 84 Z';
+  const birra = conico ? 'M10 34 L50 34 L50 70 L32 90 L28 90 L10 70 Z' : 'M10 34 L50 34 L50 84 L10 84 Z';
+  const gambe = conico
+    ? '<path d="M14 74 L12 104 M46 74 L48 104 M8 104 h8 M44 104 h8" class="fv-gambe"/><path d="M30 90 v8 M26 98 h8" class="fv-gambe"/>'
+    : '<path d="M14 84 L14 104 M46 84 L46 104 M10 104 h8 M42 104 h8" class="fv-gambe"/><path d="M50 78 h5 v4" class="fv-gambe"/>';
+  return u.raw(`<svg class="fv-disegno${freddo ? ' freddo' : ''}" viewBox="0 0 60 108" aria-hidden="true">
+    ${pieno ? `<path d="${birra}" class="fv-birra"/>` : ''}
+    <rect x="10" y="38" width="40" height="18" class="fv-camicia"/>
+    <path d="${corpo}" class="fv-corpo"/>
+    <path d="M27 6 v-4 h6 v4" class="fv-gambe"/>
+    ${gambe}
+  </svg>`);
+}
+
 function scheda(fv, occ, oggi) {
   const { html, dataIT, diffGiorni } = u;
   const att = dati.attuali.get(fv);
@@ -52,6 +71,7 @@ function scheda(fv, occ, oggi) {
   return html`<section class="fv-card ${st.livello}" data-fv="${fv}">
     <header><span class="w-fvnome">${fv}</span><span class="chip fv-stato">${st.livello === 'allarme' || st.livello === 'muto' ? '⚠ ' : ''}${ETICHETTE[st.livello]}</span></header>
     <div class="fv-valori">
+      ${disegnoFv(u.stato.fv.find(f => f.nome === fv)?.isobarico !== false, !!occ, att?.raffreddamento === true)}
       <span class="fv-temp">${t !== null ? fmt(t) : '—'}<small> °C</small></span>
       <span class="fv-dett">
         <span>Setpoint <b>${sp !== null ? `${fmt(sp)} °C` : '—'}</b></span>
