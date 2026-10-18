@@ -17,7 +17,7 @@ function scriviPref(p) {
   try { localStorage.setItem(PREF, JSON.stringify(p)); } catch { /* niente */ }
 }
 // lattine in un cartone, come scritto sull'ultima etichetta cartone (serve anche al carrello)
-export const pezziCartone = () => Number(leggiPref().pezziCartone) || 24;
+export const pezziCartone = () => Number(leggiPref().pezziCartone) || 12;
 
 // Ingredienti dalla ricetta, con gli allergeni in maiuscolo (in stampa vanno in grassetto)
 export function ingredientiDa(c) {
@@ -92,8 +92,8 @@ export async function apriEtichetta(c, ctx) {
     birra: c.birra || '',
     stile: c.stile || '',
     alcol: ctx.abv ? ctx.numIT(ctx.abv, 1) : '',
-    formato: cartone ? `${pref.pezziCartone || 24} × ${ctx.numIT(litri * 100, 0)} cl` : `${ctx.numIT(litri, 0)} L`,
-    pezzi: cartone ? Number(pref.pezziCartone) || 24 : 1,
+    formato: cartone ? `${pref.pezziCartone || 12} × ${ctx.numIT(litri * 100, 0)} cl` : `${ctx.numIT(litri, 0)} L`,
+    pezzi: cartone ? Number(pref.pezziCartone) || 12 : 1,
     conQr: pref.conQr !== false,
     qr: '',
     ingredienti: ingredientiDa(c),
@@ -126,7 +126,7 @@ export async function apriEtichetta(c, ctx) {
       </div>
       <div class="et-anteprima"><iframe title="Anteprima etichetta"></iframe></div>
     </div>
-    <datalist id="dl-formati-et">${(cartone ? ['24 × 33 cl', '12 × 33 cl', '24 × 44 cl', '12 × 44 cl'] : [12, 20, 24, 25, 30].map(l => `${l} L`)).map(f => html`<option value="${f}">`)}</datalist>
+    <datalist id="dl-formati-et">${(cartone ? ['12 × 33 cl', '12 × 44 cl', '24 × 33 cl', '24 × 44 cl'] : [12, 20, 24, 25, 30].map(l => `${l} L`)).map(f => html`<option value="${f}">`)}</datalist>
     <p class="totale">Nella finestra di stampa scegli la Brother QL-700, carta 62 mm (rotolo continuo), margini nessuno e scala 100%.</p>
     <div class="barra"><span class="spazio"></span>
       <button value="chiudi">Chiudi</button>

@@ -23,7 +23,7 @@ export const svuotaCarrello = () => scriviCarrello(vuoto());
 export const pezziCarrello = c => c.righe.reduce((t, r) => t + (Number(r.pezzi) || 0), 0);
 
 // quanti pezzi aggiunge un trascinamento: un fusto, o un cartone di lattine
-export const passo = (chiave, pezziCartone = 24) => (daChiave(chiave).tipo === 'fusto' ? 1 : Number(pezziCartone) || 24);
+export const passo = (chiave, pezziCartone = 12) => (daChiave(chiave).tipo === 'fusto' ? 1 : Number(pezziCartone) || 12);
 
 export function aggiungi(c, prodotto, pezzi) {
   const r = c.righe.find(x => x.prodotto === prodotto);
