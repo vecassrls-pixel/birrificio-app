@@ -16,6 +16,8 @@ function leggiPref() {
 function scriviPref(p) {
   try { localStorage.setItem(PREF, JSON.stringify(p)); } catch { /* niente */ }
 }
+// lattine in un cartone, come scritto sull'ultima etichetta cartone (serve anche al carrello)
+export const pezziCartone = () => Number(leggiPref().pezziCartone) || 24;
 
 // Ingredienti dalla ricetta, con gli allergeni in maiuscolo (in stampa vanno in grassetto)
 export function ingredientiDa(c) {

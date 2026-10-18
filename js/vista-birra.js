@@ -10,11 +10,12 @@ import {
 } from './birra.js';
 import { nomeBirra } from './dominio.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
+import { leggiCarrello, mettiNelCarrello, trascinabile, TIPO_DRAG } from './carrello.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token }
 export function init(strumenti) { u = strumenti; }
 
-async function datiBirra() {
+export async function datiBirra() {
   const [movimenti, inventari, prodotti, imp] = await Promise.all([
     u.db.tutti('movbirra'), u.db.tutti('inventariobirra'), u.db.tutti('prodottobirra'), u.db.leggi(ID_IMPOSTAZIONI),
   ]);
@@ -39,6 +40,10 @@ const NASCONDI = 'birra-nascondi-zero';
 const leggiPref = () => { try { return localStorage.getItem(NASCONDI) !== '0'; } catch { return true; } };
 const scriviPref = v => { try { localStorage.setItem(NASCONDI, v ? '1' : '0'); } catch { /* vale solo ora */ } };
 const filtri = { q: '', formato: '', scad: false };
+
+// Scarico già compilato (dal carrello): lo usa il prossimo "Nuovo scarico"; dopo() parte quando si salva
+let bozzaScarico = null;
+export function apriScarico(bozza) { bozzaScarico = bozza; location.hash = '#/movbirra/scarico'; }
 
 // ---------- elenco giacenze ----------
 export async function vistaBirra() {
@@ -71,6 +76,7 @@ export async function vistaBirra() {
   const ICONA = { fusto: '🛢️', 'lattina/bottiglia': '🥫' };
   const scadBadge = x => (x.scadenza ? html`<span class="b-scad ${x.statoScadenza || ''}" title="${x.statoScadenza === 'scaduto' ? 'Scaduta' : x.statoScadenza === 'vicino' ? `Scade entro ${GIORNI_IN_SCADENZA} giorni` : 'Scadenza più vicina'}">${x.statoScadenza === 'scaduto' ? 'scaduta ' : 'scad. '}${u.dataIT(x.scadenza)}</span>` : '');
   const pezziMov = m => (m.righe || []).reduce((t, r) => t + (Number(r.pezzi) || 0), 0);
+  const nelCarrello = leggiCarrello().righe.length;
 
   u.$app.innerHTML = html`
     <div class="barra b-testa">
@@ -78,6 +84,7 @@ export async function vistaBirra() {
       <span class="spazio"></span>
       <button id="b-copia-lista" class="st-libero" title="Copia la lista delle birre disponibili da mandare ai clienti">📋 Copia lista</button>
       <a class="btn" href="#/birra-lista?stampa=1" title="Lista delle birre disponibili per i clienti, da stampare o salvare in PDF">🖨 Lista PDF</a>
+      <a class="btn" href="#/birra-carrello" id="b-carrello" title="Componi un carrello trascinando le birre: diventa una fattura in Fatture in Cloud o uno scarico">🧺 Carrello${nelCarrello ? html` <span class="cr-conta">${nelCarrello}</span>` : ''}</a>
       <a class="btn" href="#/movbirra/carico">+ Carico</a>
       <a class="btn primario" href="#/movbirra/scarico">− Scarico</a>
     </div>
@@ -125,7 +132,7 @@ export async function vistaBirra() {
       const totPz = b.formati.reduce((t, x) => t + x.giacenza, 0);
       return html`<section class="b-card ${b.formati.some(x => x.statoScadenza === 'scaduto') ? 'scaduta' : b.formati.some(x => x.statoScadenza) ? 'vicina' : ''}">
         <header><h2>${b.birra}</h2>${testoCar(b.birra)}<span class="b-tot">${u.numIT(totPz, 0)} pz</span></header>
-        ${b.formati.map(x => html`<a class="b-formato ${x.giacenza < 0 ? 'neg' : ''} ${x.giacenza === 0 ? 'zero' : ''}" href="#/birra-prodotto/${encodeURIComponent(x.chiave)}">
+        ${b.formati.map(x => html`<a class="b-formato ${x.giacenza < 0 ? 'neg' : ''} ${x.giacenza === 0 ? 'zero' : ''}" href="#/birra-prodotto/${encodeURIComponent(x.chiave)}" ${x.giacenza > 0 ? html`draggable="true" data-k="${x.chiave}"` : html`draggable="false"`}>
           <span class="b-icona" aria-hidden="true">${ICONA[x.tipo] || '🍺'}</span>
           <span class="b-nome">${nomeFormato(x.tipo, x.litri)}${x.mancanti ? html` <span title="Scaricati più pezzi di quelli caricati: manca un confezionamento o un inventario">⚠</span>` : ''}
             <span class="b-lotti">${x.lotti.length ? x.lotti.map(l => html`<span class="b-lotto">${l.lotto || 'senza lotto'} <b>${u.numIT(l.pezzi, 0)}</b></span>`) : html`<span class="totale">nessun lotto</span>`}</span></span>
@@ -134,6 +141,7 @@ export async function vistaBirra() {
       </section>`;
     })}</div>` : html`<div class="scheda"><p class="vuoto">${filtri.scad ? 'Nessuna birra scaduta o in scadenza 👍' : g.length ? 'Nessuna birra in magazzino con questi filtri.' : 'Nessuna birra: scrivi il confezionamento nella scheda di una cotta.'}</p></div>`}
 
+    <div class="cr-volante" id="b-drop" hidden>🧺 Lascia qui per metterla nel carrello</div>
     ${ultimi.length ? html`<div class="scheda b-movimenti"><div class="barra" style="margin-bottom:8px"><h2 style="margin:0">Ultimi movimenti</h2><span class="spazio"></span><a href="#/birra-registro" class="totale">Tutto il registro →</a></div>
       ${ultimi.map(m => html`<a class="b-mov ${m.verso === 'carico' ? 'carico' : 'scarico'}" href="#/movbirra/${encodeURIComponent(m.id)}">
         <span class="b-mov-segno" aria-hidden="true">${m.verso === 'carico' ? '+' : '−'}</span>
@@ -155,6 +163,20 @@ export async function vistaBirra() {
   $('b-scad').onclick = () => { filtri.scad = !filtri.scad; vistaBirra(); };
   $('b-copia-lista').onclick = () => u.copia(testoLista(listaClienti(dati)), 'Lista delle birre copiata');
   $('b-zero').onchange = e => { scriviPref(e.target.checked); vistaBirra(); };
+  // le birre si trascinano nel carrello: compare la zona dove lasciarle
+  const $drop = $('b-drop');
+  u.$app.ondragstart = e => { if (trascinabile(e)) $drop.hidden = false; };
+  u.$app.ondragend = () => { $drop.hidden = true; $drop.classList.remove('sopra'); };
+  $drop.ondragover = e => { if (e.dataTransfer.types.includes(TIPO_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; $drop.classList.add('sopra'); } };
+  $drop.ondragleave = () => $drop.classList.remove('sopra');
+  $drop.ondrop = e => {
+    const k = e.dataTransfer.getData(TIPO_DRAG);
+    if (!k) return;
+    e.preventDefault();
+    const n = mettiNelCarrello(k).righe.length;
+    u.toast(`${nomeProdotto(k)} nel carrello`);
+    $('b-carrello').innerHTML = `🧺 Carrello <span class="cr-conta">${n}</span>`;
+  };
   const $avvia = $('b-avvia');
   if ($avvia) $avvia.onclick = async () => {
     const inizio = $('b-inizio').value;
@@ -280,8 +302,11 @@ export async function vistaMovimento(id) {
   const esistente = nuovo ? null : dati.movimenti.find(x => x.id === idPuro);
   if (!nuovo && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Movimento non trovato. <a href="#/birra">Torna alla birra</a></p>`; return; }
   const pre = new URLSearchParams(query || '').get('p') || '';
+  const bozza = idPuro === 'scarico' ? bozzaScarico : null;
+  bozzaScarico = null;
   const m = esistente ? JSON.parse(JSON.stringify(esistente))
     : { tipo: 'movbirra', verso: idPuro, data: u.oggiISO(), motivo: idPuro === 'carico' ? 'reso' : 'taproom', scontrinato: idPuro === 'carico' ? undefined : false, cliente: '', documento: '', note: '', origine: 'manuale', righe: [{ prodotto: pre, pezzi: null, lotto: '', scadenza: '' }] };
+  if (bozza) Object.assign(m, { motivo: bozza.motivo, cliente: bozza.cliente || '', righe: bozza.righe.map(r => ({ ...r, scadenza: '' })) });
   const carico = () => m.verso === 'carico';
   // giacenze senza questo movimento, per proporre i lotti disponibili
   const g = giacenzeBirra({ ...dati, movimenti: dati.movimenti.filter(x => x.id !== m.id) });
@@ -291,8 +316,9 @@ export async function vistaMovimento(id) {
 
   function disegna() {
     u.$app.innerHTML = html`
-      <div class="barra"><a href="#/birra" class="btn">← Birra</a><span class="spazio"></span>
+      <div class="barra"><a href="${bozza ? '#/birra-carrello' : '#/birra'}" class="btn">${bozza ? '← Carrello' : '← Birra'}</a><span class="spazio"></span>
         ${esistente ? html`<button class="pericolo" id="elimina">Elimina</button>` : ''}</div>
+      ${bozza ? html`<p class="avviso-riga">🧺 Righe prese dal carrello: controlla motivo e scontrino, poi salva. Il carrello si svuota quando salvi.</p>` : ''}
       <div class="scheda">
         <h1 style="margin-top:0">${esistente ? '' : 'Nuovo '}${carico() ? 'carico' : 'scarico'} di birra</h1>
         ${m.origine && m.origine !== 'manuale' ? html`<p class="totale">Importato da ${ORIGINI[m.origine]}${m.documento ? ` · ${m.documento}` : ''}.</p>` : ''}
@@ -385,6 +411,7 @@ export async function vistaMovimento(id) {
       const { aggiornato: _a, ...rec } = m;
       await u.db.salva({ ...rec, id: m.id || u.db.nuovoId('movbirra'), righe });
       u.toast(carico() ? 'Carico salvato' : 'Scarico salvato');
+      if (bozza?.dopo && !carico()) bozza.dopo();
       location.hash = '#/birra';
     }
   };

@@ -1,5 +1,6 @@
-// Lettura da Fatture in Cloud (https://developers.fattureincloud.it), usata dal proxy dell'app
+// Fatture in Cloud (https://developers.fattureincloud.it), usata dal proxy dell'app
 // (netlify/functions/fattureincloud.mjs) e dall'import automatico (netlify/lib/automazioni.mjs).
+// Scrive solo per creare una fattura dal carrello della birra (creaFattura).
 // Variabili d'ambiente Netlify: FIC_TOKEN, FIC_COMPANY_ID (facoltativo: altrimenti la prima azienda del token)
 
 const BASE = 'https://api-v2.fattureincloud.it';
@@ -9,13 +10,19 @@ export const NOMI_TIPO = { invoice: 'Fattura', delivery_note: 'DDT', receipt: 'R
 export async function client() {
   const token = process.env.FIC_TOKEN;
   let azienda = process.env.FIC_COMPANY_ID;
-  const chiama = async (path, params = {}, conAzienda = true) => {
+  const chiama = async (path, params = {}, conAzienda = true, corpo = null) => {
     const res = await fetch(`${BASE}${conAzienda ? `/c/${encodeURIComponent(azienda)}` : ''}${path}?${new URLSearchParams(params)}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      method: corpo ? 'POST' : 'GET',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+      ...(corpo ? { body: JSON.stringify({ data: corpo }) } : {}),
     });
     if (!res.ok) {
       let msg = res.statusText;
-      try { const b = await res.json(); msg = b.error?.message || b.error?.validation_result?.toString() || msg; } catch { /* non JSON */ }
+      try {
+        const b = await res.json();
+        const campi = Object.values(b.error?.validation_result || {}).flat().filter(x => typeof x === 'string');
+        msg = [b.error?.message, ...campi].filter(Boolean).join(': ') || msg;
+      } catch { /* non JSON */ }
       throw Object.assign(new Error(`Fatture in Cloud: ${msg} (${res.status})`), { status: res.status });
     }
     return res.json();
@@ -94,4 +101,37 @@ export async function prodotti(fic) {
     if (pagina >= (r.last_page || 1)) break;
   }
   return out.map(p => ({ id: String(p.id), nome: p.name || '', codice: p.code || '' }));
+}
+
+// Anagrafica clienti: [{ id, nome, piva }]
+export async function clienti(fic) {
+  const out = [];
+  for (let pagina = 1; pagina <= 20; pagina++) {
+    const r = await fic.chiama('/entities/clients', { fieldset: 'basic', sort: 'name', page: pagina, per_page: 100 });
+    out.push(...(r.data || []));
+    if (pagina >= (r.last_page || 1)) break;
+  }
+  return out.map(c => ({ id: c.id, nome: c.name || '', piva: c.vat_number || c.tax_code || '' }));
+}
+
+// Crea una fattura con le righe del carrello; la si completa e si invia in Fatture in Cloud.
+// { data, cliente: { id?, nome }, lordo (prezzi IVA inclusa), aliquota, note,
+//   righe: [{ codice, nome, descrizione, qta, prezzo }] } → { id, numero, url }
+export async function creaFattura(fic, { data, cliente, righe, lordo = false, aliquota = 22, note = '' }) {
+  const iva = (await fic.chiama('/info/vat_types')).data || [];
+  const vat = iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled && !v.e_invoice) || iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled);
+  if (!vat) throw Object.assign(new Error(`Fatture in Cloud: non trovo l'aliquota IVA ${aliquota}%`), { status: 502 });
+  const d = (await fic.chiama('/issued_documents', {}, true, {
+    type: 'invoice',
+    entity: { ...(cliente.id ? { id: Number(cliente.id) } : {}), name: cliente.nome },
+    date: data,
+    use_gross_prices: !!lordo,
+    ...(note ? { notes: note } : {}),
+    items_list: righe.map(r => ({
+      ...(r.codice ? { code: r.codice } : {}), name: r.nome, ...(r.descrizione ? { description: r.descrizione } : {}),
+      qty: r.qta, ...(r.prezzo !== null && r.prezzo !== undefined ? { [lordo ? 'gross_price' : 'net_price']: r.prezzo } : {}),
+      vat: { id: vat.id },
+    })),
+  })).data;
+  return { id: String(d.id), numero: `${NOMI_TIPO.invoice} ${d.number ?? ''}${d.numeration || ''}`.trim(), url: d.url || '' };
 }

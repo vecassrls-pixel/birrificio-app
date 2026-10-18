@@ -21,6 +21,11 @@ L'import degli acquisti legge i **documenti ricevuti**: il token `FIC_TOKEN` dev
 dei documenti ricevuti (in Fatture in Cloud: **Impostazioni → Applicazioni collegate**, oppure rigenera il token con quel permesso).
 Se il permesso manca, l'import delle vendite funziona lo stesso e in Impostazioni compare l'errore degli acquisti.
 
+Per mandare il **carrello della birra** in Fatture in Cloud come fattura (Birra → 🧺 Carrello) il token deve avere anche
+**Fatture: lettura e scrittura**, **Clienti: lettura** e **Impostazioni: lettura** (per l'aliquota IVA). Poi rigenera il token
+e aggiorna `FIC_TOKEN` su Netlify. La fattura nasce in Fatture in Cloud con cliente, righe, lotti e prezzi del listino scelto:
+la completi e la invii da lì. Il magazzino si scarica subito e l'import notturno la riconosce, quindi non la scarica due volte.
+
 ## 4. Ordini dei clienti online
 La pagina `ordina.html` deve essere visibile senza login Netlify: in **Site configuration → Access & security → Visitor access**
 la protezione con password deve essere spenta per la produzione (lasciala solo sui deploy di prova, se serve).

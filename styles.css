@@ -979,3 +979,49 @@ body.ordina { background: var(--bg); }
 #or-invia label { display: block; margin-top: 8px; }
 #or-invia button.primario { width: 100%; margin-top: 12px; min-height: 48px; }
 .ln-link code { word-break: break-all; font-size: .82rem; }
+/* carrello della birra (#/birra-carrello) */
+.cr-conta { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-text); font-size: .74rem; font-weight: 700; margin-left: 2px; }
+.cr-volante { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; padding: 22px 34px; border: 2px dashed var(--accent); border-radius: var(--radius); background: var(--accent-tenue); color: var(--accent-forte); font-weight: 600; box-shadow: var(--ombra); }
+.cr-volante.sopra { background: var(--accent); color: var(--accent-text); border-style: solid; }
+.b-formato[draggable=true] { cursor: grab; }
+.cr-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); gap: 16px; align-items: start; }
+.cr-dispo input[type=search] { width: 100%; margin-bottom: 10px; }
+.cr-birra { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.cr-birra h3 { margin: 0 0 8px; font-size: 1rem; }
+.cr-birra h3 .totale { font-weight: 400; font-size: .8rem; margin: 0; }
+.cr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cr-art { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); font: inherit; font-size: .88rem; cursor: grab; touch-action: manipulation; }
+.cr-art:hover { border-color: var(--accent); }
+.cr-art small { color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
+.cr-art > b { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-text); font-size: .9rem; }
+.cr-art.finito { opacity: .5; }
+.cr-cesto { position: sticky; top: 12px; background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius); box-shadow: var(--ombra); padding: 12px; transition: border-color .15s, background .15s; }
+.cr-cesto.pronto { border-style: dashed; border-color: var(--accent); }
+.cr-cesto.sopra { background: var(--accent-tenue); }
+.cr-cesto-testa { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.cr-drop-qui { border: 2px dashed var(--border); border-radius: 10px; padding: 34px 12px; text-align: center; color: var(--muted); }
+.cr-righe { list-style: none; margin: 0; padding: 0; }
+.cr-riga { border-top: 1px solid var(--border); padding: 8px 0; display: grid; gap: 6px; }
+.cr-riga-nome { display: flex; align-items: center; gap: 6px; font-size: .92rem; }
+.cr-riga-nome b { flex: 1; min-width: 0; }
+.cr-x { min-height: 28px; padding: 2px 8px; }
+.cr-riga-campi { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cr-riga-campi select { flex: 1 1 160px; min-width: 0; }
+.cr-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.cr-stepper input { width: 64px; text-align: center; }
+.cr-stepper small { color: var(--muted); font-size: .78rem; }
+.cr-prezzo { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; color: var(--muted); }
+.cr-prezzo input { width: 80px; }
+.cr-riga > small { margin: 0; text-align: right; }
+.cr-avviso { color: var(--warn); }
+.cr-totali { display: flex; justify-content: space-between; align-items: baseline; border-top: 2px solid var(--border); padding-top: 8px; margin-top: 4px; }
+.cr-totali b { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.cr-azioni { display: grid; gap: 8px; margin-top: 8px; }
+.cr-azioni > .totale { margin: 0; }
+.cr-motivi { display: flex; flex-wrap: wrap; gap: 6px; }
+.cr-motivi button { flex: 1 1 auto; }
+.cr-fatto { border-left: 4px solid var(--ok); }
+@media (max-width: 760px) {
+  .cr-layout { grid-template-columns: 1fr; }
+  .cr-cesto { position: static; order: -1; }
+}

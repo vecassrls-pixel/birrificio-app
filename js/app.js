@@ -27,6 +27,7 @@ import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, pr
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
 import * as qr from './vista-qr.js';
+import * as carrello from './vista-carrello.js';
 import * as ordiniClienti from './vista-ordini.js';
 import { conGiorniDh } from './agenda.js';
 import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
@@ -99,6 +100,7 @@ haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, 
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 cantina.init({ $app, html, raw, stato, dataIT, oggiISO, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
 magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
+carrello.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, token: () => (auth.configurato() ? auth.token() : null) });
 previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre), linkOrdini: (nome, scheda) => ordiniClienti.dialogLink(nome, scheda) });
 ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT });
 chiediDati.init({ $app, html, raw, toast });
@@ -218,6 +220,7 @@ const routes = [
   [/^#\/birra-inventario$/, () => magBirra.vistaInventario()],
   [/^#\/birra-prodotti-fic$/, () => magBirra.vistaProdottiFic()],
   [/^#\/birra-registro$/, () => magBirra.vistaRegistro()],
+  [/^#\/birra-carrello$/, () => carrello.vistaCarrello()],
   [/^#\/birra-lista(\?stampa=1)?$/, st => magBirra.vistaListaClienti(!!st)],
   [/^#\/birra-importa\/(\w+)$/, fonte => magBirra.vistaImporta(fonte)],
   [/^#\/listini$/, () => listini.vistaListini()],
@@ -242,6 +245,7 @@ async function render() {
   if (h.includes('access_token=')) return; // link di invito: gestito all'avvio
   if (pulizia) { pulizia(); pulizia = null; }
   $app.oninput = $app.onchange = $app.onclick = null;
+  $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
   document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
