@@ -541,38 +541,66 @@ export async function vistaInventario() {
 
 // ---------- lista delle birre disponibili per i clienti (copia / stampa) ----------
 // listaDisponibili e testoListaBirre stanno in birra.js (le usano anche i clienti da richiamare)
-const listaClienti = dati => listaDisponibili(dati, u.oggiISO());
+// Gli articoli tolti dalla lista (✕ su un formato o su una birra) restano tolti su questo dispositivo finché non si rimettono.
+const TOLTI = 'gb-lista-tolti';
+const leggiTolti = () => { try { return new Set(JSON.parse(localStorage.getItem(TOLTI)) || []); } catch { return new Set(); } };
+const scriviTolti = t => { try { localStorage.setItem(TOLTI, JSON.stringify([...t])); } catch { /* vale solo ora */ } };
+const senzaTolti = (lista, tolti) => lista.map(b => ({ ...b, formati: b.formati.filter(f => !tolti.has(f.chiave)) })).filter(b => b.formati.length);
+const listaClienti = dati => senzaTolti(listaDisponibili(dati, u.oggiISO()), leggiTolti());
 const testoLista = lista => testoListaBirre(lista, u.oggiISO());
 export async function vistaListaClienti(stampaSubito = false) {
   const { html } = u;
   const dati = await datiBirra();
-  const lista = listaClienti(dati);
-  u.$app.innerHTML = html`
+  const tutta = listaDisponibili(dati, u.oggiISO());
+  const tolti = leggiTolti();
+  const disegna = () => {
+    const quanti = tutta.reduce((t, b) => t + b.formati.filter(f => tolti.has(f.chiave)).length, 0);
+    u.$app.innerHTML = html`
     <div class="barra">
       <a href="#/birra" class="btn">← Birra</a><span class="spazio"></span>
       <button id="lc-copia" class="st-libero">📋 Copia lista</button>
       <button id="lc-stampa" class="primario st-libero">🖨 Stampa / Salva PDF</button>
     </div>
+    <p class="totale lc-aiuto">Tocca ✕ per togliere una birra o un formato dalla lista da copiare e stampare.${quanti ? html` ${quanti} ${quanti === 1 ? 'articolo tolto' : 'articoli tolti'}: <button class="piccolo" id="lc-rimetti">Rimetti tutti</button>` : ''}</p>
     <div class="lista-clienti">
       <div class="lc-testa">
         <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
         <div><h1>Birre disponibili</h1><div class="lc-data">Disponibilità aggiornata al ${u.dataIT(u.oggiISO())}</div></div>
       </div>
-      ${lista.length ? html`<div class="lc-griglia">${lista.map(b => html`<section class="lc-birra">
-        <h2>${b.birra}</h2>
+      ${tutta.length ? html`<div class="lc-griglia">${tutta.map(b => {
+        const via = b.formati.every(f => tolti.has(f.chiave));
+        return html`<section class="lc-birra ${via ? 'lc-tolto' : ''}">
+        <h2>${b.birra}<button class="lc-x" data-birra="${b.birra}" title="${via ? 'Rimetti nella lista' : 'Togli dalla lista'}" aria-label="${via ? `Rimetti ${b.birra}` : `Togli ${b.birra}`}">${via ? '↺' : '✕'}</button></h2>
         ${b.stile || b.abv !== null ? html`<p class="lc-info">${[b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${u.numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · ')}</p>` : ''}
-        ${b.formati.map(f => html`<div class="lc-formato"><span>${formatoCliente(f)}</span><span class="lc-punti"></span><b>${u.numIT(f.pezzi, 0)}</b></div>`)}
-      </section>`)}</div>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
+        ${b.formati.map(f => html`<div class="lc-formato ${tolti.has(f.chiave) ? 'lc-tolto' : ''}"><span>${formatoCliente(f)}</span><span class="lc-punti"></span><b>${u.numIT(f.pezzi, 0)}</b>
+          <button class="lc-x" data-k="${f.chiave}" title="${tolti.has(f.chiave) ? 'Rimetti nella lista' : 'Togli dalla lista'}" aria-label="${tolti.has(f.chiave) ? 'Rimetti' : 'Togli'} ${formatoCliente(f)}">${tolti.has(f.chiave) ? '↺' : '✕'}</button></div>`)}
+      </section>`;
+      })}</div>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
       <p class="lc-piede">Kashmir Brewing Company · disponibilità soggetta a variazioni</p>
     </div>`;
+  };
+  disegna();
   const stampa = () => {
     const titolo = document.title;
     document.title = `Birre disponibili Kashmir ${u.oggiISO()}`;
     addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
     window.print();
   };
-  u.$app.querySelector('#lc-copia').onclick = () => u.copia(testoLista(lista), 'Lista delle birre copiata');
-  u.$app.querySelector('#lc-stampa').onclick = stampa;
+  u.$app.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'lc-copia') return u.copia(testoLista(senzaTolti(tutta, tolti)), 'Lista delle birre copiata');
+    if (b.id === 'lc-stampa') return stampa();
+    if (b.id === 'lc-rimetti') tolti.clear();
+    else if (b.dataset.k) { if (tolti.has(b.dataset.k)) tolti.delete(b.dataset.k); else tolti.add(b.dataset.k); }
+    else if (b.dataset.birra) {
+      const chiavi = tutta.find(x => x.birra === b.dataset.birra).formati.map(f => f.chiave);
+      const via = chiavi.every(k => tolti.has(k));
+      for (const k of chiavi) { if (via) tolti.delete(k); else tolti.add(k); }
+    } else return;
+    scriviTolti(tolti);
+    disegna();
+  };
   if (stampaSubito) {
     history.replaceState(null, '', '#/birra-lista');
     const img = u.$app.querySelector('.lc-testa img');
