@@ -1070,3 +1070,9 @@ body.ordina { background: var(--bg); }
 @media (max-width: 760px) { .cs-kpi { grid-template-columns: 1fr 1fr; gap: 8px; } .cs-kpi .w-kpi { padding: 10px 12px; } .cs-kpi .w-kpi b { font-size: 1.25rem; } }
 /* la cassa non si mostra a chi è in sola lettura */
 .lettore .top nav a[data-tab="cassa"], .lettore a[href="#/cassa"] { display: none !important; }
+
+/* Beerfirm: cotte fatte per conto terzi */
+.bf-chip { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; background: #1c1917; color: #fff; border-radius: 4px; padding: 1px 5px; vertical-align: 1px; line-height: 1.3; }
+.g-bar.beerfirm { background-image: repeating-linear-gradient(135deg, rgb(0 0 0 / .1) 0 6px, transparent 6px 12px); }
+.cn-fab summary { cursor: pointer; }
+.cn-fab .w-lista { margin-top: 8px; }
