@@ -100,6 +100,10 @@ export function elencoProdotti({ cotte, movimenti = [], inventari = [], prodotti
 
 // Grado alcolico e stile di una birra (uguali per tutti i formati): quelli scritti nei prodotti,
 // altrimenti proposti dall'ultima cotta della birra (stile, ABV da OG e FG).
+// Marchio della birra: Kashmir (di default) o Exist; si sceglie nella scheda prodotto e vale per tutti i formati
+export const MARCHI = { kashmir: 'Kashmir', exist: 'Exist' };
+export const birreExist = (prodotti = []) => new Set(prodotti.filter(p => !p.eliminato && !p.rinominatoIn && p.chiave && p.marchio === 'exist').map(p => daChiave(p.chiave).birra));
+
 export function caratteristiche(birra, prodotti = [], cotte = []) {
   const mie = prodotti.filter(p => !p.eliminato && !p.rinominatoIn && p.chiave && daChiave(p.chiave).birra === birra);
   const conAbv = mie.find(p => p.abv !== null && p.abv !== undefined && p.abv !== '');
@@ -109,7 +113,7 @@ export function caratteristiche(birra, prodotti = [], cotte = []) {
   const recenti = cotte.filter(c => !c.eliminato && nomi.has(nomeBirra(c.birra))).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
   const misurato = recenti.map(c => abv(Number(c.og), c.fg === null || c.fg === undefined || c.fg === '' ? null : Number(c.fg))).find(x => x > 0);
   const r = {
-    abv: conAbv ? Number(conAbv.abv) : null, stile: conStile?.stile || '',
+    abv: conAbv ? Number(conAbv.abv) : null, stile: conStile?.stile || '', marchio: mie.some(p => p.marchio === 'exist') ? 'exist' : 'kashmir',
     abvProposto: misurato ? Math.round(misurato * 10) / 10 : null, stileProposto: recenti.find(c => c.stile)?.stile || '',
   };
   // da mostrare: quelli scritti, altrimenti quelli dell'ultima cotta

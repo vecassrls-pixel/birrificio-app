@@ -1025,3 +1025,18 @@ body.ordina { background: var(--bg); }
   .cr-layout { grid-template-columns: 1fr; }
   .cr-cesto { position: static; order: -1; }
 }
+/* lista birre: articoli tolti (✕), che non escono né in copia né in stampa */
+.lc-x { margin-left: 8px; min-height: 26px; min-width: 26px; padding: 0 6px; border: 1px solid var(--lc-line); border-radius: 6px; background: #fff; color: var(--lc-soft); font-size: .8rem; line-height: 1; vertical-align: middle; cursor: pointer; }
+.lc-x:hover { border-color: var(--accent); color: var(--accent-forte); }
+.lc-birra h2 .lc-x { font-weight: 400; text-transform: none; }
+.lc-tolto { opacity: .4; }
+.lc-formato.lc-tolto > span:first-child, .lc-birra.lc-tolto h2 { text-decoration: line-through; }
+.lc-birra.lc-tolto .lc-tolto { opacity: 1; }
+.lc-aiuto { max-width: 860px; margin: 0 auto 10px; }
+@media print { .lc-tolto, .lc-x, .lc-aiuto { display: none !important; } }
+/* pagina Birra: unghia Kashmir / Exist */
+.b-marchi { display: flex; gap: 0; margin: 0 0 14px; border-bottom: 2px solid var(--border); }
+.b-marchi button { min-height: 42px; padding: 8px 22px; border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0; background: none; color: var(--muted); font: inherit; font-weight: 600; font-size: .98rem; margin-bottom: -2px; cursor: pointer; }
+.b-marchi button:hover { color: var(--text); }
+.b-marchi button.attivo { background: var(--surface); color: var(--accent-forte); border-color: var(--border); border-bottom: 2px solid var(--surface); }
+.b-marchi small { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .74rem; }

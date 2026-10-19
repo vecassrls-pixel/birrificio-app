@@ -6,7 +6,7 @@ import { LOGO_KASHMIR } from './logo-kashmir.js';
 import {
   ID_IMPOSTAZIONI, FORMATI, confezionamenti, MOTIVI_SCARICO, MOTIVI_CARICO, ORIGINI, nomeMotivo, testoScontrino, impostazioniDa, giacenzeBirra, elencoProdotti, nomeProdotto,
   nomeFormato, registroBirra, trovaProdotto, conCodice, idProdotto, chiaveProdotto, daChiave, indovinaProdotto, rinominati, FORMATO_SHOPIFY, caratteristiche,
-  listaDisponibili, testoListaBirre, formatoCliente, maiuscole,
+  listaDisponibili, testoListaBirre, formatoCliente, maiuscole, MARCHI, birreExist,
 } from './birra.js';
 import { nomeBirra } from './dominio.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
@@ -39,7 +39,7 @@ const lottiUsati = m => ((m.lotti || []).some(l => l.lotto) ? ` · lotto ${m.lot
 const NASCONDI = 'birra-nascondi-zero';
 const leggiPref = () => { try { return localStorage.getItem(NASCONDI) !== '0'; } catch { return true; } };
 const scriviPref = v => { try { localStorage.setItem(NASCONDI, v ? '1' : '0'); } catch { /* vale solo ora */ } };
-const filtri = { q: '', formato: '', scad: false };
+const filtri = { q: '', formato: '', scad: false, marchio: 'kashmir' };
 
 // Scarico già compilato (dal carrello): lo usa il prossimo "Nuovo scarico"; dopo() parte quando si salva
 let bozzaScarico = null;
@@ -50,7 +50,11 @@ export async function vistaBirra() {
   const { html } = u;
   const dati = await datiBirra();
   const imp = impostazioniDa(dati.impostazioni);
-  const g = [...giacenzeBirra(dati).values()];
+  // unghia Kashmir / Exist: la pagina mostra solo le birre del marchio scelto
+  const exist = birreExist(dati.prodotti);
+  const tutte = [...giacenzeBirra(dati).values()];
+  const g = tutte.filter(x => exist.has(x.birra) === (filtri.marchio === 'exist'));
+  const nExist = new Set(tutte.filter(x => exist.has(x.birra) && x.giacenza > 0).map(x => x.birra)).size;
   const nascondi = leggiPref();
   const q = filtri.q.trim().toLowerCase();
   const righe = g.filter(x => (!nascondi || x.giacenza !== 0) && (!filtri.formato || x.tipo === filtri.formato) && (!q || x.nome.toLowerCase().includes(q)))
@@ -102,6 +106,7 @@ export async function vistaBirra() {
       <a href="#/birra-importa/shopify" class="solo-editori">⬇ Shopify</a>
     </nav>
 
+    <div class="b-marchi" role="tablist" aria-label="Marchio">${Object.entries(MARCHI).map(([k, v]) => html`<button role="tab" class="${filtri.marchio === k ? 'attivo' : ''}" aria-selected="${filtri.marchio === k}" data-marchio="${k}">${v}${k === 'exist' && nExist ? html` <small>${nExist}</small>` : ''}</button>`)}</div>
     ${sospesi ? html`<a class="avviso-riga solo-editori" href="#/birra-importa/sospesi">📥 ${sospesi} ${sospesi === 1 ? 'documento importato' : 'documenti importati'} di notte con righe da collegare a una birra →</a>` : ''}
     <div class="st-kpi b-kpi">
       <div class="st-tile"><span>Fusti</span><b>${u.numIT(tot('fusto'), 0)}</b><small>in magazzino</small></div>
@@ -139,7 +144,7 @@ export async function vistaBirra() {
           <span class="b-num"><b>${u.numIT(x.giacenza, 0)}</b><small>pz · ${u.numIT(x.litriTot, 0)} L</small>${scadBadge(x)}</span>
         </a>`)}
       </section>`;
-    })}</div>` : html`<div class="scheda"><p class="vuoto">${filtri.scad ? 'Nessuna birra scaduta o in scadenza 👍' : g.length ? 'Nessuna birra in magazzino con questi filtri.' : 'Nessuna birra: scrivi il confezionamento nella scheda di una cotta.'}</p></div>`}
+    })}</div>` : filtri.marchio === 'exist' && !exist.size ? html`<div class="scheda"><p class="vuoto">Nessuna birra Exist ancora. Apri una birra (tocca un suo formato) e in "Grado alcolico, stile e marchio" scegli Marchio: Exist.</p></div>` : html`<div class="scheda"><p class="vuoto">${filtri.scad ? 'Nessuna birra scaduta o in scadenza 👍' : g.length ? 'Nessuna birra in magazzino con questi filtri.' : 'Nessuna birra: scrivi il confezionamento nella scheda di una cotta.'}</p></div>`}
 
     <div class="cr-volante" id="b-drop" hidden>🧺 Lascia qui per metterla nel carrello</div>
     ${ultimi.length ? html`<div class="scheda b-movimenti"><div class="barra" style="margin-bottom:8px"><h2 style="margin:0">Ultimi movimenti</h2><span class="spazio"></span><a href="#/birra-registro" class="totale">Tutto il registro →</a></div>
@@ -161,6 +166,7 @@ export async function vistaBirra() {
   $('b-q').oninput = e => { filtri.q = e.target.value; vistaBirra().then(() => { const el = $('b-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }); };
   $('b-formati').onclick = e => { const b = e.target.closest('[data-formato]'); if (b) { filtri.formato = b.dataset.formato; vistaBirra(); } };
   $('b-scad').onclick = () => { filtri.scad = !filtri.scad; vistaBirra(); };
+  u.$app.querySelector('.b-marchi').onclick = e => { const b = e.target.closest('[data-marchio]'); if (b && b.dataset.marchio !== filtri.marchio) { filtri.marchio = b.dataset.marchio; vistaBirra(); } };
   $('b-copia-lista').onclick = () => u.copia(testoLista(listaClienti(dati)), 'Lista delle birre copiata');
   $('b-zero').onchange = e => { scriviPref(e.target.checked); vistaBirra(); };
   // le birre si trascinano nel carrello: compare la zona dove lasciarle
@@ -224,10 +230,11 @@ export async function vistaProdotto(chiave) {
             <td>${u.dataIT(l.data)} <span class="totale">${l.rif}</span></td><td class="n">${u.numIT(l.pezzi, 0)}</td><td class="n">${u.numIT(l.pezzi * g.litri, 1)}</td></tr>`)}</tbody>
         </table></div>` : html`<p class="totale">Nessun lotto in magazzino.</p>`}
       </div>
-      <div class="scheda solo-editori"><h2>Grado alcolico e stile</h2>
+      <div class="scheda solo-editori"><h2>Grado alcolico, stile e marchio</h2>
         <p class="totale">Valgono per tutti i formati di ${g.birra}.${car.abvProposto !== null || car.stileProposto ? ' Se non li scrivi valgono quelli dell\'ultima cotta, in grigio; scrivili solo per cambiarli.' : ''}</p>
         <div class="griglia">
           <label>Alcol % vol <input id="car-abv" type="number" step="0.1" min="0" inputmode="decimal" value="${car.abv ?? ''}" placeholder="${car.abvProposto !== null ? u.numIT(car.abvProposto, 1) : 'es. 6,5'}"></label>
+          <label>Marchio <select id="car-marchio">${Object.entries(MARCHI).map(([k, v]) => html`<option value="${k}" ${k === car.marchio ? 'selected' : ''}>${v}</option>`)}</select></label>
           <label style="grid-column:span 2">Stile <input id="car-stile" list="dl-car-stili" value="${car.stile}" placeholder="${car.stileProposto || 'es. American IPA'}"></label>
         </div>
         <datalist id="dl-car-stili">${[...new Set(dati.cotte.map(c => c.stile).filter(Boolean))].sort().map(st => html`<option value="${st}">`)}</datalist>
@@ -272,10 +279,11 @@ export async function vistaProdotto(chiave) {
       const v = $car('car-abv').value.replace(',', '.');
       car.abv = v === '' ? null : Number(v);
       car.stile = $car('car-stile').value.trim();
+      car.marchio = $car('car-marchio').value;
       // su tutti i formati della birra
       const out = elencoProdotti(dati).filter(k => daChiave(k).birra === g.birra).map(k => {
         const { aggiornato: _a, ...r } = dati.prodotti.find(p => p.chiave === k) || { tipo: 'prodottobirra', id: idProdotto(k), chiave: k, codici: [] };
-        return { ...r, abv: car.abv, stile: car.stile };
+        return { ...r, abv: car.abv, stile: car.stile, marchio: car.marchio === 'exist' ? 'exist' : '' };
       });
       await u.db.salvaMolti(out);
       for (const r of out) { const i = dati.prodotti.findIndex(p => p.chiave === r.chiave); if (i >= 0) dati.prodotti[i] = r; else dati.prodotti.push(r); }
@@ -541,38 +549,66 @@ export async function vistaInventario() {
 
 // ---------- lista delle birre disponibili per i clienti (copia / stampa) ----------
 // listaDisponibili e testoListaBirre stanno in birra.js (le usano anche i clienti da richiamare)
-const listaClienti = dati => listaDisponibili(dati, u.oggiISO());
+// Gli articoli tolti dalla lista (✕ su un formato o su una birra) restano tolti su questo dispositivo finché non si rimettono.
+const TOLTI = 'gb-lista-tolti';
+const leggiTolti = () => { try { return new Set(JSON.parse(localStorage.getItem(TOLTI)) || []); } catch { return new Set(); } };
+const scriviTolti = t => { try { localStorage.setItem(TOLTI, JSON.stringify([...t])); } catch { /* vale solo ora */ } };
+const senzaTolti = (lista, tolti) => lista.map(b => ({ ...b, formati: b.formati.filter(f => !tolti.has(f.chiave)) })).filter(b => b.formati.length);
+const listaClienti = dati => senzaTolti(listaDisponibili(dati, u.oggiISO()), leggiTolti());
 const testoLista = lista => testoListaBirre(lista, u.oggiISO());
 export async function vistaListaClienti(stampaSubito = false) {
   const { html } = u;
   const dati = await datiBirra();
-  const lista = listaClienti(dati);
-  u.$app.innerHTML = html`
+  const tutta = listaDisponibili(dati, u.oggiISO());
+  const tolti = leggiTolti();
+  const disegna = () => {
+    const quanti = tutta.reduce((t, b) => t + b.formati.filter(f => tolti.has(f.chiave)).length, 0);
+    u.$app.innerHTML = html`
     <div class="barra">
       <a href="#/birra" class="btn">← Birra</a><span class="spazio"></span>
       <button id="lc-copia" class="st-libero">📋 Copia lista</button>
       <button id="lc-stampa" class="primario st-libero">🖨 Stampa / Salva PDF</button>
     </div>
+    <p class="totale lc-aiuto">Tocca ✕ per togliere una birra o un formato dalla lista da copiare e stampare.${quanti ? html` ${quanti} ${quanti === 1 ? 'articolo tolto' : 'articoli tolti'}: <button class="piccolo" id="lc-rimetti">Rimetti tutti</button>` : ''}</p>
     <div class="lista-clienti">
       <div class="lc-testa">
         <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
         <div><h1>Birre disponibili</h1><div class="lc-data">Disponibilità aggiornata al ${u.dataIT(u.oggiISO())}</div></div>
       </div>
-      ${lista.length ? html`<div class="lc-griglia">${lista.map(b => html`<section class="lc-birra">
-        <h2>${b.birra}</h2>
+      ${tutta.length ? html`<div class="lc-griglia">${tutta.map(b => {
+        const via = b.formati.every(f => tolti.has(f.chiave));
+        return html`<section class="lc-birra ${via ? 'lc-tolto' : ''}">
+        <h2>${b.birra}<button class="lc-x" data-birra="${b.birra}" title="${via ? 'Rimetti nella lista' : 'Togli dalla lista'}" aria-label="${via ? `Rimetti ${b.birra}` : `Togli ${b.birra}`}">${via ? '↺' : '✕'}</button></h2>
         ${b.stile || b.abv !== null ? html`<p class="lc-info">${[b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${u.numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · ')}</p>` : ''}
-        ${b.formati.map(f => html`<div class="lc-formato"><span>${formatoCliente(f)}</span><span class="lc-punti"></span><b>${u.numIT(f.pezzi, 0)}</b></div>`)}
-      </section>`)}</div>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
+        ${b.formati.map(f => html`<div class="lc-formato ${tolti.has(f.chiave) ? 'lc-tolto' : ''}"><span>${formatoCliente(f)}</span><span class="lc-punti"></span><b>${u.numIT(f.pezzi, 0)}</b>
+          <button class="lc-x" data-k="${f.chiave}" title="${tolti.has(f.chiave) ? 'Rimetti nella lista' : 'Togli dalla lista'}" aria-label="${tolti.has(f.chiave) ? 'Rimetti' : 'Togli'} ${formatoCliente(f)}">${tolti.has(f.chiave) ? '↺' : '✕'}</button></div>`)}
+      </section>`;
+      })}</div>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
       <p class="lc-piede">Kashmir Brewing Company · disponibilità soggetta a variazioni</p>
     </div>`;
+  };
+  disegna();
   const stampa = () => {
     const titolo = document.title;
     document.title = `Birre disponibili Kashmir ${u.oggiISO()}`;
     addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
     window.print();
   };
-  u.$app.querySelector('#lc-copia').onclick = () => u.copia(testoLista(lista), 'Lista delle birre copiata');
-  u.$app.querySelector('#lc-stampa').onclick = stampa;
+  u.$app.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'lc-copia') return u.copia(testoLista(senzaTolti(tutta, tolti)), 'Lista delle birre copiata');
+    if (b.id === 'lc-stampa') return stampa();
+    if (b.id === 'lc-rimetti') tolti.clear();
+    else if (b.dataset.k) { if (tolti.has(b.dataset.k)) tolti.delete(b.dataset.k); else tolti.add(b.dataset.k); }
+    else if (b.dataset.birra) {
+      const chiavi = tutta.find(x => x.birra === b.dataset.birra).formati.map(f => f.chiave);
+      const via = chiavi.every(k => tolti.has(k));
+      for (const k of chiavi) { if (via) tolti.delete(k); else tolti.add(k); }
+    } else return;
+    scriviTolti(tolti);
+    disegna();
+  };
   if (stampaSubito) {
     history.replaceState(null, '', '#/birra-lista');
     const img = u.$app.querySelector('.lc-testa img');
@@ -848,7 +884,7 @@ async function rinomina(dati, vecchia, nuova) {
   const codici = [...(esiste?.codici || [])];
   for (const c of vecchio?.codici || []) if (!codici.some(x => String(x.codice).toLowerCase() === String(c.codice).toLowerCase())) codici.push(c);
   const nuovo = { ...(esiste || { tipo: 'prodottobirra', id: idProdotto(nuova), chiave: nuova }), codici, rinominatoIn: undefined, eliminato: false };
-  for (const k of ['abv', 'stile']) if ((nuovo[k] === undefined || nuovo[k] === null || nuovo[k] === '') && vecchio?.[k] !== undefined) nuovo[k] = vecchio[k];
+  for (const k of ['abv', 'stile', 'marchio']) if ((nuovo[k] === undefined || nuovo[k] === null || nuovo[k] === '') && vecchio?.[k] !== undefined) nuovo[k] = vecchio[k];
   out.push(nuovo);
   out.push({ ...(vecchio || { tipo: 'prodottobirra', id: idProdotto(vecchia), chiave: vecchia }), codici: [], rinominatoIn: nuova });
   // chi era già stato rinominato nel vecchio nome ora punta al nuovo
