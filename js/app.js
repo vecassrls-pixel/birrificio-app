@@ -234,7 +234,8 @@ const routes = [
   [/^#\/copertura$/, () => previsioni.vistaCopertura()],
   [/^#\/clienti$/, () => previsioni.vistaClienti()],
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
-  [/^#\/cassa$/, () => cassa.vistaCassa()],
+  // la cassa (contanti) non la vede chi è in sola lettura (Romain 2026-10-19)
+  [/^#\/cassa$/, () => (lettore ? (location.hash = '#/home') : cassa.vistaCassa())],
   [/^#\/contenitori$/, () => contenitori.vistaContenitori()],
   [/^#\/contenitore\/(.+)$/, id => contenitori.vistaContenitore(id)],
   [/^#\/movcontenitore\/(.+)$/, id => contenitori.vistaMovimento(id)],

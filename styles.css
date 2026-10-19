@@ -1068,3 +1068,5 @@ body.ordina { background: var(--bg); }
 .cn-formati { border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; }
 .cn-formati legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
 @media (max-width: 760px) { .cs-kpi { grid-template-columns: 1fr 1fr; gap: 8px; } .cs-kpi .w-kpi { padding: 10px 12px; } .cs-kpi .w-kpi b { font-size: 1.25rem; } }
+/* la cassa non si mostra a chi è in sola lettura */
+.lettore .top nav a[data-tab="cassa"], .lettore a[href="#/cassa"] { display: none !important; }
