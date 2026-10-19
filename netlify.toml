@@ -3,6 +3,10 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# le funzioni usano anche i moduli dell'app in js/ (stessi calcoli per agenda, report e import)
+[functions]
+  node_bundler = "esbuild"
+
 # niente cache sul service worker e sulla configurazione, così gli aggiornamenti arrivano subito
 [[headers]]
   for = "/sw.js"

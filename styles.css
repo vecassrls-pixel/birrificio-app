@@ -910,3 +910,135 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
   .tg-freddo rect, .tg-freddo-fondo, .tg-segno { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cantina-griglia { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ---------- automazioni, previsioni, AI ---------- */
+.avviso-riga { display: block; margin: 0 0 10px; padding: 10px 14px; border-radius: 10px; border-left: 4px solid var(--accent); background: var(--accent-tenue, var(--surface-2)); color: var(--text); text-decoration: none; font-size: .92rem; }
+.avviso-riga:hover { filter: brightness(.97); }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .74rem; font-weight: 600; background: var(--surface-2); color: var(--muted); white-space: nowrap; vertical-align: middle; }
+.cop-badge-ritardo { background: color-mix(in srgb, var(--warn) 15%, var(--surface)); color: var(--warn); }
+.cop-badge-presto { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); }
+.copertura tr.cop-ritardo td:first-child { box-shadow: inset 4px 0 var(--warn); }
+.copertura tr.cop-presto td:first-child { box-shadow: inset 4px 0 var(--accent); }
+.copertura td { white-space: nowrap; }
+/* pianificatore nel dialog della cotta */
+.proposte-fv { display: grid; gap: 6px; margin: 6px 0; }
+.proposta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.proposta > b { min-width: 92px; font-size: .88rem; text-transform: capitalize; }
+.proposta button.attivo, .barra button.attivo { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
+/* clienti da richiamare */
+.cl-griglia { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; margin-top: 12px; }
+.cl-card { margin: 0; }
+.cl-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cl-card > header h2 { margin: 0; font-size: 1.05rem; }
+.cl-ritardo { border-top: 4px solid var(--accent); }
+.cl-campi { grid-template-columns: 1fr 1fr; margin-top: 6px; }
+.acq-riga { display: flex; align-items: center; gap: 8px; }
+.acq-riga .w-testo { flex: 1; }
+/* automazioni */
+.au-tab td { vertical-align: middle; padding: 6px; }
+.au-tab td.totale { font-size: .8rem; margin: 0; }
+.au-tab select { min-height: 34px; padding: 2px 6px; width: auto; }
+.tg-msg { white-space: normal; background: var(--surface-2); border-radius: 12px; padding: 12px 14px; margin-top: 8px; font-size: .9rem; line-height: 1.45; max-width: 560px; }
+/* chiedi ai dati */
+.chiedi { display: grid; gap: 12px; max-width: 860px; }
+.chiedi-esempi { display: flex; flex-wrap: wrap; gap: 8px; }
+.chiedi-esempi button { text-align: left; white-space: normal; height: auto; }
+.ch-domanda { justify-self: end; max-width: 85%; background: var(--accent-tenue, var(--surface-2)); padding: 10px 14px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; }
+.ch-risposta { margin: 0; }
+.ch-risposta p { margin: 0 0 8px; } .ch-risposta p:last-child { margin-bottom: 0; }
+.ch-risposta ul, .ch-risposta ol { margin: 0 0 8px; padding-left: 22px; }
+.ch-risposta h3 { margin: 8px 0 6px; font-size: 1rem; }
+.ch-risposta table { margin: 4px 0 8px; }
+.ch-form { display: flex; gap: 8px; align-items: flex-end; position: sticky; bottom: 0; background: var(--bg); padding: 8px 0; }
+.ch-form textarea { flex: 1; resize: vertical; }
+@media (max-width: 640px) { .cl-campi { grid-template-columns: 1fr; } .au-tab td { display: block; padding: 2px 6px; } .au-tab tr { display: block; border-bottom: 1px solid var(--border); padding: 6px 0; } }
+/* cassa */
+.cs-kpi { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.cs-tab tr.cs-conta td { background: var(--surface-2); }
+.cs-tab td small { display: inline; }
+/* QR fusti e cartoni */
+.qr-video { max-width: 480px; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: #000; }
+.qr-video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qr-lotto { font-size: 1.1rem; margin: 6px 0; }
+.qr-n { min-width: 2.2em; text-align: center; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.qr-motivi { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 10px; }
+.qr-motivi button { min-height: 52px; font-size: 1rem; }
+/* pagina pubblica degli ordini (ordina.html) */
+body.ordina { background: var(--bg); }
+.or-testa { background: #fff; padding: 14px 16px; text-align: center; border-bottom: 1px solid var(--border); }
+.or-testa img { height: 56px; }
+.or-corpo { max-width: 640px; margin: 0 auto; padding: 16px; }
+.or-birra h2 { margin: 0; }
+.or-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.or-formato { display: flex; flex-direction: column; }
+.or-formato small { color: var(--muted); }
+.or-qta { display: inline-flex; align-items: center; gap: 10px; }
+.or-qta button { width: 44px; min-height: 44px; padding: 0; font-size: 1.2rem; }
+.or-qta b { min-width: 2ch; text-align: center; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.or-elenco { padding-left: 18px; margin: 6px 0 10px; }
+#or-invia label { display: block; margin-top: 8px; }
+#or-invia button.primario { width: 100%; margin-top: 12px; min-height: 48px; }
+.ln-link code { word-break: break-all; font-size: .82rem; }
+/* carrello della birra (#/birra-carrello) */
+.cr-conta { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-text); font-size: .74rem; font-weight: 700; margin-left: 2px; }
+.cr-volante { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; padding: 22px 34px; border: 2px dashed var(--accent); border-radius: var(--radius); background: var(--accent-tenue); color: var(--accent-forte); font-weight: 600; box-shadow: var(--ombra); }
+.cr-volante.sopra { background: var(--accent); color: var(--accent-text); border-style: solid; }
+.b-formato[draggable=true] { cursor: grab; }
+.cr-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); gap: 16px; align-items: start; }
+.cr-dispo input[type=search] { width: 100%; margin-bottom: 10px; }
+.cr-birra { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.cr-birra h3 { margin: 0 0 8px; font-size: 1rem; }
+.cr-birra h3 .totale { font-weight: 400; font-size: .8rem; margin: 0; }
+.cr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cr-art { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); font: inherit; font-size: .88rem; cursor: grab; touch-action: manipulation; }
+.cr-art:hover { border-color: var(--accent); }
+.cr-art small { color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
+.cr-art > b { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-text); font-size: .9rem; }
+.cr-art.finito { opacity: .5; }
+.cr-cesto { position: sticky; top: 12px; background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius); box-shadow: var(--ombra); padding: 12px; transition: border-color .15s, background .15s; }
+.cr-cesto.pronto { border-style: dashed; border-color: var(--accent); }
+.cr-cesto.sopra { background: var(--accent-tenue); }
+.cr-cesto-testa { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.cr-drop-qui { border: 2px dashed var(--border); border-radius: 10px; padding: 34px 12px; text-align: center; color: var(--muted); }
+.cr-righe { list-style: none; margin: 0; padding: 0; }
+.cr-riga { border-top: 1px solid var(--border); padding: 8px 0; display: grid; gap: 6px; }
+.cr-riga-nome { display: flex; align-items: center; gap: 6px; font-size: .92rem; }
+.cr-riga-nome b { flex: 1; min-width: 0; }
+.cr-x { min-height: 28px; padding: 2px 8px; }
+.cr-riga-campi { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cr-riga-campi select { flex: 1 1 160px; min-width: 0; }
+.cr-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.cr-stepper input { width: 64px; text-align: center; }
+.cr-stepper small { color: var(--muted); font-size: .78rem; }
+.cr-prezzo { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; color: var(--muted); }
+.cr-prezzo input { width: 80px; }
+.cr-riga > small { margin: 0; text-align: right; }
+.cr-avviso { color: var(--warn); }
+.cr-totali { display: flex; justify-content: space-between; align-items: baseline; border-top: 2px solid var(--border); padding-top: 8px; margin-top: 4px; }
+.cr-totali b { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.cr-azioni { display: grid; gap: 8px; margin-top: 8px; }
+.cr-azioni > .totale { margin: 0; }
+.cr-motivi { display: flex; flex-wrap: wrap; gap: 6px; }
+.cr-motivi button { flex: 1 1 auto; }
+.cr-fatto { border-left: 4px solid var(--ok); }
+@media (max-width: 760px) {
+  .cr-layout { grid-template-columns: 1fr; }
+  .cr-cesto { position: static; order: -1; }
+}
+/* lista birre: articoli tolti (✕), che non escono né in copia né in stampa */
+.lc-x { margin-left: 8px; min-height: 26px; min-width: 26px; padding: 0 6px; border: 1px solid var(--lc-line); border-radius: 6px; background: #fff; color: var(--lc-soft); font-size: .8rem; line-height: 1; vertical-align: middle; cursor: pointer; }
+.lc-x:hover { border-color: var(--accent); color: var(--accent-forte); }
+.lc-birra h2 .lc-x { font-weight: 400; text-transform: none; }
+.lc-tolto { opacity: .4; }
+.lc-formato.lc-tolto > span:first-child, .lc-birra.lc-tolto h2 { text-decoration: line-through; }
+.lc-birra.lc-tolto .lc-tolto { opacity: 1; }
+.lc-aiuto { max-width: 860px; margin: 0 auto 10px; }
+@media print { .lc-tolto, .lc-x, .lc-aiuto { display: none !important; } }
+/* pagina Birra: unghia Kashmir / Exist */
+.b-marchi { display: flex; gap: 0; margin: 0 0 14px; border-bottom: 2px solid var(--border); }
+.b-marchi button { min-height: 42px; padding: 8px 22px; border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0; background: none; color: var(--muted); font: inherit; font-weight: 600; font-size: .98rem; margin-bottom: -2px; cursor: pointer; }
+.b-marchi button:hover { color: var(--text); }
+.b-marchi button.attivo { background: var(--surface); color: var(--accent-forte); border-color: var(--border); border-bottom: 2px solid var(--surface); }
+.b-marchi small { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .74rem; }
+.lc-marchio { order: 2; font-size: 2.2rem; font-weight: 900; letter-spacing: .12em; color: var(--lc-ink); }
+@media print { .lc-marchio { font-size: 26pt; } }
