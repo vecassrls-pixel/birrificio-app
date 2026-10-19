@@ -70,7 +70,7 @@ export async function scheda(box) {
           <td class="az"><button class="piccolo" data-manda="report">Manda ora</button></td></tr>
         <tr><td><label class="spunta"><input type="checkbox" data-imp="importa.attivo" ${imp.importa.attivo ? 'checked' : ''}> 📥 Import vendite e acquisti</label></td>
           <td>alle ${raw(oraSel('importa', 'ora', imp.importa.ora))}</td>
-          <td class="totale">${st.importa?.ultimo ? `ultimo il ${quando(st.importa.ultimo)}: ${st.importa.movimenti || 0} movimenti, ${st.importa.sospesi || 0} da controllare, ${st.importa.acquisti || 0} acquisti${st.importa.errori?.length ? ` · errori: ${st.importa.errori.join('; ')}` : ''}` : 'mai'}</td>
+          <td class="totale">${st.importa?.ultimo ? `ultimo il ${quando(st.importa.ultimo)}: ${st.importa.movimenti || 0} movimenti, ${st.importa.sospesi || 0} da controllare, ${st.importa.acquisti || 0} acquisti${st.importa.vuoti ? `, ${st.importa.vuoti} carichi di vuoti` : ''}${st.importa.errori?.length ? ` · errori: ${st.importa.errori.join('; ')}` : ''}` : 'mai'}</td>
           <td class="az"><button class="piccolo" data-manda="importa">Importa ora</button></td></tr>
         <tr><td><label class="spunta"><input type="checkbox" data-imp="allarmi.attivi" ${imp.allarmi.attivi ? 'checked' : ''}> 🚨 Allarmi temperatura FV</label></td>
           <td>ogni ora</td><td class="totale">${aperti.length ? `aperti: ${aperti.map(([fv]) => fv).join(', ')}` : 'nessun allarme aperto'}</td><td></td></tr>
@@ -80,7 +80,7 @@ export async function scheda(box) {
           <option value="fatture" ${imp.importa.vendite === 'fatture' ? 'selected' : ''}>dalle fatture (e ricevute)</option>
           <option value="ddt" ${imp.importa.vendite === 'ddt' ? 'selected' : ''}>dai DDT (e ricevute)</option></select></label>
         <label class="spunta"><input type="checkbox" data-imp="importa.shopify" ${imp.importa.shopify ? 'checked' : ''}> Ordini Shopify spediti</label>
-        <label class="spunta"><input type="checkbox" data-imp="importa.acquisti" ${imp.importa.acquisti ? 'checked' : ''}> Fatture dei fornitori (diventano bolle da confermare)</label>
+        <label class="spunta"><input type="checkbox" data-imp="importa.acquisti" ${imp.importa.acquisti ? 'checked' : ''}> Fatture dei fornitori (diventano bolle da confermare; lattine e fusti vuoti già riconosciuti vanno in Contenitori da soli)</label>
       </div>
       <p class="totale">Fatture o DDT: scegline uno solo, altrimenti la stessa vendita esce due volte dal magazzino. I documenti con prodotti non riconosciuti aspettano in Birra → Importa.</p>
       <details class="au-anteprima"><summary>Anteprima dell'agenda di oggi</summary><div id="au-ag" class="tg-msg">Preparo…</div></details>`;

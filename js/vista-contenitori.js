@@ -1,11 +1,13 @@
 // Pagina Contenitori (#/contenitori): magazzino di lattine vuote, fusti vuoti, coperchi e cartoni.
 // Entrano con i carichi (acquisti, rientri), escono da soli con il Confezionamento delle cotte
 // e con gli scarichi a mano (scarti, ceduti). Inventario per rimettere i conti a posto.
+// Le fatture dei fornitori importate di notte da Fatture in Cloud con righe di vuoti si confermano qui
+// (la prima volta: poi il server le carica da solo). Lotti dei vuoti per la rintracciabilità HACCP.
 // Route: #/contenitori, #/contenitore/<id>, #/movcontenitore/<id|carico|scarico>, #/contenitori-inventario
 
 import {
   CATEGORIE_CONT, MOTIVI_CARICO, MOTIVI_SCARICO, categoriaDaFormato, contenitoriProposti, formatiDi, formatiUsati,
-  giacenzeContenitori, nomeFormato, nomeMotivoCont, usiConfezionamento,
+  caricoDaFattura, chiaveRiga, giacenzeContenitori, nomeFormato, nomeMotivoCont, righeVuoti, usiConfezionamento,
 } from './contenitori.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO }
@@ -15,9 +17,12 @@ const ICONA = { lattina: '🥫', fusto: '🛢️', altro: '📦' };
 const pz = n => `${u.numIT(n, 0)} pz`;
 
 async function dati() {
-  const [contenitori, movimenti, inventari] = await Promise.all(['contenitore', 'movcontenitore', 'inventariocontenitori'].map(t => u.db.tutti(t)));
+  const [contenitori, movimenti, inventari, sospesi] = await Promise.all(['contenitore', 'movcontenitore', 'inventariocontenitori', 'importsospeso'].map(t => u.db.tutti(t)));
   contenitori.sort((a, b) => Object.keys(CATEGORIE_CONT).indexOf(a.categoria) - Object.keys(CATEGORIE_CONT).indexOf(b.categoria) || a.nome.localeCompare(b.nome, 'it', { numeric: true }));
-  return { contenitori, movimenti, inventari, cotte: u.stato.cotte };
+  // fatture dei fornitori con righe che sembrano vuoti, non ancora guardate qui
+  const fatture = sospesi.filter(x => x.fonte === 'acquisti' && !x.vuotiVisti && x.doc)
+    .map(x => ({ x, ...righeVuoti(x.doc, contenitori) })).filter(f => f.proposte.length || f.sicure.length);
+  return { contenitori, movimenti, inventari, fatture, cotte: u.stato.cotte };
 }
 const pezziMov = m => (m.righe || []).reduce((t, r) => t + (Number(r.pezzi) || 0), 0);
 // "≈ 2,5 bancali" quando il contenitore ha i pezzi per confezione
@@ -72,6 +77,13 @@ export async function vistaContenitori() {
       <div class="barra" style="margin:0"><button class="primario" id="cn-proponi">Crea i nostri: ${contenitoriProposti().map(x => x.nome).join(', ')}</button></div>
     </div>`}
 
+    ${d.fatture.length ? html`<div class="scheda solo-editori" id="cn-fatture"><h2>📥 Fatture dei fornitori con vuoti <span class="totale">da Fatture in Cloud</span></h2>
+      <p class="totale">Righe di lattine o fusti trovate nelle fatture importate di notte. Controlla contenitore, pezzi e lotto e carica: la volta dopo le stesse righe dello stesso fornitore entrano da sole.</p>
+      <ul class="w-lista">${d.fatture.map(f => html`<li class="acq-riga"><span class="w-testo"><b>${f.x.doc.fornitore || 'Fornitore'}</b> · ${f.x.doc.numero || ''} · ${u.dataIT(f.x.doc.data)}
+        <small>${[...f.sicure, ...f.proposte].map(r => `${u.numIT(r.qta, 0)} ${r.um || ''} ${r.descrizione}`).join(' · ')}</small></span>
+        <span class="barra" style="margin:0"><button class="piccolo primario" data-fatt="${f.x.id}">Carica</button><button class="piccolo" data-fatt-no="${f.x.id}" title="Non sono vuoti: la fattura resta in Materie prime">Non sono vuoti</button></span></li>`)}</ul>
+    </div>` : ''}
+
     ${Object.entries(CATEGORIE_CONT).map(([cat, nomeCat]) => {
       const qui = lista.filter(x => x.contenitore.categoria === cat);
       if (!qui.length) return '';
@@ -79,7 +91,7 @@ export async function vistaContenitori() {
         ${qui.map(x => html`<a class="b-formato ${x.giacenza < 0 ? 'neg' : ''} ${x.giacenza === 0 ? 'zero' : ''}" href="#/contenitore/${encodeURIComponent(x.contenitore.id)}">
           <span class="b-icona" aria-hidden="true">${ICONA[cat]}</span>
           <span class="b-nome">${x.contenitore.nome}
-            <span class="b-lotti"><span class="totale">${formatiDi(x.contenitore).length ? `scala con ${formatiDi(x.contenitore).map(f => nomeFormato(f).replace(/^\w/, ch => ch.toLowerCase())).join(', ')}${Number(x.contenitore.ogni) > 1 ? ` (1 ogni ${x.contenitore.ogni})` : ''}` : 'solo movimenti a mano'}${x.consumo ? ` · ${u.numIT(x.consumo, 0)} usati in 90 gg, ${testoCopertura(x)}` : ''}</span></span></span>
+            <span class="b-lotti">${x.lotti.filter(l => l.lotto && l.pezzi > 0).map(l => html`<span class="b-lotto" title="${[l.fornitore, l.documento, l.arrivo && `arrivato il ${u.dataIT(l.arrivo)}`].filter(Boolean).join(' · ')}">${l.lotto} <b>${u.numIT(l.pezzi, 0)}</b></span>`)}<span class="totale">${formatiDi(x.contenitore).length ? `scala con ${formatiDi(x.contenitore).map(f => nomeFormato(f).replace(/^\w/, ch => ch.toLowerCase())).join(', ')}${Number(x.contenitore.ogni) > 1 ? ` (1 ogni ${x.contenitore.ogni})` : ''}` : 'solo movimenti a mano'}${x.consumo ? ` · ${u.numIT(x.consumo, 0)} usati in 90 gg, ${testoCopertura(x)}` : ''}</span></span></span>
           <span class="b-num"><b>${u.numIT(x.giacenza, 0)}</b><small>pz${testoConfezioni(x)}</small>${x.sottoScorta ? html`<span class="b-scad scaduto">sotto scorta (${u.numIT(x.contenitore.scortaMin, 0)})</span>` : ''}</span>
         </a>`)}
       </section>`;
@@ -100,6 +112,17 @@ export async function vistaContenitori() {
     </div>` : ''}`;
 
   const $ = s => document.getElementById(s);
+  if ($('cn-fatture')) $('cn-fatture').onclick = async e => {
+    const b = e.target.closest('[data-fatt], [data-fatt-no]');
+    if (!b) return;
+    const f = d.fatture.find(x => x.x.id === (b.dataset.fatt || b.dataset.fattNo));
+    if (b.dataset.fattNo) {
+      const { aggiornato: _a, ...rec } = f.x;
+      await u.db.salva({ ...rec, vuotiVisti: true });
+      return vistaContenitori();
+    }
+    dialogFattura(d, f);
+  };
   if ($('cn-nuovo')) $('cn-nuovo').onclick = () => dialogContenitore(d);
   if ($('cn-proponi')) $('cn-proponi').onclick = async () => {
     const nuovi = contenitoriProposti().map(x => ({ ...x, id: u.db.nuovoId('contenitore'), tipo: 'contenitore', scortaMin: 0, creato: oggi }));
@@ -107,6 +130,60 @@ export async function vistaContenitori() {
     u.toast(`${nuovi.length} contenitori creati: ora fai l'inventario`);
     location.hash = '#/contenitori-inventario';
   };
+}
+
+// ---------- carico da una fattura del fornitore ----------
+function dialogFattura(d, f) {
+  const { html } = u;
+  const righe = [...f.sicure, ...f.proposte].map(r => ({ ...r, propostoId: r.contenitoreId, lotto: '' }));
+  const dlg = document.createElement('dialog');
+  dlg.innerHTML = html`<form method="dialog">
+    <h2 style="margin-top:0">${f.x.doc.fornitore || 'Fornitore'} · ${f.x.doc.numero || ''}</h2>
+    <p class="totale">Fattura del ${u.dataIT(f.x.doc.data)}. "Pezzi per unità": quante lattine o fusti sono 1 ${righe.some(r => r.um) ? 'unità della fattura (es. 1 bancale = 8.000 lattine)' : 'quantità della fattura'}. Il lotto è sulla bolla o sull'imballo.</p>
+    <div class="scroll-x"><table class="tab-edit">
+      <thead><tr><th>Riga della fattura</th><th>Contenitore</th><th style="width:90px">Pezzi per unità</th><th style="width:120px">Lotto</th></tr></thead>
+      <tbody>${righe.map((r, i) => html`<tr><td>${u.numIT(r.qta, 0)} ${r.um || ''} ${r.descrizione}</td>
+        <td><select name="k${i}"><option value="">non è un vuoto</option>${d.contenitori.map(k => html`<option value="${k.id}" ${k.id === r.contenitoreId ? 'selected' : ''}>${k.nome}</option>`)}</select></td>
+        <td><input name="x${i}" type="number" min="1" step="1" inputmode="numeric" value="${r.x}"></td>
+        <td><input name="l${i}" value=""></td></tr>`)}</tbody></table></div>
+    <div class="barra" style="margin-top:14px"><span class="spazio"></span><button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">Carica</button></div>
+  </form>`.s;
+  document.body.appendChild(dlg);
+  const fm = dlg.querySelector('form');
+  dlg.addEventListener('close', async () => {
+    dlg.remove();
+    if (dlg.returnValue !== 'ok') return;
+    righe.forEach((r, i) => { r.contenitoreId = fm[`k${i}`].value; r.x = Math.max(1, Number(fm[`x${i}`].value) || 1); r.lotto = fm[`l${i}`].value.trim(); });
+    const vuoti = righe.filter(r => r.contenitoreId);
+    // impara: la stessa riga (codice o descrizione) la prossima volta va da sola, oppure si ignora
+    const perK = new Map();
+    for (const r of righe) {
+      const ch = chiaveRiga(r);
+      if (!ch) continue;
+      const kid = r.contenitoreId || r.propostoId;
+      const lista = perK.get(kid) || [];
+      lista.push(r.contenitoreId ? { chiave: ch, x: r.x } : { chiave: ch, ignora: true });
+      perK.set(kid, lista);
+    }
+    const aggiornati = d.contenitori.filter(k => perK.has(k.id)).map(({ aggiornato: _a, ...k }) => {
+      const nuove = perK.get(k.id);
+      return { ...k, codici: [...(k.codici || []).filter(c => !nuove.some(n => n.chiave === c.chiave)), ...nuove] };
+    });
+    if (aggiornati.length) await u.db.salvaMolti(aggiornati);
+    if (vuoti.length) {
+      const mov = caricoDaFattura(f.x.doc, vuoti, f.x.rifEsterno);
+      await u.db.salva({ ...mov, id: u.db.nuovoId('movcontenitore') });
+    }
+    // dalla fattura in Materie prime tolgo le righe caricate qui; se non resta niente la fattura sparisce
+    const caricate = new Set(vuoti.map(r => chiaveRiga(r)));
+    const resto = f.x.doc.righe.filter(r => !caricate.has(chiaveRiga(r)));
+    const { aggiornato: _a, ...rec } = f.x;
+    if (resto.length) await u.db.salva({ ...rec, vuotiVisti: true, doc: { ...rec.doc, righe: resto } });
+    else await u.db.elimina(f.x.id);
+    u.toast(vuoti.length ? `Caricati ${vuoti.length === 1 ? '1 contenitore' : `${vuoti.length} contenitori`} da ${f.x.doc.fornitore || 'fattura'}` : 'Fattura segnata: niente vuoti');
+    vistaContenitori();
+  });
+  dlg.showModal();
 }
 
 // ---------- nuovo / modifica contenitore ----------
@@ -173,6 +250,10 @@ export async function vistaContenitore(id) {
       <div class="st-tile ${g.sottoScorta ? 'allerta' : ''}"><span>In magazzino</span><b>${pz(g.giacenza)}</b><small>${g.sottoScorta ? `sotto la scorta minima di ${u.numIT(k.scortaMin, 0)}` : testoConfezioni(g).replace(/^ · /, '') || (g.ultimoInventario ? `inventario del ${u.dataIT(g.ultimoInventario)}` : 'senza inventario')}</small></div>
       <div class="st-tile"><span>Usati in 90 giorni</span><b>${u.numIT(g.consumo, 0)}</b><small>${testoCopertura(g) || 'dai confezionamenti'}</small></div>
     </div>
+    ${g.lotti.some(l => l.pezzi > 0) ? html`<div class="scheda"><h2 style="margin-top:0">Lotti in magazzino</h2>
+      <table class="tab-mag"><thead><tr><th>Lotto</th><th class="n">Pezzi</th><th>Arrivato</th><th>Fornitore / documento</th></tr></thead>
+      <tbody>${g.lotti.filter(l => l.pezzi > 0).map(l => html`<tr><td>${l.lotto || html`<span class="totale">senza lotto</span>`}</td><td class="n">${u.numIT(l.pezzi, 0)}</td><td>${l.arrivo ? u.dataIT(l.arrivo) : ''}</td><td>${[l.fornitore, l.documento].filter(Boolean).join(' · ')}</td></tr>`)}</tbody></table>
+      <p class="totale">Confezionamenti e scarichi senza lotto prendono dal lotto arrivato prima.</p></div>` : ''}
     <form class="scheda" id="cn-dati"><h2 style="margin-top:0">Dati</h2>
       ${campiContenitore(k, formatiUsati(d.cotte))}
       <p class="totale">Conta dal ${u.dataIT(k.creato)}${g.ultimoInventario ? ` · ultimo inventario ${u.dataIT(g.ultimoInventario)}` : ''}. I confezionamenti delle cotte prima di quel giorno non scalano.</p>
@@ -180,7 +261,7 @@ export async function vistaContenitore(id) {
     </form>
     <div class="scheda"><h2>Registro</h2>
       ${righe.length ? html`<div class="scroll-x"><table class="tab-mag">
-        <thead><tr><th>Data</th><th>Movimento</th><th class="n">Pezzi</th><th class="n">Saldo</th></tr></thead>
+        <thead><tr><th>Data</th><th>Movimento</th><th>Lotti</th><th class="n">Pezzi</th><th class="n">Saldo</th></tr></thead>
         <tbody>${righe.map(r => {
           const link = r.tipo === 'confezionamento' ? `#/cotta/${encodeURIComponent(r.uso.cotta.id)}` : r.tipo === 'inventario' ? '' : `#/movcontenitore/${encodeURIComponent(r.rec.id)}`;
           const testo = r.tipo === 'confezionamento' ? `${r.uso.cotta.birra} ${r.uso.cotta.lotto || ''} · ${r.uso.confezionati} confezionati`
@@ -188,6 +269,7 @@ export async function vistaContenitore(id) {
             : [nomeMotivoCont(r.rec), r.rec.fornitore, r.rec.documento].filter(Boolean).join(' · ');
           return html`<tr class="${r.conta ? '' : 'totale'}"><td>${u.dataIT(r.data)}</td>
             <td><b>${NOMI_RIGA[r.tipo]}</b> ${link ? html`<a href="${link}">${testo}</a>` : testo}${r.conta ? '' : html` <small>(futuro, non conta ancora)</small>`}</td>
+            <td class="totale">${r.tipo === 'carico' ? r.parti.map(x => x.lotto).filter(Boolean).join(', ') : r.tipo === 'inventario' ? r.lotto : (r.lotti || []).map(x => `${x.lotto || 'senza lotto'} (${u.numIT(x.pezzi, 0)})`).join(', ')}</td>
             <td class="n">${r.tipo === 'inventario' ? `= ${u.numIT(r.pezzi, 0)}` : `${r.pezzi > 0 ? '+' : ''}${u.numIT(r.pezzi, 0)}`}</td>
             <td class="n"><b>${r.saldo === null ? '' : u.numIT(r.saldo, 0)}</b></td></tr>`;
         })}</tbody></table></div>` : html`<p class="vuoto">Nessun movimento.</p>`}
@@ -220,7 +302,7 @@ export async function vistaMovimento(id) {
   if (!d.contenitori.length) { u.$app.innerHTML = html`<p class="vuoto">Prima crea i contenitori. <a href="#/contenitori">Vai ai contenitori</a></p>`; return; }
   const pre = new URLSearchParams(query || '').get('c') || '';
   const m = esistente ? JSON.parse(JSON.stringify(esistente))
-    : { tipo: 'movcontenitore', verso: idPuro, data: u.oggiISO(), motivo: idPuro === 'carico' ? 'acquisto' : 'scarto', fornitore: '', documento: '', note: '', righe: [{ contenitoreId: pre || d.contenitori[0].id, pezzi: null }] };
+    : { tipo: 'movcontenitore', verso: idPuro, data: u.oggiISO(), motivo: idPuro === 'carico' ? 'acquisto' : 'scarto', fornitore: '', documento: '', note: '', righe: [{ contenitoreId: pre || d.contenitori[0].id, pezzi: null, lotto: '' }] };
   const carico = () => m.verso === 'carico';
   const g = giacenzeContenitori({ ...d, movimenti: d.movimenti.filter(x => x.id !== m.id) }, u.oggiISO());
   const fornitori = [...new Set(d.movimenti.map(x => x.fornitore).filter(Boolean))].sort();
@@ -248,7 +330,7 @@ export async function vistaMovimento(id) {
       </div>
       <div class="scheda"><h2>Righe</h2>
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th>Contenitore</th><th class="n">In magazzino</th><th style="width:100px">Confezioni</th><th style="width:110px">Pezzi</th><th></th></tr></thead>
+          <thead><tr><th>Contenitore</th><th class="n">In magazzino</th><th style="width:100px">Confezioni</th><th style="width:110px">Pezzi</th><th style="width:${carico() ? 140 : 220}px">Lotto</th><th></th></tr></thead>
           <tbody>${m.righe.map((r, i) => {
             const k = kDi(r.contenitoreId), perConf = Number(k?.pezziConfezione) || 0;
             return html`<tr>
@@ -256,6 +338,12 @@ export async function vistaMovimento(id) {
               <td class="n totale">${g.get(r.contenitoreId) ? pz(g.get(r.contenitoreId).giacenza) : ''}</td>
               <td>${perConf ? html`<input data-conf="${i}" type="number" min="0" step="any" inputmode="decimal" title="da ${perConf} pezzi" value="${r.pezzi ? Math.round((r.pezzi / perConf) * 100) / 100 : ''}">` : html`<span class="totale" title="Scrivi i pezzi per bancale/confezione nella scheda del contenitore">—</span>`}</td>
               <td><input data-r="${i}.pezzi" type="number" min="0" step="1" inputmode="numeric" value="${r.pezzi ?? ''}"></td>
+              <td>${(() => {
+                const lotti = (g.get(r.contenitoreId)?.lotti || []).filter(l => l.lotto && l.pezzi > 0);
+                return carico() ? html`<input data-r="${i}.lotto" value="${r.lotto || ''}" list="dl-lv-${i}"><datalist id="dl-lv-${i}">${lotti.map(l => html`<option value="${l.lotto}">`)}</datalist>`
+                  : html`<select data-r="${i}.lotto"><option value="">Il più vecchio (automatico)</option>${lotti.map(l => html`<option value="${l.lotto}" ${l.lotto === r.lotto ? 'selected' : ''}>${l.lotto} · ${l.pezzi} pz</option>`)}
+                    ${r.lotto && !lotti.some(l => l.lotto === r.lotto) ? html`<option value="${r.lotto}" selected>${r.lotto}</option>` : ''}</select>`;
+              })()}</td>
               <td class="az"><button class="piccolo" data-del="${i}" title="Rimuovi">✕</button></td>
             </tr>`;
           })}</tbody>
@@ -270,6 +358,7 @@ export async function vistaMovimento(id) {
     if (t.name === 'verso' && e.type === 'change') {
       m.verso = t.value;
       m.motivo = Object.keys(carico() ? MOTIVI_CARICO : MOTIVI_SCARICO)[0];
+      for (const r of m.righe) r.lotto = '';
       return disegna();
     }
     if (t.dataset.m) m[t.dataset.m] = t.value;
@@ -282,20 +371,20 @@ export async function vistaMovimento(id) {
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
       m.righe[i][k] = t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
-      if (k === 'contenitoreId' && e.type === 'change') disegna();
+      if (k === 'contenitoreId' && e.type === 'change') { m.righe[i].lotto = ''; disegna(); }
       if (k === 'pezzi' && e.type === 'change') disegna();
     }
   };
   u.$app.onclick = async e => {
     const t = e.target;
-    if (t.id === 'riga') { m.righe.push({ contenitoreId: d.contenitori[0].id, pezzi: null }); disegna(); }
+    if (t.id === 'riga') { m.righe.push({ contenitoreId: d.contenitori[0].id, pezzi: null, lotto: '' }); disegna(); }
     else if (t.dataset.del !== undefined) { m.righe.splice(Number(t.dataset.del), 1); disegna(); }
     else if (t.id === 'elimina') {
       if (!(await u.chiedi(carico() ? 'Eliminare questo carico? I pezzi escono dalla giacenza.' : 'Eliminare questo scarico? I pezzi tornano in giacenza.', 'Elimina'))) return;
       await u.db.elimina(esistente.id);
       location.hash = '#/contenitori';
     } else if (t.id === 'salva') {
-      const righe = m.righe.filter(r => r.contenitoreId && Number(r.pezzi) > 0).map(r => ({ contenitoreId: r.contenitoreId, pezzi: Math.round(Number(r.pezzi)) }));
+      const righe = m.righe.filter(r => r.contenitoreId && Number(r.pezzi) > 0).map(r => ({ contenitoreId: r.contenitoreId, pezzi: Math.round(Number(r.pezzi)), lotto: String(r.lotto || '').trim() }));
       if (!m.data || !righe.length) return u.toast('Servono la data e almeno una riga con i pezzi');
       if (!carico()) {
         const troppo = righe.find(r => r.pezzi > (g.get(r.contenitoreId)?.giacenza || 0));
@@ -320,14 +409,16 @@ export async function vistaInventario() {
     <div class="barra"><a href="#/contenitori" class="btn">← Contenitori</a></div>
     <form class="scheda" id="cn-inv">
       <h1 style="margin-top:0">Inventario dei vuoti</h1>
-      <p class="totale">Scrivi i pezzi contati. Se lasci un campo vuoto quel contenitore tiene il calcolato; per azzerarlo scrivi 0. Da questo giorno la giacenza riparte dai numeri contati.</p>
+      <p class="totale">Scrivi i pezzi contati. Se lasci un campo vuoto quel contenitore tiene il calcolato; per azzerarlo scrivi 0. Da questo giorno la giacenza riparte dai numeri contati.
+        Il lotto è facoltativo: se lo scrivi, i pezzi contati sono tutti di quel lotto; se no restano i lotti arrivati per ultimi.</p>
       <div class="griglia"><label>Data <input type="date" name="data" value="${oggi}" required></label></div>
       <div class="scroll-x" style="margin-top:10px"><table class="tab-edit">
-        <thead><tr><th>Contenitore</th><th class="n">Calcolato</th><th style="width:100px">Confezioni</th><th style="width:120px">Contati</th></tr></thead>
+        <thead><tr><th>Contenitore</th><th class="n">Calcolato</th><th style="width:100px">Confezioni</th><th style="width:120px">Contati</th><th style="width:140px">Lotto</th></tr></thead>
         <tbody>${d.contenitori.map(k => html`<tr>
           <td>${ICONA[k.categoria] || ''} ${k.nome}</td><td class="n totale">${pz(g.get(k.id).giacenza)}</td>
           <td>${Number(k.pezziConfezione) > 0 ? html`<input data-conf="${k.id}" type="number" min="0" step="any" inputmode="decimal" title="da ${k.pezziConfezione} pezzi">` : ''}</td>
-          <td><input name="pz-${k.id}" type="number" min="0" step="1" inputmode="numeric"></td></tr>`)}</tbody>
+          <td><input name="pz-${k.id}" type="number" min="0" step="1" inputmode="numeric"></td>
+          <td><input name="lt-${k.id}" list="dl-li-${k.id}" placeholder="${g.get(k.id).lotti.filter(l => l.lotto).map(l => l.lotto).join(', ')}"><datalist id="dl-li-${k.id}">${g.get(k.id).lotti.filter(l => l.lotto).map(l => html`<option value="${l.lotto}">`)}</datalist></td></tr>`)}</tbody>
       </table></div>
       <div class="barra salva-inv" style="margin-top:10px"><span class="spazio"></span><button class="primario">Salva inventario</button></div>
     </form>`;
@@ -340,7 +431,7 @@ export async function vistaInventario() {
   };
   f.onsubmit = async e => {
     e.preventDefault();
-    const righe = d.contenitori.filter(k => f[`pz-${k.id}`].value !== '').map(k => ({ contenitoreId: k.id, pezzi: Math.round(Number(f[`pz-${k.id}`].value)) }));
+    const righe = d.contenitori.filter(k => f[`pz-${k.id}`].value !== '').map(k => ({ contenitoreId: k.id, pezzi: Math.round(Number(f[`pz-${k.id}`].value)), lotto: f[`lt-${k.id}`].value.trim() }));
     if (!righe.length) return u.toast('Scrivi almeno un numero contato');
     await u.db.salva({ id: u.db.nuovoId('inventariocontenitori'), tipo: 'inventariocontenitori', data: f.data.value, righe });
     u.toast('Inventario salvato');
