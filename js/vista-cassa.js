@@ -1,7 +1,8 @@
 // Prima nota di cassa (#/cassa): contanti in entrata e in uscita, saldo, conte della cassa,
-// incassi da registrare per gli scarichi taproom/spaccio/eventi, Excel e import da "Cassa Vecas".
+// soldi da sistemare (sospesi), incassi da registrare per gli scarichi taproom/spaccio/eventi,
+// Excel e import da "Cassa Vecas".
 
-import { CATEGORIE_CASSA, categoriaCassa, cassaDaExcel, importo, registroCassa, saldoCassa } from './cassa.js';
+import { CATEGORIE_CASSA, categoriaCassa, cassaDaExcel, importo, registroCassa, saldoCassa, sospesiAperti } from './cassa.js';
 import { leggiXlsx } from './xlsx-leggi.js';
 import { creaXlsx } from './xlsx.js';
 import { daChiave, nomeMotivo } from './birra.js';
@@ -15,7 +16,8 @@ const MOTIVI_INCASSO = ['taproom', 'spaccio', 'eventi'];
 
 export async function vistaCassa() {
   const { html } = u;
-  const [movimenti, conte, movBirra] = await Promise.all([u.db.tutti('movcassa'), u.db.tutti('contacassa'), u.db.tutti('movbirra')]);
+  const [movimenti, conte, movBirra, sospesi] = await Promise.all(['movcassa', 'contacassa', 'movbirra', 'sospesocassa'].map(t => u.db.tutti(t)));
+  const sosp = sospesiAperti(sospesi);
   const oggi = u.oggiISO();
   const { saldo, conta } = saldoCassa(movimenti, conte);
   const registro = registroCassa(movimenti, conte);
@@ -33,29 +35,40 @@ export async function vistaCassa() {
   const nuovo = { data: oggi, verso: 'entrata' };
 
   u.$app.innerHTML = html`
-    <div class="barra"><a href="#/statistiche" class="btn">← Statistiche</a><span class="spazio"></span>
+    <div class="barra"><h1 style="margin:0">Cassa</h1><span class="spazio"></span>
       <button id="cs-excel">Scarica Excel</button>
       <label class="btn solo-editori">Importa dal foglio della cassa<input type="file" id="cs-importa" accept=".xlsx" hidden></label></div>
-    <h1>Cassa</h1>
     <div class="home-kpi cs-kpi">
       <div class="w-kpi" style="--w:var(--ok)"><span>In cassa oggi</span><b>${euro(saldo)}</b><small>${conta ? `contata il ${u.dataIT(conta.data)}: ${euro(conta.saldo)}` : 'mai contata'}</small></div>
       <div class="w-kpi" style="--w:var(--s-pianificata)"><span>Entrate ${filtro.anno}</span><b>${euro(entrate)}</b><small>${delAnno.filter(m => m.entrata).length} movimenti</small></div>
       <div class="w-kpi" style="--w:var(--warn)"><span>Uscite ${filtro.anno}</span><b>${euro(uscite)}</b><small>${perCat.filter(x => x.v < 0).sort((a, b) => a.v - b.v).slice(0, 2).map(x => `${CATEGORIE_CASSA[x.k]} ${euro(-x.v)}`).join(' · ')}</small></div>
+      ${sosp.aperti.length ? html`<button type="button" class="w-kpi w-kpi-btn st-libero" id="cs-vai-sosp" style="--w:var(--s-tank)"><span>Da sistemare</span><b>${sosp.aperti.length}</b><small>${[sosp.daIncassare && `da incassare ${euro(sosp.daIncassare)}`, sosp.daPagare && `da pagare ${euro(sosp.daPagare)}`, sosp.daCapire && `da capire ${euro(sosp.daCapire)}`].filter(Boolean).join(' · ')}</small></button>` : ''}
     </div>
 
     <form class="scheda solo-editori" id="cs-nuovo">
       <h2 style="margin-top:0">Nuovo movimento</h2>
-      <div class="segmenti" id="cs-verso"><button type="button" data-v="entrata" class="attivo">+ Entrata</button><button type="button" data-v="uscita">− Uscita</button></div>
+      <div class="segmenti" id="cs-verso"><button type="button" data-v="entrata" class="attivo">+ Entrata</button><button type="button" data-v="uscita">− Uscita</button><button type="button" data-v="sospeso" title="Soldi che qualcuno ci deve o che dobbiamo dare: non toccano la cassa finché non li segni incassati o pagati">⏳ Da sistemare</button></div>
       <div class="griglia" style="margin-top:8px">
         <label>Data <input type="date" name="data" value="${nuovo.data}" required></label>
         <label style="grid-column:span 2">Descrizione <input name="descrizione" list="dl-cassa" required placeholder="es. taproom, Adua, versato BPPM"></label>
         <label>Importo € <input name="importo" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
-        <label>Categoria <select name="categoria"><option value="">automatica</option>${Object.entries(CATEGORIE_CASSA).map(([k, v]) => html`<option value="${k}">${v}</option>`)}</select></label>
+        <label id="cs-chi" hidden>Chi deve <select name="chi"><option value="entrata">Ce li devono (da incassare)</option><option value="uscita">Li dobbiamo (da pagare)</option></select></label>
+        <label id="cs-cat-lab">Categoria <select name="categoria"><option value="">automatica</option>${Object.entries(CATEGORIE_CASSA).map(([k, v]) => html`<option value="${k}">${v}</option>`)}</select></label>
         <input type="hidden" name="rifMovBirra" value="">
       </div>
       <datalist id="dl-cassa">${descrizioni.map(d => html`<option value="${d}">`)}</datalist>
       <div class="barra" style="margin:8px 0 0"><button type="button" id="cs-conta">Ho contato la cassa…</button><span class="spazio"></span><button class="primario">Registra</button></div>
     </form>
+
+    ${sosp.aperti.length ? html`<div class="scheda" id="cs-sospesi">
+      <h2>Da sistemare <span class="totale">non toccano la cassa finché non li segni incassati o pagati</span></h2>
+      <ul class="w-lista">${sosp.aperti.map(x => html`<li class="acq-riga"><span class="w-testo"><b>${x.descrizione} · ${euro(x.importo)}</b>
+        <small>dal ${u.dataIT(x.data)} · ${x.verso === 'entrata' ? 'ce li devono' : x.verso === 'uscita' ? 'li dobbiamo' : 'da capire chi deve a chi'}${x.note ? ` · ${x.note}` : ''}</small></span>
+        <span class="solo-editori" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          ${x.verso !== 'uscita' ? html`<button class="piccolo" data-chiudi="${x.id}" data-come="entrata">Incassato</button>` : ''}
+          ${x.verso !== 'entrata' ? html`<button class="piccolo" data-chiudi="${x.id}" data-come="uscita">Pagato</button>` : ''}
+          <button class="piccolo" data-del-sosp="${x.id}" title="Elimina senza movimento di cassa">✕</button></span></li>`)}</ul>
+    </div>` : ''}
 
     ${daIncassare.length ? html`<div class="scheda solo-editori">
       <h2>Incassi da registrare <span class="totale">scarichi di birra degli ultimi 14 giorni senza incasso in cassa</span></h2>
@@ -66,7 +79,7 @@ export async function vistaCassa() {
 
     <div class="scheda">
       <div class="barra" style="margin-top:0">
-        <div class="segmenti">${(anni.length ? anni : [filtro.anno]).map(a => html`<button data-anno="${a}" class="${a === filtro.anno ? 'attivo' : ''}">${a}</button>`)}</div>
+        <div class="segmenti cs-anni">${(anni.length ? anni : [filtro.anno]).map(a => html`<button data-anno="${a}" class="${a === filtro.anno ? 'attivo' : ''}">${a}</button>`)}</div>
         <select id="cs-cat" style="width:auto"><option value="">Tutte le categorie</option>${Object.entries(CATEGORIE_CASSA).map(([k, v]) => html`<option value="${k}" ${k === filtro.categoria ? 'selected' : ''}>${v}</option>`)}</select>
       </div>
       ${perCat.length ? html`<p class="totale">${perCat.map(x => `${CATEGORIE_CASSA[x.k]} ${x.v > 0 ? '+' : ''}${euro(x.v)}`).join(' · ')}</p>` : ''}
@@ -86,7 +99,32 @@ export async function vistaCassa() {
   u.$app.onclick = async e => {
     const t = e.target;
     const v = t.closest('#cs-verso [data-v]');
-    if (v) { verso = v.dataset.v; form.querySelectorAll('[data-v]').forEach(b => b.classList.toggle('attivo', b === v)); return; }
+    if (v) {
+      verso = v.dataset.v;
+      form.querySelectorAll('[data-v]').forEach(b => b.classList.toggle('attivo', b === v));
+      form.querySelector('#cs-chi').hidden = verso !== 'sospeso';
+      form.querySelector('#cs-cat-lab').hidden = verso === 'sospeso';
+      return;
+    }
+    if (t.closest('#cs-vai-sosp')) return document.getElementById('cs-sospesi').scrollIntoView({ behavior: 'smooth' });
+    const ch = t.closest('[data-chiudi]');
+    if (ch) {
+      const x = sosp.aperti.find(s => s.id === ch.dataset.chiudi);
+      const entrata = ch.dataset.come === 'entrata';
+      const val = Math.round(Number(x.importo) * 100) / 100;
+      if (!(await u.chiedi(`${x.descrizione}: segnare ${euro(val)} come ${entrata ? 'incassati oggi (entrano in cassa)' : 'pagati oggi (escono dalla cassa)'}?`, entrata ? 'Incassato' : 'Pagato'))) return;
+      const mov = await u.db.salva({
+        id: u.db.nuovoId('movcassa'), tipo: 'movcassa', data: u.oggiISO(), descrizione: x.descrizione,
+        entrata: entrata ? val : null, uscita: entrata ? null : val, categoria: categoriaCassa(x.descrizione, entrata),
+        note: `sospeso dal ${u.dataIT(x.data)}`, rifSospeso: x.id, creato: new Date().toISOString(),
+      });
+      const { aggiornato: _a, ...rec } = x;
+      await u.db.salva({ ...rec, chiuso: u.oggiISO(), rifMovCassa: mov.id });
+      u.toast(entrata ? 'Incasso registrato' : 'Pagamento registrato');
+      return vistaCassa();
+    }
+    const delS = t.closest('[data-del-sosp]');
+    if (delS && await u.chiedi('Eliminare questo sospeso? Non viene registrato nessun movimento di cassa.', 'Elimina')) { await u.db.elimina(delS.dataset.delSosp); return vistaCassa(); }
     const a = t.closest('[data-anno]');
     if (a) { filtro.anno = a.dataset.anno; return vistaCassa(); }
     const inc = t.closest('[data-incassa]');
@@ -118,6 +156,11 @@ export async function vistaCassa() {
     const val = Math.round(Number(form.importo.value) * 100) / 100;
     if (!(val > 0)) return u.toast('Scrivi l\'importo');
     const descrizione = form.descrizione.value.trim();
+    if (verso === 'sospeso') {
+      await u.db.salva({ id: u.db.nuovoId('sospesocassa'), tipo: 'sospesocassa', data: form.data.value, descrizione, importo: val, verso: form.chi.value, note: '', chiuso: null });
+      u.toast(`${euro(val)} da sistemare: ${form.chi.value === 'entrata' ? 'da incassare' : 'da pagare'}`);
+      return vistaCassa();
+    }
     await u.db.salva({
       id: u.db.nuovoId('movcassa'), tipo: 'movcassa', data: form.data.value, descrizione,
       entrata: verso === 'entrata' ? val : null, uscita: verso === 'uscita' ? val : null,
@@ -177,8 +220,8 @@ async function importaExcel(file, esistenti) {
   const d = document.createElement('dialog');
   d.innerHTML = html`<form method="dialog">
     <h2 style="margin-top:0">Importa la cassa da Excel</h2>
-    <p class="totale">Scegli i fogli da importare. Il "RIPORTO" di ogni anno diventa una conta della cassa al 31/12 dell'anno prima, così il saldo riparte dal valore del foglio. Se reimporti un foglio, i movimenti importati prima da quel foglio vengono sostituiti.</p>
-    ${fogli.map((f, i) => html`<label class="spunta"><input type="checkbox" name="f${i}" ${f.conta ? 'checked' : ''}> <span><b>${f.nome}</b> · ${f.movimenti.length} movimenti dal ${u.dataIT(f.movimenti[0].data)} al ${u.dataIT(f.movimenti.at(-1).data)}${f.conta ? ` · riporto ${euro(f.conta.saldo)}` : ' · senza riporto e con date mancanti'}</span></label>`)}
+    <p class="totale">Scegli i fogli da importare. Il "RIPORTO" di ogni anno diventa una conta della cassa al 31/12 dell'anno prima, così il saldo riparte dal valore del foglio. Le righe con solo "da pagare" vanno in "Da sistemare". Se reimporti un foglio, i movimenti importati prima da quel foglio vengono sostituiti.</p>
+    ${fogli.map((f, i) => html`<label class="spunta"><input type="checkbox" name="f${i}" ${f.conta ? 'checked' : ''}> <span><b>${f.nome}</b> · ${f.movimenti.length} movimenti dal ${u.dataIT(f.movimenti[0].data)} al ${u.dataIT(f.movimenti.at(-1).data)}${f.conta ? ` · riporto ${euro(f.conta.saldo)}` : ' · senza riporto e con date mancanti'}${f.sospesi.length ? ` · ${f.sospesi.length} da sistemare` : ''}</span></label>`)}
     <div class="barra"><span class="spazio"></span><button value="no" formnovalidate>Annulla</button><button class="primario" value="si">Importa</button></div>
   </form>`.s;
   document.body.appendChild(d);
@@ -188,12 +231,13 @@ async function importaExcel(file, esistenti) {
     d.remove();
     if (d.returnValue !== 'si' || !scelti.length) return;
     const nomi = new Set(scelti.map(x => x.nome));
-    const vecchi = [...esistenti, ...(await u.db.tutti('contacassa'))].filter(x => nomi.has(x.fonteExcel));
+    const vecchi = [...esistenti, ...(await u.db.tutti('contacassa')), ...(await u.db.tutti('sospesocassa'))].filter(x => nomi.has(x.fonteExcel));
     for (const x of vecchi) await u.db.elimina(x.id);
     const nuovi = scelti.flatMap(x => [
       // creato: l'ordine delle righe del foglio nello stesso giorno
       ...x.movimenti.map((m, i) => ({ ...m, id: u.db.nuovoId('movcassa'), tipo: 'movcassa', fonteExcel: x.nome, creato: `0-${String(i).padStart(5, '0')}` })),
       ...(x.conta ? [{ ...x.conta, id: u.db.nuovoId('contacassa'), tipo: 'contacassa', fonteExcel: x.nome }] : []),
+      ...x.sospesi.map(sp => ({ ...sp, id: u.db.nuovoId('sospesocassa'), tipo: 'sospesocassa', fonteExcel: x.nome, chiuso: null })),
     ]);
     await u.db.salvaMolti(nuovi);
     u.toast(`Importati ${nuovi.length} movimenti e conte`);
