@@ -554,14 +554,19 @@ const TOLTI = 'gb-lista-tolti';
 const leggiTolti = () => { try { return new Set(JSON.parse(localStorage.getItem(TOLTI)) || []); } catch { return new Set(); } };
 const scriviTolti = t => { try { localStorage.setItem(TOLTI, JSON.stringify([...t])); } catch { /* vale solo ora */ } };
 const senzaTolti = (lista, tolti) => lista.map(b => ({ ...b, formati: b.formati.filter(f => !tolti.has(f.chiave)) })).filter(b => b.formati.length);
-const listaClienti = dati => senzaTolti(listaDisponibili(dati, u.oggiISO()), leggiTolti());
-const testoLista = lista => testoListaBirre(lista, u.oggiISO());
+// la lista (copia e PDF) ha solo le birre del marchio dell'unghia scelta in Birra
+const PRODUTTORE = { kashmir: 'Kashmir Brewing Company', exist: 'Exist' };
+const delMarchio = (lista, dati) => { const ex = birreExist(dati.prodotti); return lista.filter(b => ex.has(b.birra) === (filtri.marchio === 'exist')); };
+const listaClienti = dati => senzaTolti(delMarchio(listaDisponibili(dati, u.oggiISO()), dati), leggiTolti());
+const testoLista = lista => testoListaBirre(lista, u.oggiISO(), PRODUTTORE[filtri.marchio]);
 export async function vistaListaClienti(stampaSubito = false) {
   const { html } = u;
   const dati = await datiBirra();
-  const tutta = listaDisponibili(dati, u.oggiISO());
   const tolti = leggiTolti();
+  let tutta;
   const disegna = () => {
+    tutta = delMarchio(listaDisponibili(dati, u.oggiISO()), dati);
+    const kashmir = filtri.marchio !== 'exist';
     const quanti = tutta.reduce((t, b) => t + b.formati.filter(f => tolti.has(f.chiave)).length, 0);
     u.$app.innerHTML = html`
     <div class="barra">
@@ -569,10 +574,11 @@ export async function vistaListaClienti(stampaSubito = false) {
       <button id="lc-copia" class="st-libero">📋 Copia lista</button>
       <button id="lc-stampa" class="primario st-libero">🖨 Stampa / Salva PDF</button>
     </div>
+    <div class="b-marchi lc-aiuto" role="tablist" aria-label="Marchio">${Object.entries(MARCHI).map(([k, v]) => html`<button role="tab" class="${filtri.marchio === k ? 'attivo' : ''}" aria-selected="${filtri.marchio === k}" data-marchio="${k}">${v}</button>`)}</div>
     <p class="totale lc-aiuto">Tocca ✕ per togliere una birra o un formato dalla lista da copiare e stampare.${quanti ? html` ${quanti} ${quanti === 1 ? 'articolo tolto' : 'articoli tolti'}: <button class="piccolo" id="lc-rimetti">Rimetti tutti</button>` : ''}</p>
     <div class="lista-clienti">
       <div class="lc-testa">
-        <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
+        ${kashmir ? html`<img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">` : html`<span class="lc-marchio">EXIST</span>`}
         <div><h1>Birre disponibili</h1><div class="lc-data">Disponibilità aggiornata al ${u.dataIT(u.oggiISO())}</div></div>
       </div>
       ${tutta.length ? html`<div class="lc-griglia">${tutta.map(b => {
@@ -584,13 +590,13 @@ export async function vistaListaClienti(stampaSubito = false) {
           <button class="lc-x" data-k="${f.chiave}" title="${tolti.has(f.chiave) ? 'Rimetti nella lista' : 'Togli dalla lista'}" aria-label="${tolti.has(f.chiave) ? 'Rimetti' : 'Togli'} ${formatoCliente(f)}">${tolti.has(f.chiave) ? '↺' : '✕'}</button></div>`)}
       </section>`;
       })}</div>` : html`<p class="vuoto">Al momento non ci sono birre disponibili.</p>`}
-      <p class="lc-piede">Kashmir Brewing Company · disponibilità soggetta a variazioni</p>
+      <p class="lc-piede">${PRODUTTORE[filtri.marchio]} · disponibilità soggetta a variazioni</p>
     </div>`;
   };
   disegna();
   const stampa = () => {
     const titolo = document.title;
-    document.title = `Birre disponibili Kashmir ${u.oggiISO()}`;
+    document.title = `Birre disponibili ${MARCHI[filtri.marchio]} ${u.oggiISO()}`;
     addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
     window.print();
   };
@@ -599,6 +605,7 @@ export async function vistaListaClienti(stampaSubito = false) {
     if (!b) return;
     if (b.id === 'lc-copia') return u.copia(testoLista(senzaTolti(tutta, tolti)), 'Lista delle birre copiata');
     if (b.id === 'lc-stampa') return stampa();
+    if (b.dataset.marchio) { filtri.marchio = b.dataset.marchio; return disegna(); }
     if (b.id === 'lc-rimetti') tolti.clear();
     else if (b.dataset.k) { if (tolti.has(b.dataset.k)) tolti.delete(b.dataset.k); else tolti.add(b.dataset.k); }
     else if (b.dataset.birra) {
@@ -612,7 +619,7 @@ export async function vistaListaClienti(stampaSubito = false) {
   if (stampaSubito) {
     history.replaceState(null, '', '#/birra-lista');
     const img = u.$app.querySelector('.lc-testa img');
-    if (img.complete) setTimeout(stampa, 300); else img.addEventListener('load', () => setTimeout(stampa, 100), { once: true });
+    if (!img || img.complete) setTimeout(stampa, 300); else img.addEventListener('load', () => setTimeout(stampa, 100), { once: true });
   }
 }
 
