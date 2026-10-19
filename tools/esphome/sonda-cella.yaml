@@ -1,0 +1,66 @@
+# Sonda di temperatura per le celle frigo e il frigo luppoli: scheda ESP32 (DevKit) + sonda DS18B20 impermeabile.
+# Solo lettura: non comanda niente, il frigo resta regolato dal suo termostato. Pacchetto comune: le differenze
+# stanno in cella1.yaml / cella2.yaml / frigo-luppoli.yaml.
+#
+# Collegamento della sonda DS18B20 (3 fili):   rosso → 3V3   nero → GND   giallo → ${pin_sonda}
+#                                              resistenza 4,7 kΩ tra 3V3 e ${pin_sonda} (pull-up)
+# La scheda sta FUORI dalla cella (il Wi-Fi non passa le pareti coibentate): dentro entra solo il cavo della sonda,
+# dalla guarnizione della porta o da un foro sigillato con silicone.
+#
+# Primo caricamento via USB (la DevKit ha già la presa USB, non serve l'adattatore):  esphome run cella1.yaml
+
+esphome:
+  name: ${nome}
+  friendly_name: ${nome_cella}
+  comment: "Sonda ${nome_cella}"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  reboot_timeout: 15min
+  ap:
+    ssid: "${nome_cella} configurazione"
+    password: !secret ap_password
+
+captive_portal:
+
+web_server:
+  port: 80
+  version: 3
+  auth:
+    username: !secret web_utente
+    password: !secret web_password
+
+one_wire:
+  - platform: gpio
+    pin: ${pin_sonda}
+
+sensor:
+  - platform: dallas_temp
+    id: temperatura
+    name: temperatura
+    update_interval: 15s
+    filters:
+      - offset: ${correzione_temp}
+  - platform: wifi_signal
+    name: segnale_wifi
+    update_interval: 60s
+
+binary_sensor:
+  - platform: template
+    id: sonda_ok
+    name: sonda_ok
+    lambda: |-
+      return !isnan(id(temperatura).state);

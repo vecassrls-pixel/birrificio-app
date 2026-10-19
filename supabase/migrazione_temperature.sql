@@ -8,7 +8,7 @@
 -- Chi legge: gli utenti in utenti_autorizzati (admin, editore, lettore). Nessun utente dell'app scrive letture.
 --
 -- Tabelle:
---   sensori                una riga per FV: nome, tipo di sonda, soglie di allarme
+--   sensori                una riga per FV (e per cella frigo): nome, tipo di sonda, soglie di allarme
 --   letture_temperature    storico, una riga ogni 5 minuti per FV (~1,2 milioni di righe l'anno con 11 FV)
 --   temperature_attuali    ultimo valore di ogni FV, aggiornato ogni ~15 s (Realtime per la pagina Cantina)
 
@@ -49,6 +49,15 @@ insert into sensori (fv, nome, tipo) values
   ('FV9', 'PLC S7-200 SMART (pannello 4#)', 'plc'),
   ('FV10', 'PLC S7-200 SMART (pannello 1#)', 'plc'),
   ('FV11', 'PLC S7-200 SMART (da collegare)', 'plc')
+on conflict (fv) do nothing;
+
+-- Celle frigo e frigo luppoli (unghia "Celle" della pagina Cantina): sonda DS18B20 su ESP32, solo lettura.
+-- La colonna fv qui contiene il codice della cella. Allarme se la temperatura esce da temp_min..temp_max
+-- (valori di partenza DA VERIFICARE con Romain; si cambiano con un update, vedi in fondo).
+insert into sensori (fv, nome, tipo, temp_min, temp_max) values
+  ('CELLA1', 'ESP32 + DS18B20', 'esp32', 0, 8),
+  ('CELLA2', 'ESP32 + DS18B20', 'esp32', 0, 8),
+  ('FRIGO-LUPPOLI', 'ESP32 + DS18B20', 'esp32', null, 4)
 on conflict (fv) do nothing;
 
 -- ---------- storico: una lettura ogni 5 minuti per FV ----------
@@ -129,6 +138,26 @@ $$;
 revoke execute on function temperature_medie(text, timestamptz, timestamptz, integer) from anon;
 grant execute on function temperature_medie(text, timestamptz, timestamptz, integer) to authenticated;
 
+-- ---------- riepilogo giornaliero (registro HACCP temperature celle) ----------
+-- Per ogni giorno (ora italiana) e sonda: minima, massima, media e minuti fuori dai limiti di sensori.temp_min/temp_max.
+create or replace function temperature_giornaliere(p_fv text[], p_da date, p_a date)
+returns table (giorno date, fv text, t_min numeric, t_max numeric, t_media numeric, n integer, minuti_fuori integer)
+language sql stable security invoker set search_path = public as $$
+  select (l.ts at time zone 'Europe/Rome')::date as giorno, l.fv,
+         round(min(l.temperatura), 1), round(max(l.temperatura), 1), round(avg(l.temperatura), 1),
+         count(l.temperatura)::integer,
+         (count(*) filter (where l.temperatura < s.temp_min or l.temperatura > s.temp_max) * 5)::integer
+  from letture_temperature l
+  left join sensori s on s.fv = l.fv
+  where l.fv = any(p_fv)
+    and l.ts >= (p_da::timestamp at time zone 'Europe/Rome')
+    and l.ts < ((p_a + 1)::timestamp at time zone 'Europe/Rome')
+  group by 1, 2
+  order by 1, 2;
+$$;
+revoke execute on function temperature_giornaliere(text[], date, date) from anon;
+grant execute on function temperature_giornaliere(text[], date, date) to authenticated;
+
 -- ---------- Realtime: la pagina Cantina riceve gli aggiornamenti senza ricaricare ----------
 do $$
 begin
@@ -147,3 +176,4 @@ end $$;
 --   select pg_size_pretty(pg_total_relation_size('letture_temperature'));
 -- Cambiare la soglia di allarme di un FV (anche dall'app non serve: basta qui):
 --   update sensori set soglia_scostamento = 1.0 where fv = 'FV8';
+--   update sensori set temp_min = -22, temp_max = -15 where fv = 'FRIGO-LUPPOLI';   -- se è un congelatore

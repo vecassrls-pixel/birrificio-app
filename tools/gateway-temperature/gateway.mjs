@@ -56,7 +56,7 @@ function caricaConfig() {
 
 const config = caricaConfig();
 log.livello = config.log?.livello || 'info';
-const validita = { temp_min: -10, temp_max: 60, ...(config.validita || {}) };
+const validita = { temp_min: -30, temp_max: 60, ...(config.validita || {}) };
 const intervalloLettura = (config.intervalli?.lettura_s || 15) * 1000;
 const minutiStorico = config.intervalli?.storico_min || 5;
 

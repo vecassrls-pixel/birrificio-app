@@ -338,6 +338,8 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-s6 tr.c td { font-weight: 600; }
 .tab-s6 thead { display: table-header-group; }
 .tab-s6 tr { break-inside: avoid; }
+.tab-tempcelle .tc-nota { width: 100%; min-height: 30px; padding: 3px 8px; font-size: .85rem; }
+.tab-tempcelle td { vertical-align: middle; }
 @page s6 { size: A4 landscape; margin: 10mm; }
 @media print { .s6 { padding: 0; } .s6-testa img { height: 44px; } .tab-s6 { font-size: 10px; } .tab-s6 th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
@@ -866,11 +868,11 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .fv-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fv-card .fv-stato { --c: var(--stato); }
 .fv-card.nessuno .fv-stato, .fv-card.spento .fv-stato { --c: var(--muted); }
-.fv-valori { display: flex; align-items: center; gap: 14px; }
-.fv-temp { font-size: 2.1rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.02em; }
+.fv-valori { display: flex; align-items: center; gap: 12px; }
+.fv-temp { white-space: nowrap; font-size: 2.1rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.02em; }
 .fv-temp small { font-size: .95rem; font-weight: 500; color: var(--muted); }
 .fv-card.nessuno .fv-temp, .fv-card.muto .fv-temp { color: var(--muted); }
-.fv-dett { display: flex; flex-direction: column; gap: 2px; font-size: .85rem; color: var(--muted); }
+.fv-dett { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: .85rem; color: var(--muted); }
 .fv-dett b { color: var(--text); font-variant-numeric: tabular-nums; }
 .fv-freddo.acceso { color: var(--s-pianificata); font-weight: 600; }
 .fv-cotta { display: block; text-decoration: none; color: var(--text); background: var(--surface-2); border-radius: 9px; padding: 7px 10px; }
@@ -880,9 +882,21 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .fv-card footer .totale { margin: 0; font-size: .78rem; }
 .fv-motivi { color: var(--warn); font-size: .82rem; font-weight: 600; }
 .fv-card.muto .fv-motivi { color: var(--s-tank); }
+.fv-disegno { width: 44px; height: 80px; flex: none; overflow: visible; }
+.fv-disegno .fv-corpo { fill: none; stroke: var(--muted); stroke-width: 2.2; stroke-linejoin: round; }
+.fv-disegno .fv-gambe { fill: none; stroke: var(--muted); stroke-width: 4; stroke-linecap: butt; }
+.fv-disegno .fv-tubo { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.fv-disegno .fv-birra { fill: color-mix(in srgb, #f2a71b 75%, transparent); }
+.fv-disegno .fv-camicia { fill: color-mix(in srgb, var(--muted) 18%, transparent); }
+.fv-disegno.freddo .fv-camicia { fill: color-mix(in srgb, var(--s-pianificata) 55%, transparent); }
+.fv-card.allarme .fv-disegno .fv-corpo { stroke: var(--warn); }
+.fv-disegno .fv-luppolo { fill: color-mix(in srgb, var(--ok) 55%, transparent); stroke: var(--ok); stroke-width: 1; }
+.fv-disegno.cella.freddo .fv-camicia { fill: color-mix(in srgb, var(--s-pianificata) 55%, transparent); }
+#cantina-unghie { margin-left: 12px; }
+.fv-n-allarmi { color: var(--warn) !important; font-weight: 700 !important; }
 .fv-live { --c: var(--muted); }
 .fv-live.acceso { --c: var(--ok); }
-@media (max-width: 760px) { .cantina-griglia { grid-template-columns: 1fr 1fr; gap: 8px; } .fv-card { padding: 10px; } .fv-temp { font-size: 1.7rem; } .fv-valori { flex-direction: column; align-items: flex-start; gap: 6px; } }
+@media (max-width: 760px) { .cantina-griglia { grid-template-columns: 1fr 1fr; gap: 8px; } .fv-card { padding: 10px; } .fv-temp { font-size: 1.7rem; } .fv-valori { flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; } .fv-disegno { width: 34px; height: 62px; } .fv-dett { flex-basis: 100%; } }
 @media (max-width: 380px) { .cantina-griglia { grid-template-columns: 1fr; } }
 
 /* curva delle sonde nella scheda cotta (una sola scala in °C; il freddo è una striscia sotto) */

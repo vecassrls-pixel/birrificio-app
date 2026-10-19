@@ -1,0 +1,11 @@
+# Sonda Frigo luppoli: scheda ESP32 DevKit + DS18B20. Tutta la logica è in sonda-cella.yaml.
+# Validare:  esphome config frigo-luppoli.yaml      Primo caricamento (via USB):  esphome run frigo-luppoli.yaml
+
+substitutions:
+  nome: frigo-luppoli                 # nome sulla rete: http://frigo-luppoli.local
+  nome_cella: "Frigo luppoli"
+  pin_sonda: GPIO4             # filo giallo della DS18B20 (con resistenza 4,7 kΩ verso 3V3)
+  correzione_temp: "0.0"       # taratura: gradi da aggiungere dopo il confronto con un termometro di riferimento
+
+packages:
+  sonda: !include sonda-cella.yaml

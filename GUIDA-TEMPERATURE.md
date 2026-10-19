@@ -7,7 +7,8 @@ I punti segnati **DA VERIFICARE** sono valori di partenza che vanno controllati 
 ```
 FV1-FV5  Autonics TK4S ──RS485──► Waveshare RS485 TO WIFI/ETH ─┐
 FV6-FV7  ESP32 + relè (ESPHome) ──Wi-Fi──────────────────────────┼──► Lenovo (gateway) ──internet──► Supabase ──► App
-FV8-FV11 PLC S7-200 SMART ──cavo di rete──► switch ──────────────┘    buffer se manca internet
+FV8-FV11 PLC S7-200 SMART ──cavo di rete──► switch ──────────────┤    buffer se manca internet
+Celle + frigo luppoli  ESP32 + DS18B20 ──Wi-Fi───────────────────┘
 ```
 
 Ordine consigliato: **1.** database Supabase → **2.** Lenovo (prima con Windows, poi Linux) → **3.** PLC (FV8-FV10) → **4.** ESP32 (FV6-FV7) → **5.** TK4S (FV1-FV5) → **6.** taratura e prove.
@@ -238,6 +239,35 @@ Il setpoint si cambia dalla pagina web della scheda (campo **setpoint**) e resta
 
 ---
 
+## 5bis. Celle frigo e frigo luppoli: ESP32 + sonda DS18B20 (solo lettura)
+
+Unghia **Celle** della pagina Cantina e registro **HACCP → Temperature celle frigo** (giornaliero, automatico, da stampare).
+La sonda è in più: il frigo resta regolato dal suo termostato, la scheda legge e basta.
+
+Materiale per ogni cella (3 in tutto: Cella 1, Cella 2, Frigo luppoli):
+- scheda **ESP32 DevKit** (ESP32-WROOM-32, con presa USB) + alimentatore USB 5 V;
+- sonda **DS18B20 impermeabile** (capsula inox, cavo 1-3 m);
+- resistenza **4,7 kΩ** (nel kit Elegoo) tra 3V3 e il filo dati.
+
+Collegamento: rosso → **3V3**, nero → **GND**, giallo → **GPIO4** + resistenza 4,7 kΩ tra GPIO4 e 3V3.
+La scheda va **fuori** dalla cella (il Wi-Fi non passa le pareti coibentate); dentro entra solo la capsula, a metà altezza, lontano
+dall'evaporatore e dalla porta. Il cavo passa dalla guarnizione della porta o da un foro sigillato con silicone.
+
+Firmware: `tools/esphome/cella1.yaml`, `cella2.yaml`, `frigo-luppoli.yaml` (stesso `secrets.yaml` delle schede FV6-FV7).
+Si carica con la scheda collegata in USB al Lenovo: `esphome run cella1.yaml`. Poi `http://cella1.local` mostra la temperatura.
+
+Nel gateway: le tre schede sono già nell'esempio di `config.json`, blocco `esp32` (`CELLA1`, `CELLA2`, `FRIGO-LUPPOLI`).
+
+Limiti di allarme (tabella `sensori`, già inseriti dalla migrazione, **DA VERIFICARE**): celle 0 … 8 °C, frigo luppoli max 4 °C.
+Per cambiarli, per esempio se il frigo luppoli è un congelatore:
+```sql
+update sensori set temp_min = -22, temp_max = -15 where fv = 'FRIGO-LUPPOLI';
+```
+Registro HACCP: per ogni giorno minima, massima e media; il giorno è **non conforme** se una cella resta fuori dai limiti più di
+30 minuti in tutto (le aperture della porta sono tollerate). Nella colonna Note si scrive l'azione correttiva.
+
+---
+
 ## 6. Messa in servizio: lista di controllo
 
 - [ ] Migrazione `supabase/migrazione_temperature.sql` eseguita; `temperature_attuali` nella publication `supabase_realtime`.
@@ -252,6 +282,7 @@ Il setpoint si cambia dalla pagina web della scheda (campo **setpoint**) e resta
 - [ ] Dopo 5-10 minuti: nella scheda di una cotta in corso, sezione Fermentazione, compare la curva "Temperatura misurata in FV…" (e nel PDF "Salva PDF").
 - [ ] Prova senza internet: staccare internet al Lenovo per 15 minuti e riattaccarlo; nel log compare "Inviate N letture dal buffer offline" e la curva non ha buchi.
 - [ ] Soglie di allarme (`sensori`) sistemate per ogni FV se 1,5 °C e 10 minuti non vanno bene.
+- [ ] **Celle**: temperatura di ogni sonda confrontata con un termometro → `correzione_temp`; limiti min/max giusti per ogni cella; il giorno dopo, HACCP → Temperature celle frigo mostra la riga di ieri.
 
 ### Se qualcosa non va
 | Sintomo | Dove guardare |

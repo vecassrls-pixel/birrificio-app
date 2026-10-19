@@ -32,7 +32,7 @@ Ricette e cotte si scrivono in Brewfather; l'app le importa (Impostazioni > Brew
 - Limite API: 500 chiamate/ora. "Aggiorna cotte in corso" scarica solo Planning/Brewing/Fermenting/Conditioning.
 
 ## Temperature dei fermentatori
-Pagina **Cantina**: temperatura, setpoint, freddo acceso/spento e cotta di ogni FV, con allarmi (dati vecchi, sonda guasta, lontano dal setpoint).
+Pagina **Cantina**: temperatura, setpoint, freddo acceso/spento e cotta di ogni FV, con allarmi (dati vecchi, sonda guasta, lontano dal setpoint). Unghia **Celle**: Cella 1, Cella 2 e frigo luppoli (sonde DS18B20 su ESP32, allarme fuori da min/max); da queste il registro **HACCP → Temperature celle frigo** (min/max/media giornaliere, esito, azione correttiva, da stampare).
 Nella scheda cotta, sezione Fermentazione, la curva misurata nei FV occupati dalla cotta (anche dopo il travaso), inclusa nel PDF.
 - Dati scritti dal gateway in birrificio (`tools/gateway-temperature`, Node senza dipendenze) con la chiave segreta di Supabase che sta solo lì; l'app legge con il login (tutti i ruoli, anche il lettore).
 - Tabelle e regole: `supabase/migrazione_temperature.sql` (da eseguire una volta). Senza tabelle, offline o in modalità locale la pagina mostra un avviso e il resto dell'app non cambia.
