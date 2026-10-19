@@ -498,10 +498,20 @@ function dialogNuovaCotta(pre = {}) {
 }
 
 // ---------- Scheda cotta ----------
-// Lista dei malti da macinare su WhatsApp (link wa.me, si preme Invia a mano).
+// Lista dei malti da macinare: su WhatsApp (si preme Invia a mano) o negli appunti.
 // Il numero di chi macina si chiede la prima volta e resta in questo dispositivo.
 const PREF_MACINA = 'gb-whatsapp-macina';
-function inviaMaltiWhatsApp(c) {
+function testoMalti(c) {
+  const righe = (c.malti || []).filter(r => r.nome);
+  const kg = righe.reduce((t, r) => t + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
+  return [
+    `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
+    '',
+    ...righe.map(r => `- ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
+    ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
+  ].join('\n');
+}
+async function inviaMaltiWhatsApp(c) {
   let num = null;
   try { num = localStorage.getItem(PREF_MACINA); } catch {}
   if (num === null) {
@@ -511,15 +521,14 @@ function inviaMaltiWhatsApp(c) {
     if (num.length === 10 && num.startsWith('3')) num = '39' + num; // cellulare italiano senza prefisso
     try { localStorage.setItem(PREF_MACINA, num); } catch {}
   }
-  const righe = (c.malti || []).filter(r => r.nome);
-  const kg = righe.reduce((t, r) => t + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
-  const testo = [
-    `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
-    '',
-    ...righe.map(r => `• ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
-    ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
-  ].join('\n');
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(testo)}`, '_blank');
+  const testo = testoMalti(c);
+  // anche negli appunti: se WhatsApp non riempie il messaggio basta incollare
+  await copia(testo, 'Malti copiati: se il messaggio è vuoto, incollali');
+  const q = `${num ? 'phone=' + num + '&' : ''}text=${encodeURIComponent(testo)}`;
+  // su telefono e tablet si apre direttamente l'app (il link wa.me dalla app installata perdeva il testo)
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform);
+  if (mobile) location.href = `whatsapp://send?${q}`;
+  else window.open(`https://api.whatsapp.com/send?${q}`, '_blank');
 }
 
 const SEZIONI_INGR = [
@@ -704,7 +713,8 @@ async function vistaCotta(id) {
       <datalist id="dl-art-${k}">${voci.map(a => html`<option value="${a.nome}" label="${fmtGiac(a)}"></option>`)}</datalist>
       <button class="piccolo" data-add="${k}" data-unita="${unitaDef}">+ Aggiungi</button>
       ${totaleIngr(righe)}
-      ${k === 'malti' && righe.length ? html`<button class="piccolo" id="whatsapp-malti" title="Apre WhatsApp con la lista dei malti da macinare già scritta">📲 Malti da macinare su WhatsApp</button>` : ''}
+      ${k === 'malti' && righe.length ? html`<button class="piccolo" id="whatsapp-malti" title="Apre WhatsApp con la lista dei malti da macinare già scritta">📲 Malti da macinare su WhatsApp</button>
+        <button class="piccolo" id="copia-malti" title="Copia la lista dei malti da macinare per incollarla dove vuoi">📋 Copia malti</button>` : ''}
     </div>`;
   }
   function totaleIngr(righe) {
@@ -1206,6 +1216,8 @@ async function vistaCotta(id) {
       const y = scrollY; disegna(); scrollTo(0, y);
     } else if (t.id === 'whatsapp-malti') {
       inviaMaltiWhatsApp(c);
+    } else if (t.id === 'copia-malti') {
+      copia(testoMalti(c), 'Malti copiati');
     } else if (t.id === 'stampa') {
       // il titolo diventa il nome proposto per il file PDF
       const titolo = document.title;
