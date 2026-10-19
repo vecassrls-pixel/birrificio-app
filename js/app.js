@@ -23,7 +23,7 @@ import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, pr
 import { apriEtichetta } from './etichetta.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
-import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino } from './magazzino.js';
+import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
   CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, numeriCronologici, problemiNumeri, statoCotta,
@@ -457,8 +457,9 @@ const FASI_ACIDO = ['ammostamento', 'sparge', 'bollitura', 'dip hopping', 'ferme
 async function vistaCotta(id) {
   const orig = await db.leggi(id);
   if (!orig || orig.eliminato) { $app.innerHTML = html`<p class="vuoto">Cotta non trovata. <a href="#/cotte">Torna alla lista</a></p>`; return; }
-  const c = JSON.parse(JSON.stringify(orig));
+  let c = JSON.parse(JSON.stringify(orig));
   for (const k of ['sali', 'malti', 'luppoli', 'lievito', 'acido', 'fermentazione', 'confezionato']) c[k] = c[k] || [];
+  c = acidoInGrammi(c); // acido lattico sempre in g (le righe in ml si convertono con la densità 1,2)
   c.acquaMash = c.acquaMash || {};
   c.acquaSparge = c.acquaSparge || {};
   c.acquaDip = c.acquaDip || {};
@@ -772,11 +773,11 @@ async function vistaCotta(id) {
       <div class="scheda" id="sez-acido">
         <h2>Acido lattico</h2>
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th style="width:150px">Fase</th><th style="width:150px">Data</th><th style="width:80px">ml</th><th style="width:80px">pH prima</th><th style="width:80px">pH dopo</th><th>Nota</th><th></th></tr></thead>
+          <thead><tr><th style="width:150px">Fase</th><th style="width:150px">Data</th><th style="width:80px">g</th><th style="width:80px">pH prima</th><th style="width:80px">pH dopo</th><th>Nota</th><th></th></tr></thead>
           <tbody>${c.acido.map((r, i) => html`<tr>
             <td><select data-path="acido.${i}.fase">${FASI_ACIDO.map(f => html`<option ${f === r.fase ? 'selected' : ''}>${f}</option>`)}</select></td>
             <td><input data-path="acido.${i}.data" type="date" value="${r.data || ''}"></td>
-            <td><input data-path="acido.${i}.ml" type="number" step="any" inputmode="decimal" value="${r.ml ?? ''}"></td>
+            <td><input data-path="acido.${i}.g" type="number" step="any" inputmode="decimal" value="${r.g ?? ''}"></td>
             <td><input data-path="acido.${i}.phPrima" type="number" step="0.01" inputmode="decimal" value="${r.phPrima ?? ''}"></td>
             <td><input data-path="acido.${i}.phDopo" type="number" step="0.01" inputmode="decimal" value="${r.phDopo ?? ''}"></td>
             <td><input data-path="acido.${i}.nota" value="${r.nota || ''}" style="min-width:120px"></td>
@@ -788,7 +789,7 @@ async function vistaCotta(id) {
           <button class="piccolo" data-add="acido" data-preset="dip hopping">+ Dip hopping</button>
           <button class="piccolo" data-add="acido" data-preset="fermentazione">+ Più avanti</button>
         </div>
-        ${c.acido.length ? html`<p class="totale">Totale acido lattico: ${numIT(c.acido.reduce((t, r) => t + (Number(r.ml) || 0), 0), 1)} ml</p>` : ''}
+        ${c.acido.length ? html`<p class="totale">Totale acido lattico: ${numIT(c.acido.reduce((t, r) => t + (Number(r.g) || 0), 0), 1)} g</p>` : ''}
       </div>
 
       <div class="scheda" id="sez-ferm">
@@ -984,7 +985,7 @@ async function vistaCotta(id) {
         c.fermentazione.push({ data: last?.data ? addGiorni(last.data, 1) : c.data || oggiISO(), temp: last?.temp ?? null, manuale: true });
       } else if (k === 'acido') {
         const fase = t.dataset.preset;
-        c.acido.push({ fase, data: fase === 'ammostamento' || fase === 'dip hopping' ? c.data || oggiISO() : oggiISO(), ml: null, phPrima: null, phDopo: null, nota: '' });
+        c.acido.push({ fase, data: fase === 'ammostamento' || fase === 'dip hopping' ? c.data || oggiISO() : oggiISO(), g: null, phPrima: null, phDopo: null, nota: '' });
       } else if (k === 'confezionato') {
         const [tipo, litri] = t.dataset.preset.split(':');
         c.confezionato.push({ tipo, pezzi: null, litri: Number(litri), data: oggiISO() });

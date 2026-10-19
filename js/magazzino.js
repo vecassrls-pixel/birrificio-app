@@ -165,6 +165,15 @@ export function nomiDaMagazzino(c, articoli) {
 
 const SEZIONI = ['malti', 'luppoli', 'lievito', 'sali'];
 export const NOME_ACIDO = 'Acido lattico';
+// Acido lattico nelle schede cotta in grammi (Romain 2026-10-19). Le correzioni pH vecchie hanno `ml`,
+// le righe importate da Brewfather possono essere in ml: si portano in g con la densità 1,2.
+const arrot1 = x => Math.round(x * 10) / 10;
+export const acidoG = r => (r.g !== undefined && r.g !== null && r.g !== '' ? r.g : r.ml !== undefined && r.ml !== null && r.ml !== '' ? arrot1(Number(r.ml) * DENSITA_ACIDO) : null);
+export function acidoInGrammi(c) {
+  const acido = (c.acido || []).map(({ ml, ...r }) => ({ ...r, g: acidoG({ ...r, ml }) }));
+  const sali = (c.sali || []).map(r => (/acido\s+lattico/i.test(r.nome || '') && r.unita === 'ml' ? { ...r, qta: r.qta === null || r.qta === '' ? r.qta : arrot1(Number(r.qta) * DENSITA_ACIDO), unita: 'g' } : r));
+  return { ...c, acido, sali };
+}
 
 // Giorno in cui un ingrediente esce dal magazzino: DH al suo giorno, il resto il giorno di cotta
 export function dataUscita(c, sezione, r) {
@@ -188,15 +197,15 @@ export function scarichiCotte(cotte, articoli) {
     for (const sez of SEZIONI) {
       for (const [i, r] of (c[sez] || []).entries()) {
         if (!r.nome || !(Number(r.qta) > 0) || lievitoRecuperato(sez, r)) continue;
-        // nelle schede l'acido lattico è scritto in "g" ma sono ml
-        const unita = /acido/i.test(r.nome) && r.unita === 'g' ? 'ml' : r.unita || '';
+        const unita = r.unita || '';
         out.push({ articolo: trovaArticolo(articoli, r.nome), nome: r.nome, sezione: /acido/i.test(r.nome) ? 'acido' : sez, qta: Number(r.qta), unita, data: dataUscita(c, sez, r), cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `${sez}.${i}` } });
       }
     }
-    // correzioni pH con acido lattico (ml), ognuna alla sua data
+    // correzioni pH con acido lattico (g; le vecchie in ml), ognuna alla sua data
     for (const [i, r] of (c.acido || []).entries()) {
-      if (!(Number(r.ml) > 0)) continue;
-      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: Number(r.ml), unita: 'ml', data: r.data || c.data, cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `acido.${i}` } });
+      const g = Number(acidoG(r));
+      if (!(g > 0)) continue;
+      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: g, unita: 'g', data: r.data || c.data, cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `acido.${i}` } });
     }
   }
   return out;
