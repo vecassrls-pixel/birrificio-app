@@ -4,13 +4,14 @@
 // vedi supabase/migrazione_temperature.sql).
 
 const SETPOINT = [19, 18, 12, 2, 1, 20, 18, 4, 0.5, 19, 16];
-const FV_DEFAULT = Array.from({ length: 10 }, (_, i) => `FV${i + 1}`); // FV11 non ancora collegato
+const SETPOINT_CELLE = { CELLA1: 4, CELLA2: 4, 'FRIGO-LUPPOLI': 2 };
+const FV_DEFAULT = [...Array.from({ length: 10 }, (_, i) => `FV${i + 1}`), ...Object.keys(SETPOINT_CELLE)]; // FV11 non ancora collegato
 
 export class SorgenteSimulata {
   constructor(elencoFv = FV_DEFAULT) {
     this.fonte = 'simulazione';
     this.stati = elencoFv.map((fv, i) => {
-      const sp = SETPOINT[i % SETPOINT.length];
+      const sp = SETPOINT_CELLE[fv] ?? SETPOINT[i % SETPOINT.length];
       return { fv, sp, t: sp + Math.random() * 0.8, freddo: false, isteresi: 0.5 };
     });
   }

@@ -1,10 +1,14 @@
 // Pagina HACCP: registri e controlli del piano di autocontrollo.
-// Registro S6 (in vista-magazzino.js), rintracciabilità per lotto, controllo materie prime in arrivo, scadenzario.
+// Registro S6 (in vista-magazzino.js), rintracciabilità per lotto, controllo materie prime in arrivo, scadenzario,
+// registro temperature celle (dalle sonde, vedi js/temperature.js).
 // Calcoli in haccp.js.
 
 import { ID_IMPOSTAZIONI, nomeFormato } from './birra.js';
 import { ID_OPERATORI, operatoriDa, opzioniOperatori, CONTROLLI_ARRIVO, FASI_PULIZIA, LINEE, fvDaPulire, inizioRegistroPulizie, statoFermentatori, SCADENZE_CONSIGLIATE, GIORNI_PREAVVISO, controlloFatto, lottiBirra, rintracciabilita, statoScadenzaHaccp } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
+import { interroga } from './sync.js';
+import { CELLE, fmt } from './temperature.js';
+import { vuotiDelleCotte } from './contenitori.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -36,11 +40,12 @@ export async function vistaHaccp() {
       <p class="totale" style="margin:2px 0 0">Registri e controlli del piano di autocontrollo.</p></div></div>
     <div class="haccp-griglia">
       ${voce('#/registro-s6', '📒', 'Registro S6', 'Carico e scarico delle materie prime con lotti e scadenze, per settimana. Da stampare.')}
-      ${voce('#/rintracciabilita', '🔎', 'Rintracciabilità per lotto', 'Da un lotto di birra: materie prime usate con lotto e fornitore, confezionamento e a chi è andata.')}
+      ${voce('#/rintracciabilita', '🔎', 'Rintracciabilità per lotto', 'Da un lotto di birra: materie prime usate con lotto e fornitore, confezionamento con i lotti di lattine e fusti, e a chi è andata.')}
       ${voce('#/controllo-arrivi', '📦', 'Controllo merci in arrivo', 'Spunte di controllo su ogni bolla di carico e registro da stampare.',
         daControllare ? html`<span class="haccp-badge">${daControllare} ${daControllare === 1 ? 'bolla' : 'bolle'} da controllare</span>` : '')}
       ${voce('#/pulizie', '🧽', 'Pulizie e sanificazioni', 'CIP di fermentatori e linee: data, fasi, prodotti e chi l\'ha fatta. Avviso se un FV si riempie senza pulizia.',
         sporchi ? html`<span class="haccp-badge urgente">${sporchi} FV da pulire</span>` : '')}
+      ${voce('#/temperature-celle', '🌡️', 'Temperature celle frigo', 'Registro giornaliero automatico di Cella 1, Cella 2 e frigo luppoli dalle sonde: minima, massima, media ed esito. Da stampare.')}
       ${voce('#/scadenzario', '🗓️', 'Scadenzario HACCP', 'Analisi dell\'acqua, tarature, manutenzioni, disinfestazione e formazione, con avviso in Home.',
         scadute || vicine ? html`<span class="haccp-badge ${scadute ? 'urgente' : ''}">${[scadute && `${scadute} ${scadute === 1 ? 'scaduta' : 'scadute'}`, vicine && `${vicine} in scadenza`].filter(Boolean).join(' · ')}</span>` : '')}
     </div>`;
@@ -67,10 +72,11 @@ export async function vistaRintracciabilita(id) {
     };
     return;
   }
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, imp] = await Promise.all([
-    ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, contenitori, movVuoti, invVuoti, imp] = await Promise.all([
+    ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra', 'contenitore', 'movcontenitore', 'inventariocontenitori'].map(t => u.db.tutti(t)),
     u.db.leggi(ID_IMPOSTAZIONI),
   ]);
+  const vuoti = vuotiDelleCotte(scelto.gruppo.map(c => c.id), { contenitori, movimenti: movVuoti, inventari: invVuoti, cotte: u.stato.cotte }, u.oggiISO()).filter(x => x.contato);
   const r = rintracciabilita(scelto,
     { articoli, bolle, inventari, scarichi, cotte: u.stato.cotte },
     { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari: inventariBirra, prodotti, impostazioni: imp && !imp.eliminato ? imp : null });
@@ -98,7 +104,13 @@ export async function vistaRintracciabilita(id) {
         <thead><tr><th>Data</th><th>Formato</th><th class="n">Pezzi</th><th class="n">Litri</th></tr></thead>
         <tbody>${r.confezionato.map(x => html`<tr><td>${x.data ? u.dataIT(x.data) : ''}</td><td>${nomeFormato(x.tipo, x.litri)}</td><td class="n">${u.numIT(x.pezzi, 0)}</td><td class="n">${u.numIT(x.pezzi * x.litri, 1)}</td></tr>`)}</tbody></table>`
       : html`<p class="vuoto">Non ancora confezionata.</p>`}
-      <h2>3. Uscite della birra (destinatari)</h2>
+      <h2>3. Lattine e fusti usati (lotti dei vuoti)</h2>
+      ${vuoti.length ? html`<table class="tab-s6">
+        <thead><tr><th>Data</th><th>Contenitore</th><th class="n">Pezzi</th><th>Lotto</th><th>Fornitore / documento</th><th>Arrivato il</th></tr></thead>
+        <tbody>${vuoti.flatMap(v => v.lotti.map(l => html`<tr><td>${u.dataIT(v.data)}</td><td>${v.contenitore.nome}</td><td class="n">${u.numIT(l.pezzi, 0)}</td>
+          <td>${l.lotto || html`<span class="rt-manca">manca</span>`}</td><td>${[l.fornitore, l.documento].filter(Boolean).join(' · ')}</td><td>${l.arrivo ? u.dataIT(l.arrivo) : ''}</td></tr>`))}</tbody></table>`
+      : html`<p class="vuoto">${contenitori.length ? 'Nessun contenitore scalato da questo confezionamento (pagina Contenitori).' : 'I lotti di lattine e fusti si vedono qui quando usi la pagina Contenitori.'}</p>`}
+      <h2>4. Uscite della birra (destinatari)</h2>
       ${r.uscite.length ? html`<table class="tab-s6">
         <thead><tr><th>Data</th><th>Prodotto</th><th class="n">Pezzi</th><th class="n">Litri</th><th>Destinatario / documento</th></tr></thead>
         <tbody>${r.uscite.map(x => html`<tr><td>${u.dataIT(x.data)}</td><td>${x.prodotto}</td><td class="n">${u.numIT(x.pezzi, 0)}</td><td class="n">${u.numIT(x.litri, 1)}</td><td>${x.chi}</td></tr>`)}</tbody></table>`
@@ -313,4 +325,95 @@ export async function vistaPulizie(cosaScelta = '') {
       return vistaPulizie();
     }
   };
+}
+
+// ---------- registro temperature celle (automatico dalle sonde) ----------
+// Una riga per giorno: minima, massima e media di ogni cella e del frigo luppoli (dallo storico ogni 5 minuti
+// del gateway, js/temperature.js), esito rispetto ai limiti della sonda e nota/azione correttiva del giorno.
+const regT = { mese: '' };
+const TOLLERANZA_MIN = 30; // fino a 30 minuti fuori limite nel giorno (porta aperta, carico merce) il giorno resta conforme
+
+export async function vistaTemperatureCelle() {
+  const { html } = u;
+  const oggi = u.oggiISO();
+  if (!regT.mese) regT.mese = oggi.slice(0, 7);
+  const da = `${regT.mese}-01`;
+  const fineMese = u.addGiorni(`${u.addGiorni(da, 32).slice(0, 7)}-01`, -1);
+  const a = fineMese < oggi ? fineMese : oggi;
+  let righe = [], sensori = [], errore = null;
+  if (da <= oggi) {
+    try {
+      [righe, sensori] = await Promise.all([
+        interroga('rpc/temperature_giornaliere', { method: 'POST', body: { p_fv: CELLE.map(c => c.id), p_da: da, p_a: a } }),
+        interroga(`sensori?select=fv,temp_min,temp_max&fv=in.(${CELLE.map(c => `"${c.id}"`).join(',')})`),
+      ]);
+    } catch (e) { errore = e; }
+  }
+  const note = new Map((await u.db.tutti('notatempcelle')).filter(n => !n.eliminato && n.data >= da && n.data <= a).map(n => [n.data, n]));
+  const limiti = new Map(sensori.map(s => [s.fv, s]));
+  const per = new Map(righe.map(r => [`${r.giorno}|${r.fv}`, r]));
+  const giorni = [];
+  for (let g = da; g <= a; g = u.addGiorni(g, 1)) giorni.push(g);
+  const t = v => (v === null || v === undefined ? '' : fmt(v));
+  const fuori = r => r && r.minuti_fuori > TOLLERANZA_MIN;
+  const esito = g => {
+    const rr = CELLE.map(c => per.get(`${g}|${c.id}`)).filter(Boolean);
+    if (!rr.length) return '';
+    return rr.some(fuori) ? 'Non conforme' : 'Conforme';
+  };
+  const nonConformi = giorni.filter(g => esito(g) === 'Non conforme').length;
+  const limTesto = c => {
+    const l = limiti.get(c.id) || {};
+    return l.temp_min != null && l.temp_max != null ? `${t(l.temp_min)} … ${t(l.temp_max)} °C` : l.temp_max != null ? `max ${t(l.temp_max)} °C` : l.temp_min != null ? `min ${t(l.temp_min)} °C` : 'limiti non impostati';
+  };
+  const MSG = {
+    locale: 'App in modalità solo locale: le temperature arrivano solo con il cloud configurato.',
+    mancante: 'Mancano le tabelle o la funzione delle temperature: eseguire di nuovo supabase/migrazione_temperature.sql nel SQL editor di Supabase.',
+    offline: 'Senza internet: le temperature non si possono leggere.',
+  };
+  u.$app.innerHTML = html`
+    <div class="barra">
+      <a href="#/haccp" class="btn">← HACCP</a>
+      <label>Mese <input type="month" id="tc-mese" class="st-libero" value="${regT.mese}" max="${oggi.slice(0, 7)}"></label>
+      <span class="spazio"></span>
+      <button class="primario" id="stampa">Stampa / Salva PDF</button>
+    </div>
+    ${errore ? html`<p class="avviso non-stampa">${MSG[errore.codice] || 'Temperature non disponibili in questo momento.'}</p>` : ''}
+    ${nonConformi ? html`<p class="totale non-stampa">⚠ ${nonConformi === 1 ? '1 giorno non conforme' : `${nonConformi} giorni non conformi`}: scrivi nella colonna Note l'azione correttiva (es. "porta rimasta aperta, richiusa, prodotto controllato").</p>` : ''}
+    <div class="s6">
+      ${testa('REGISTRO TEMPERATURE CELLE FRIGO', `Mese: ${new Date(`${da}T12:00:00`).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })} · rilevazione automatica con sonda ogni 5 minuti`)}
+      <p class="s6-legenda">Limiti: ${CELLE.map(c => `${c.nome}: ${limTesto(c)}`).join(' · ')}. Min, max e media del giorno in °C.
+        Conforme se la temperatura resta nei limiti (tollerati fino a ${TOLLERANZA_MIN} minuti fuori nel giorno, per aperture della porta).</p>
+      <div class="scroll-x"><table class="tab-s6 tab-tempcelle">
+        <thead>
+          <tr><th rowspan="2">Data</th>${CELLE.map(c => html`<th colspan="3" class="c">${c.nome}</th>`)}<th rowspan="2">Esito</th><th rowspan="2">Note / azione correttiva</th><th rowspan="2">Firma</th></tr>
+          <tr>${CELLE.map(() => html`<th class="n">min</th><th class="n">max</th><th class="n">media</th>`)}</tr>
+        </thead>
+        <tbody>${giorni.map(g => {
+          const es = esito(g);
+          const n = note.get(g);
+          return html`<tr>
+            <td>${u.dataIT(g)}</td>
+            ${CELLE.map(c => {
+              const r = per.get(`${g}|${c.id}`);
+              const cls = fuori(r) ? 'n rt-manca' : 'n';
+              return html`<td class="${cls}">${r ? t(r.t_min) : ''}</td><td class="${cls}">${r ? t(r.t_max) : ''}</td><td class="n">${r ? t(r.t_media) : ''}</td>`;
+            })}
+            <td>${es === 'Non conforme' ? html`<b class="rt-manca">Non conforme</b>` : es || html`<span class="totale">nessun dato</span>`}</td>
+            <td><input class="tc-nota non-stampa solo-editori" data-giorno="${g}" value="${n?.note || ''}" placeholder="${es === 'Non conforme' ? 'azione correttiva' : ''}"><span class="solo-stampa">${n?.note || ''}</span></td>
+            <td>${n?.chi || ''}</td></tr>`;
+        })}</tbody>
+      </table></div>
+    </div>`;
+  document.getElementById('tc-mese').onchange = e => { if (e.target.value) { regT.mese = e.target.value; vistaTemperatureCelle(); } };
+  document.getElementById('stampa').onclick = () => stampa(`Registro temperature celle ${regT.mese}`);
+  const operatori = operatoriDa(await u.db.leggi(ID_OPERATORI));
+  document.querySelectorAll('.tc-nota').forEach(inp => inp.onchange = async () => {
+    const data = inp.dataset.giorno;
+    const id = `notatempcelle-${data}`;
+    const prima = note.get(data);
+    await u.db.salva({ ...(prima || {}), id, tipo: 'notatempcelle', data, note: inp.value.trim(), chi: prima?.chi || operatori[0] || '' });
+    u.toast('Nota salvata');
+    vistaTemperatureCelle();
+  });
 }

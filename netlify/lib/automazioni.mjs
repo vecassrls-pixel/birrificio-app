@@ -20,6 +20,7 @@ import { elencoProdotti, impostazioniDa, trovaProdotto, FORMATO_SHOPIFY, ID_IMPO
 import { idCliente } from '../../js/previsioni.js';
 import { ID_PREZZI, prezziDa } from '../../js/costi.js';
 import { ID_IMP, ID_STATO, IMPOSTAZIONI_DEFAULT, impostazioni } from '../../js/automazioni.js';
+import { caricoDaFattura, righeVuoti } from '../../js/contenitori.js';
 
 export { ID_IMP, ID_STATO, IMPOSTAZIONI_DEFAULT, impostazioni };
 
@@ -77,14 +78,14 @@ export async function importa({ imp } = {}) {
   imp ||= impostazioni(await db.leggi(ID_IMP));
   const oggi = oraItalia().data;
   const [t, impBirraRec, stato] = await Promise.all([
-    db.tipi(['movbirra', 'importsospeso', 'bolla'], { ancheEliminati: true }), db.leggi(ID_IMPOSTAZIONI), leggiStato(),
+    db.tipi(['movbirra', 'importsospeso', 'bolla', 'movcontenitore'], { ancheEliminati: true }), db.leggi(ID_IMPOSTAZIONI), leggiStato(),
   ]);
-  const vivi = await db.tipi(['prodottobirra', 'cotta', 'cliente']);
-  const { prodottobirra: prodottiRec, cotta: cotte, cliente: clienti } = vivi;
+  const vivi = await db.tipi(['prodottobirra', 'cotta', 'cliente', 'contenitore']);
+  const { prodottobirra: prodottiRec, cotta: cotte, cliente: clienti, contenitore: contenitori = [] } = vivi;
   const impBirra = impostazioniDa(impBirraRec && !impBirraRec.eliminato ? impBirraRec : null);
-  const visti = new Set([...t.movbirra, ...t.importsospeso, ...t.bolla].map(r => r.rifEsterno).filter(Boolean));
+  const visti = new Set([...t.movbirra, ...t.importsospeso, ...t.bolla, ...t.movcontenitore].map(r => r.rifEsterno).filter(Boolean));
   const chiavi = elencoProdotti({ cotte, movimenti: t.movbirra.filter(m => !m.eliminato), inventari: [], prodotti: prodottiRec });
-  const conteggi = { movimenti: 0, sospesi: 0, acquisti: 0, visti: 0, errori: [] };
+  const conteggi = { movimenti: 0, sospesi: 0, acquisti: 0, vuoti: 0, visti: 0, errori: [] };
   const dalPrec = stato.importa?.dal || {};
   const dal = {};
   const nuovi = [];
@@ -141,8 +142,16 @@ export async function importa({ imp } = {}) {
             const rif = `ficacq:${d.id}`;
             if (visti.has(rif) || !d.righe.length) continue;
             visti.add(rif);
-            nuovi.push({ id: `importsospeso-ficacq-${d.id}`, tipo: 'importsospeso', fonte: 'acquisti', rifEsterno: rif, doc: d, importato: oggi });
-            conteggi.acquisti++;
+            // lattine e fusti vuoti già riconosciuti una volta: carico in Contenitori, il resto resta da controllare
+            const { sicure, proposte, altre } = righeVuoti(d, contenitori);
+            if (sicure.length) {
+              nuovi.push({ ...caricoDaFattura(d, sicure, rif), id: db.nuovoId('movcontenitore'), note: 'importato in automatico' });
+              conteggi.vuoti++;
+            }
+            if (proposte.length || altre.length) {
+              nuovi.push({ id: `importsospeso-ficacq-${d.id}`, tipo: 'importsospeso', fonte: 'acquisti', rifEsterno: rif, doc: { ...d, righe: [...proposte, ...altre].map(({ contenitoreId, x, ...r }) => r) }, importato: oggi });
+              conteggi.acquisti++;
+            }
           }
         } catch (e) { conteggi.errori.push(`Acquisti: ${e.message}`); }
       }

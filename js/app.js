@@ -23,6 +23,8 @@ import * as previsioni from './vista-previsioni.js';
 import * as chiediDati from './vista-chiedi.js';
 import * as automazioni from './vista-automazioni.js';
 import * as cassa from './vista-cassa.js';
+import * as contenitori from './vista-contenitori.js';
+import { contenitoriPerRiga } from './contenitori.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
@@ -33,7 +35,7 @@ import { conGiorniDh } from './agenda.js';
 import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
-import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino } from './magazzino.js';
+import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
   CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, numeriCronologici, problemiNumeri, statoCotta,
@@ -106,6 +108,7 @@ ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT });
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
+contenitori.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO });
 qr.init({ $app, html, db, toast, stato, dataIT, oggiISO });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
@@ -213,6 +216,7 @@ const routes = [
   [/^#\/rintracciabilita\/(.+)$/, id => haccp.vistaRintracciabilita(id)],
   [/^#\/controllo-arrivi$/, () => haccp.vistaControlloArrivi()],
   [/^#\/scadenzario$/, () => haccp.vistaScadenzario()],
+  [/^#\/temperature-celle$/, () => haccp.vistaTemperatureCelle()],
   [/^#\/pulizie$/, () => haccp.vistaPulizie()],
   [/^#\/birra$/, () => magBirra.vistaBirra()],
   [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
@@ -231,6 +235,10 @@ const routes = [
   [/^#\/clienti$/, () => previsioni.vistaClienti()],
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
   [/^#\/cassa$/, () => cassa.vistaCassa()],
+  [/^#\/contenitori$/, () => contenitori.vistaContenitori()],
+  [/^#\/contenitore\/(.+)$/, id => contenitori.vistaContenitore(id)],
+  [/^#\/movcontenitore\/(.+)$/, id => contenitori.vistaMovimento(id)],
+  [/^#\/contenitori-inventario$/, () => contenitori.vistaInventario()],
   [/^#\/ordini-clienti$/, () => ordiniClienti.vistaOrdini()],
   [/^#\/scansiona$/, () => { pulizia = qr.vistaScansiona(); }],
   [/^#\/qr\?/, () => qr.vistaQr()],
@@ -248,7 +256,10 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle)/.test(h))));
+  // menu più largo dello schermo (telefono): la voce attiva al centro
+  const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
+  if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -487,10 +498,20 @@ function dialogNuovaCotta(pre = {}) {
 }
 
 // ---------- Scheda cotta ----------
-// Lista dei malti da macinare su WhatsApp (link wa.me, si preme Invia a mano).
+// Lista dei malti da macinare: su WhatsApp (si preme Invia a mano) o negli appunti.
 // Il numero di chi macina si chiede la prima volta e resta in questo dispositivo.
 const PREF_MACINA = 'gb-whatsapp-macina';
-function inviaMaltiWhatsApp(c) {
+function testoMalti(c) {
+  const righe = (c.malti || []).filter(r => r.nome);
+  const kg = righe.reduce((t, r) => t + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
+  return [
+    `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
+    '',
+    ...righe.map(r => `- ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
+    ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
+  ].join('\n');
+}
+async function inviaMaltiWhatsApp(c) {
   let num = null;
   try { num = localStorage.getItem(PREF_MACINA); } catch {}
   if (num === null) {
@@ -500,15 +521,14 @@ function inviaMaltiWhatsApp(c) {
     if (num.length === 10 && num.startsWith('3')) num = '39' + num; // cellulare italiano senza prefisso
     try { localStorage.setItem(PREF_MACINA, num); } catch {}
   }
-  const righe = (c.malti || []).filter(r => r.nome);
-  const kg = righe.reduce((t, r) => t + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
-  const testo = [
-    `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
-    '',
-    ...righe.map(r => `• ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
-    ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
-  ].join('\n');
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(testo)}`, '_blank');
+  const testo = testoMalti(c);
+  // anche negli appunti: se WhatsApp non riempie il messaggio basta incollare
+  await copia(testo, 'Malti copiati: se il messaggio è vuoto, incollali');
+  const q = `${num ? 'phone=' + num + '&' : ''}text=${encodeURIComponent(testo)}`;
+  // su telefono e tablet si apre direttamente l'app (il link wa.me dalla app installata perdeva il testo)
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform);
+  if (mobile) location.href = `whatsapp://send?${q}`;
+  else window.open(`https://api.whatsapp.com/send?${q}`, '_blank');
 }
 
 const SEZIONI_INGR = [
@@ -524,14 +544,17 @@ const FASI_ACIDO = ['ammostamento', 'sparge', 'bollitura', 'dip hopping', 'ferme
 async function vistaCotta(id) {
   const orig = await db.leggi(id);
   if (!orig || orig.eliminato) { $app.innerHTML = html`<p class="vuoto">Cotta non trovata. <a href="#/cotte">Torna alla lista</a></p>`; return; }
-  const c = JSON.parse(JSON.stringify(orig));
+  let c = JSON.parse(JSON.stringify(orig));
   for (const k of ['sali', 'malti', 'luppoli', 'lievito', 'acido', 'fermentazione', 'confezionato']) c[k] = c[k] || [];
+  c = acidoInGrammi(c); // acido lattico sempre in g (le righe in ml si convertono con la densità 1,2)
   c.acquaMash = c.acquaMash || {};
   c.acquaSparge = c.acquaSparge || {};
   c.acquaDip = c.acquaDip || {};
   // ingredienti scelti dalle voci del magazzino (anche a zero)
   let articoli = await magazzino.articoliRicetta();
   const datiCosto = await costi.datiCosti();
+  // fusti vuoti: con due polykeg per lo stesso formato (con e senza sacca) la riga dice quale
+  const vuoti = await db.tutti('contenitore');
   // cotte non ancora fatte: antifoam, brewmix, antioxin e yeastvit già pronti negli additivi (lo storico non si tocca)
   if (c.data && c.data >= oggiISO()) c.sali = conAdditiviDefault(c.sali);
 
@@ -690,7 +713,8 @@ async function vistaCotta(id) {
       <datalist id="dl-art-${k}">${voci.map(a => html`<option value="${a.nome}" label="${fmtGiac(a)}"></option>`)}</datalist>
       <button class="piccolo" data-add="${k}" data-unita="${unitaDef}">+ Aggiungi</button>
       ${totaleIngr(righe)}
-      ${k === 'malti' && righe.length ? html`<button class="piccolo" id="whatsapp-malti" title="Apre WhatsApp con la lista dei malti da macinare già scritta">📲 Malti da macinare su WhatsApp</button>` : ''}
+      ${k === 'malti' && righe.length ? html`<button class="piccolo" id="whatsapp-malti" title="Apre WhatsApp con la lista dei malti da macinare già scritta">📲 Malti da macinare su WhatsApp</button>
+        <button class="piccolo" id="copia-malti" title="Copia la lista dei malti da macinare per incollarla dove vuoi">📋 Copia malti</button>` : ''}
     </div>`;
   }
   function totaleIngr(righe) {
@@ -700,6 +724,7 @@ async function vistaCotta(id) {
 
   function disegna() {
     const s = statoCotta(c, stato.durate, undefined, stato.cotte);
+    const conScelta = c.confezionato.some(r => contenitoriPerRiga(vuoti, r.tipo, r.litri).length > 1);
     const fine = c.data ? fineCotta(c, stato.durate) : null;
     const giorniTank = c.data && fine ? diffGiorni(c.data, fine) + 1 : null;
     const giornoOggi = c.data ? diffGiorni(c.data, oggiISO()) + 1 : null;
@@ -839,11 +864,11 @@ async function vistaCotta(id) {
       <div class="scheda" id="sez-acido">
         <h2>Acido lattico</h2>
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th style="width:150px">Fase</th><th style="width:150px">Data</th><th style="width:80px">ml</th><th style="width:80px">pH prima</th><th style="width:80px">pH dopo</th><th>Nota</th><th></th></tr></thead>
+          <thead><tr><th style="width:150px">Fase</th><th style="width:150px">Data</th><th style="width:80px">g</th><th style="width:80px">pH prima</th><th style="width:80px">pH dopo</th><th>Nota</th><th></th></tr></thead>
           <tbody>${c.acido.map((r, i) => html`<tr>
             <td><select data-path="acido.${i}.fase">${FASI_ACIDO.map(f => html`<option ${f === r.fase ? 'selected' : ''}>${f}</option>`)}</select></td>
             <td><input data-path="acido.${i}.data" type="date" value="${r.data || ''}"></td>
-            <td><input data-path="acido.${i}.ml" type="number" step="any" inputmode="decimal" value="${r.ml ?? ''}"></td>
+            <td><input data-path="acido.${i}.g" type="number" step="any" inputmode="decimal" value="${r.g ?? ''}"></td>
             <td><input data-path="acido.${i}.phPrima" type="number" step="0.01" inputmode="decimal" value="${r.phPrima ?? ''}"></td>
             <td><input data-path="acido.${i}.phDopo" type="number" step="0.01" inputmode="decimal" value="${r.phDopo ?? ''}"></td>
             <td><input data-path="acido.${i}.nota" value="${r.nota || ''}" style="min-width:120px"></td>
@@ -855,7 +880,7 @@ async function vistaCotta(id) {
           <button class="piccolo" data-add="acido" data-preset="dip hopping">+ Dip hopping</button>
           <button class="piccolo" data-add="acido" data-preset="fermentazione">+ Più avanti</button>
         </div>
-        ${c.acido.length ? html`<p class="totale">Totale acido lattico: ${numIT(c.acido.reduce((t, r) => t + (Number(r.ml) || 0), 0), 1)} ml</p>` : ''}
+        ${c.acido.length ? html`<p class="totale">Totale acido lattico: ${numIT(c.acido.reduce((t, r) => t + (Number(r.g) || 0), 0), 1)} g</p>` : ''}
       </div>
 
       <div class="scheda" id="sez-ferm">
@@ -887,11 +912,12 @@ async function vistaCotta(id) {
       <div class="scheda" id="sez-conf">
         <h2>Confezionamento${g.length > 1 ? html` <span class="totale">· lotto ${lottoGruppo(g)}</span>` : ''}</h2>
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th>Formato</th><th style="width:90px">Pezzi</th><th style="width:100px">Litri/pezzo</th><th style="width:140px">Data</th><th></th></tr></thead>
+          <thead><tr><th>Formato</th><th style="width:90px">Pezzi</th><th style="width:100px">Litri/pezzo</th>${conScelta ? html`<th>Contenitore</th>` : ''}<th style="width:140px">Data</th><th></th></tr></thead>
           <tbody>${c.confezionato.map((r, i) => html`<tr>
             <td><select data-path="confezionato.${i}.tipo">${['fusto', 'lattina/bottiglia'].map(t => html`<option value="${t}" ${t === r.tipo ? 'selected' : ''}>${t === 'fusto' ? 'fusto' : 'lattina'}</option>`)}</select></td>
             <td><input data-path="confezionato.${i}.pezzi" type="number" step="1" inputmode="numeric" value="${r.pezzi ?? ''}"></td>
             <td><input data-path="confezionato.${i}.litri" type="number" step="any" inputmode="decimal" value="${r.litri ?? ''}"></td>
+            ${conScelta ? html`<td>${(() => { const k = contenitoriPerRiga(vuoti, r.tipo, r.litri); return k.length > 1 ? html`<select data-path="confezionato.${i}.contenitore" title="Quale contenitore vuoto si scala in Contenitori">${k.map((x, j) => html`<option value="${x.id}" ${x.id === r.contenitore || (j === 0 && !k.some(y => y.id === r.contenitore)) ? 'selected' : ''}>${x.nome}</option>`)}</select>` : k[0]?.nome || ''; })()}</td>` : ''}
             <td><input data-path="confezionato.${i}.data" type="date" value="${r.data || ''}"></td>
             <td class="az"><button class="piccolo" data-del="confezionato.${i}" title="Rimuovi">✕</button></td>
           </tr>`)}</tbody>
@@ -1052,7 +1078,7 @@ async function vistaCotta(id) {
         c.fermentazione.push({ data: last?.data ? addGiorni(last.data, 1) : c.data || oggiISO(), temp: last?.temp ?? null, manuale: true });
       } else if (k === 'acido') {
         const fase = t.dataset.preset;
-        c.acido.push({ fase, data: fase === 'ammostamento' || fase === 'dip hopping' ? c.data || oggiISO() : oggiISO(), ml: null, phPrima: null, phDopo: null, nota: '' });
+        c.acido.push({ fase, data: fase === 'ammostamento' || fase === 'dip hopping' ? c.data || oggiISO() : oggiISO(), g: null, phPrima: null, phDopo: null, nota: '' });
       } else if (k === 'confezionato') {
         const [tipo, litri] = t.dataset.preset.split(':');
         c.confezionato.push({ tipo, pezzi: null, litri: Number(litri), data: oggiISO() });
@@ -1190,6 +1216,8 @@ async function vistaCotta(id) {
       const y = scrollY; disegna(); scrollTo(0, y);
     } else if (t.id === 'whatsapp-malti') {
       inviaMaltiWhatsApp(c);
+    } else if (t.id === 'copia-malti') {
+      copia(testoMalti(c), 'Malti copiati');
     } else if (t.id === 'stampa') {
       // il titolo diventa il nome proposto per il file PDF
       const titolo = document.title;
@@ -1886,7 +1914,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

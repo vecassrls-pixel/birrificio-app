@@ -165,6 +165,15 @@ export function nomiDaMagazzino(c, articoli) {
 
 const SEZIONI = ['malti', 'luppoli', 'lievito', 'sali'];
 export const NOME_ACIDO = 'Acido lattico';
+// Acido lattico nelle schede cotta in grammi (Romain 2026-10-19). Le correzioni pH vecchie hanno `ml`,
+// le righe importate da Brewfather possono essere in ml: si portano in g con la densità 1,2.
+const arrot1 = x => Math.round(x * 10) / 10;
+export const acidoG = r => (r.g !== undefined && r.g !== null && r.g !== '' ? r.g : r.ml !== undefined && r.ml !== null && r.ml !== '' ? arrot1(Number(r.ml) * DENSITA_ACIDO) : null);
+export function acidoInGrammi(c) {
+  const acido = (c.acido || []).map(({ ml, ...r }) => ({ ...r, g: acidoG({ ...r, ml }) }));
+  const sali = (c.sali || []).map(r => (/acido\s+lattico/i.test(r.nome || '') && r.unita === 'ml' ? { ...r, qta: r.qta === null || r.qta === '' ? r.qta : arrot1(Number(r.qta) * DENSITA_ACIDO), unita: 'g' } : r));
+  return { ...c, acido, sali };
+}
 
 // Giorno in cui un ingrediente esce dal magazzino: DH al suo giorno, il resto il giorno di cotta
 export function dataUscita(c, sezione, r) {
@@ -188,15 +197,15 @@ export function scarichiCotte(cotte, articoli) {
     for (const sez of SEZIONI) {
       for (const [i, r] of (c[sez] || []).entries()) {
         if (!r.nome || !(Number(r.qta) > 0) || lievitoRecuperato(sez, r)) continue;
-        // nelle schede l'acido lattico è scritto in "g" ma sono ml
-        const unita = /acido/i.test(r.nome) && r.unita === 'g' ? 'ml' : r.unita || '';
+        const unita = r.unita || '';
         out.push({ articolo: trovaArticolo(articoli, r.nome), nome: r.nome, sezione: /acido/i.test(r.nome) ? 'acido' : sez, qta: Number(r.qta), unita, data: dataUscita(c, sez, r), cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `${sez}.${i}` } });
       }
     }
-    // correzioni pH con acido lattico (ml), ognuna alla sua data
+    // correzioni pH con acido lattico (g; le vecchie in ml), ognuna alla sua data
     for (const [i, r] of (c.acido || []).entries()) {
-      if (!(Number(r.ml) > 0)) continue;
-      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: Number(r.ml), unita: 'ml', data: r.data || c.data, cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `acido.${i}` } });
+      const g = Number(acidoG(r));
+      if (!(g > 0)) continue;
+      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: g, unita: 'g', data: r.data || c.data, cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `acido.${i}` } });
     }
   }
   return out;
@@ -372,8 +381,13 @@ export function registroS6(dati, da, a) {
 
 // Unisce un doppione: tutto ciò che era di `togli` (bolle, inventari, scarichi manuali) passa a `tieni`,
 // il nome e gli alias di `togli` diventano alias di `tieni` (così le cotte lo trovano ancora).
+// Un inventario vale come giacenza dell'articolo: se in un inventario c'è solo uno dei due, la riga unita
+// prende anche la giacenza che l'altro aveva in quel giorno, così le quantità si sommano (Romain 2026-10-16).
 // Restituisce i record da salvare, oppure { errore } se le quantità degli inventari non sono convertibili.
-export function unisciArticoli(tieni, togli, { bolle, inventari, scarichi = [] }) {
+export function unisciArticoli(tieni, togli, dati) {
+  const { bolle, inventari, scarichi = [] } = dati;
+  // giacenza di un articolo in un giorno, calcolata sui dati prima dell'unione (mai sotto zero)
+  const giacenzaAl = (art, data) => Math.max(0, giacenze({ ...dati, articoli: [art], scarichi }, data).get(art.id)?.giacenza || 0);
   const k = chiaveNome(tieni.nome);
   const alias = [...new Set([...(tieni.alias || []), togli.nome, ...(togli.alias || [])])].filter(x => chiaveNome(x) !== k);
   const art = {
@@ -388,12 +402,23 @@ export function unisciArticoli(tieni, togli, { bolle, inventari, scarichi = [] }
     modificati.push({ ...b, righe: b.righe.map(r => (r.articoloId === togli.id ? { ...r, articoloId: tieni.id, ...(r.nome !== undefined ? { nome: tieni.nome } : {}) } : r)) });
   }
   for (const inv of inventari) {
+    const ha = id => (inv.righe || []).some(r => r.articoloId === id && r.qta !== null && r.qta !== '' && r.qta !== undefined);
+    if (ha(tieni.id) && !ha(togli.id) && inv.data) {
+      // contato solo `tieni`: si aggiunge la giacenza di `togli` in quel giorno
+      const extra = converti(giacenzaAl(togli, inv.data), togli.unita, tieni.unita);
+      if (extra === null) return { errore: `${togli.nome} è in ${togli.unita} e non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      if (extra) modificati.push({ ...inv, righe: inv.righe.map(r => (r.articoloId === tieni.id ? { ...r, qta: Number(r.qta) + extra } : r)) });
+      continue;
+    }
     if (!(inv.righe || []).some(r => r.articoloId === togli.id)) continue;
+    // contato solo `togli`: alla sua riga (che passa a `tieni`) si aggiunge la giacenza di `tieni` in quel giorno
+    const extraTieni = ha(togli.id) && !ha(tieni.id) && inv.data ? giacenzaAl(tieni, inv.data) : 0;
     const righe = [];
     for (const r of inv.righe) {
       if (r.articoloId !== togli.id) { righe.push(r); continue; }
-      const q = r.qta === null || r.qta === '' || r.qta === undefined ? r.qta : converti(r.qta, togli.unita, tieni.unita);
-      if (q === null && r.qta !== null) return { errore: `L'inventario del ${inv.data} ha ${togli.nome} in ${togli.unita}: non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      const q0 = r.qta === null || r.qta === '' || r.qta === undefined ? r.qta : converti(r.qta, togli.unita, tieni.unita);
+      if (q0 === null && r.qta !== null) return { errore: `L'inventario del ${inv.data} ha ${togli.nome} in ${togli.unita}: non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      const q = typeof q0 === 'number' ? q0 + extraTieni : q0;
       const gia = righe.find(x => x.articoloId === tieni.id);
       if (gia) gia.qta = (Number(gia.qta) || 0) + (Number(q) || 0);
       else righe.push({ ...r, articoloId: tieni.id, qta: q });

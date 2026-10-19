@@ -32,9 +32,16 @@ Ricette e cotte si scrivono in Brewfather; l'app le importa (Impostazioni > Brew
 - Limite API: 500 chiamate/ora. "Aggiorna cotte in corso" scarica solo Planning/Brewing/Fermenting/Conditioning.
 
 ## Temperature dei fermentatori
-Pagina **Cantina**: temperatura, setpoint, freddo acceso/spento e cotta di ogni FV, con allarmi (dati vecchi, sonda guasta, lontano dal setpoint).
+Pagina **Cantina**: temperatura, setpoint, freddo acceso/spento e cotta di ogni FV, con allarmi (dati vecchi, sonda guasta, lontano dal setpoint). Unghia **Celle**: Cella 1, Cella 2 e frigo luppoli (sonde DS18B20 su ESP32, allarme fuori da min/max); da queste il registro **HACCP → Temperature celle frigo** (min/max/media giornaliere, esito, azione correttiva, da stampare).
 Nella scheda cotta, sezione Fermentazione, la curva misurata nei FV occupati dalla cotta (anche dopo il travaso), inclusa nel PDF.
 - Dati scritti dal gateway in birrificio (`tools/gateway-temperature`, Node senza dipendenze) con la chiave segreta di Supabase che sta solo lì; l'app legge con il login (tutti i ruoli, anche il lettore).
 - Tabelle e regole: `supabase/migrazione_temperature.sql` (da eseguire una volta). Senza tabelle, offline o in modalità locale la pagina mostra un avviso e il resto dell'app non cambia.
 - Tempo reale con Supabase Realtime (WebSocket in `js/sync.js`, senza librerie), con lettura di riserva ogni minuto.
 - Installazione, cablaggi e taratura passo passo: `GUIDA-TEMPERATURE.md`.
+
+## Cassa e Contenitori
+- **Cassa** (`js/cassa.js`, `js/vista-cassa.js`): prima nota dei contanti, conte della cassa, soldi "da sistemare" (sospesi: non toccano il saldo finché non si segnano incassati o pagati), import da "Cassa Vecas.xlsx".
+- **Contenitori** (`js/contenitori.js`, `js/vista-contenitori.js`): magazzino di lattine e polykeg vuoti. Entrano con carichi e inventari, escono da soli con il Confezionamento delle cotte (formati collegati al contenitore; i polykeg 24 L si riempiono a 25 L). Con due contenitori per lo stesso formato (con e senza sacca) la riga del Confezionamento dice quale.
+- Fatture dei fornitori (import notturno Fatture in Cloud): le righe di lattine/fusti si confermano la prima volta in Contenitori (codice o descrizione + pezzi per unità restano in `contenitore.codici`); dopo il server (`netlify/lib/automazioni.mjs`) le carica da solo.
+- Lotti dei vuoti: entrano con carichi e inventari, confezionamenti e scarichi senza lotto prendono dal più vecchio (FIFO); la rintracciabilità HACCP mostra i lotti di lattine e fusti di ogni lotto di birra.
+- Nessuna tabella nuova su Supabase: i record vanno nella tabella `records` come gli altri.
