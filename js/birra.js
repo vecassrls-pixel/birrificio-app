@@ -317,8 +317,8 @@ export function listaDisponibili(dati, oggi = oggiISO()) {
 export const formatoCliente = f => (f.tipo === 'fusto' ? `Fusti ${numIT(f.litri, 0)} L` : `Lattine ${Math.round(f.litri * 100)} cl`);
 // "session ipa" → "Session Ipa" non va: solo la prima lettera di ogni parola se è tutto minuscolo
 export const maiuscole = s => (s === s.toLowerCase() ? s.replace(/(^|\s)\p{L}/gu, m => m.toUpperCase()).replace(/\bIpa\b/g, 'IPA').replace(/\bNeipa\b/g, 'NEIPA').replace(/\bApa\b/g, 'APA') : s);
-export function testoListaBirre(lista, oggi = oggiISO()) {
-  const righe = [`Birre disponibili · Kashmir Brewing Company · ${dataIT(oggi)}`, ''];
+export function testoListaBirre(lista, oggi = oggiISO(), produttore = 'Kashmir Brewing Company') {
+  const righe = [`Birre disponibili · ${produttore} · ${dataIT(oggi)}`, ''];
   for (const b of lista) {
     righe.push([b.birra, b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · '));
     for (const f of b.formati) righe.push(`   ${formatoCliente(f)}: ${numIT(f.pezzi, 0)}`);

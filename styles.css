@@ -1040,3 +1040,5 @@ body.ordina { background: var(--bg); }
 .b-marchi button:hover { color: var(--text); }
 .b-marchi button.attivo { background: var(--surface); color: var(--accent-forte); border-color: var(--border); border-bottom: 2px solid var(--surface); }
 .b-marchi small { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .74rem; }
+.lc-marchio { order: 2; font-size: 2.2rem; font-weight: 900; letter-spacing: .12em; color: var(--lc-ink); }
+@media print { .lc-marchio { font-size: 26pt; } }
