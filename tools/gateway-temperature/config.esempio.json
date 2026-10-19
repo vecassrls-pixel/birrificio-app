@@ -20,9 +20,9 @@
   },
 
   "validita": {
-    "temp_min": -10,
+    "temp_min": -30,
     "temp_max": 60,
-    "_nota": "Letture fuori da questo intervallo sono scartate come sonda guasta o scollegata."
+    "_nota": "Letture fuori da questo intervallo sono scartate come sonda guasta o scollegata. -30 per lasciar passare il frigo luppoli anche se è un congelatore."
   },
 
   "modbus": {
@@ -54,11 +54,15 @@
   "esp32": {
     "attivo": true,
     "timeout_ms": 3000,
-    "_nota": "Termostati ESPHome (tools/esphome). host = nome o IP della scheda; utente/password = web_utente/web_password di secrets.yaml.",
+    "_nota": "Schede ESPHome (tools/esphome): termostati FV6-FV7 e sonde delle celle. host = nome o IP della scheda; utente/password = web_utente/web_password di secrets.yaml.",
     "dispositivi": [
       { "fv": "FV6", "host": "fv6.local", "utente": "admin", "password": "CAMBIARE" },
-      { "fv": "FV7", "host": "fv7.local", "utente": "admin", "password": "CAMBIARE" }
-    ]
+      { "fv": "FV7", "host": "fv7.local", "utente": "admin", "password": "CAMBIARE" },
+      { "fv": "CELLA1", "host": "cella1.local", "utente": "admin", "password": "CAMBIARE" },
+      { "fv": "CELLA2", "host": "cella2.local", "utente": "admin", "password": "CAMBIARE" },
+      { "fv": "FRIGO-LUPPOLI", "host": "frigo-luppoli.local", "utente": "admin", "password": "CAMBIARE" }
+    ],
+    "_nota_celle": "CELLA1, CELLA2, FRIGO-LUPPOLI: sonde DS18B20 su ESP32 (tools/esphome/cella1.yaml ecc.), solo temperatura: setpoint e freddo restano vuoti."
   },
 
   "plc": {

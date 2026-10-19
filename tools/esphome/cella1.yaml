@@ -1,0 +1,11 @@
+# Sonda Cella 1: scheda ESP32 DevKit + DS18B20. Tutta la logica è in sonda-cella.yaml.
+# Validare:  esphome config cella1.yaml      Primo caricamento (via USB):  esphome run cella1.yaml
+
+substitutions:
+  nome: cella1                 # nome sulla rete: http://cella1.local
+  nome_cella: "Cella 1"
+  pin_sonda: GPIO4             # filo giallo della DS18B20 (con resistenza 4,7 kΩ verso 3V3)
+  correzione_temp: "0.0"       # taratura: gradi da aggiungere dopo il confronto con un termometro di riferimento
+
+packages:
+  sonda: !include sonda-cella.yaml

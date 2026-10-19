@@ -10,6 +10,13 @@ import { interroga } from './sync.js';
 import { addGiorni, daISO, diffGiorni, oggiISO, periodiCotta, registroComune, gruppoCotta } from './dominio.js';
 
 export const FV_CANTINA = Array.from({ length: 11 }, (_, i) => `FV${i + 1}`);
+// Celle frigo e frigo luppoli (unghia "Celle" della Cantina): stesse tabelle, codice al posto del nome del FV
+export const CELLE = [
+  { id: 'CELLA1', nome: 'Cella 1', forma: 'cella' },
+  { id: 'CELLA2', nome: 'Cella 2', forma: 'cella' },
+  { id: 'FRIGO-LUPPOLI', nome: 'Frigo luppoli', forma: 'frigo' },
+];
+export const eCella = id => CELLE.some(c => c.id === id);
 export const SOGLIE_DEFAULT = { soglia_scostamento: 1.5, minuti_offline: 10, temp_min: null, temp_max: null };
 const pieno = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
 

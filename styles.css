@@ -338,6 +338,8 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-s6 tr.c td { font-weight: 600; }
 .tab-s6 thead { display: table-header-group; }
 .tab-s6 tr { break-inside: avoid; }
+.tab-tempcelle .tc-nota { width: 100%; min-height: 30px; padding: 3px 8px; font-size: .85rem; }
+.tab-tempcelle td { vertical-align: middle; }
 @page s6 { size: A4 landscape; margin: 10mm; }
 @media print { .s6 { padding: 0; } .s6-testa img { height: 44px; } .tab-s6 { font-size: 10px; } .tab-s6 th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
@@ -888,6 +890,10 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .fv-disegno .fv-camicia { fill: color-mix(in srgb, var(--muted) 18%, transparent); }
 .fv-disegno.freddo .fv-camicia { fill: color-mix(in srgb, var(--s-pianificata) 55%, transparent); }
 .fv-card.allarme .fv-disegno .fv-corpo { stroke: var(--warn); }
+.fv-disegno .fv-luppolo { fill: color-mix(in srgb, var(--ok) 55%, transparent); stroke: var(--ok); stroke-width: 1; }
+.fv-disegno.cella.freddo .fv-camicia { fill: color-mix(in srgb, var(--s-pianificata) 55%, transparent); }
+#cantina-unghie { margin-left: 12px; }
+.fv-n-allarmi { color: var(--warn) !important; font-weight: 700 !important; }
 .fv-live { --c: var(--muted); }
 .fv-live.acceso { --c: var(--ok); }
 @media (max-width: 760px) { .cantina-griglia { grid-template-columns: 1fr 1fr; gap: 8px; } .fv-card { padding: 10px; } .fv-temp { font-size: 1.7rem; } .fv-valori { flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; } .fv-disegno { width: 34px; height: 62px; } .fv-dett { flex-basis: 100%; } }
