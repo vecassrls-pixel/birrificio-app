@@ -23,6 +23,8 @@ import * as previsioni from './vista-previsioni.js';
 import * as chiediDati from './vista-chiedi.js';
 import * as automazioni from './vista-automazioni.js';
 import * as cassa from './vista-cassa.js';
+import * as contenitori from './vista-contenitori.js';
+import { contenitoriPerRiga } from './contenitori.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
@@ -106,6 +108,7 @@ ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT });
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
+contenitori.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO });
 qr.init({ $app, html, db, toast, stato, dataIT, oggiISO });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
@@ -232,6 +235,10 @@ const routes = [
   [/^#\/clienti$/, () => previsioni.vistaClienti()],
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
   [/^#\/cassa$/, () => cassa.vistaCassa()],
+  [/^#\/contenitori$/, () => contenitori.vistaContenitori()],
+  [/^#\/contenitore\/(.+)$/, id => contenitori.vistaContenitore(id)],
+  [/^#\/movcontenitore\/(.+)$/, id => contenitori.vistaMovimento(id)],
+  [/^#\/contenitori-inventario$/, () => contenitori.vistaInventario()],
   [/^#\/ordini-clienti$/, () => ordiniClienti.vistaOrdini()],
   [/^#\/scansiona$/, () => { pulizia = qr.vistaScansiona(); }],
   [/^#\/qr\?/, () => qr.vistaQr()],
@@ -249,7 +256,10 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/(costi|cassa)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle)/.test(h))));
+  // menu più largo dello schermo (telefono): la voce attiva al centro
+  const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
+  if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) return fn(...m.slice(1).map(decodeURIComponent));
@@ -534,6 +544,8 @@ async function vistaCotta(id) {
   // ingredienti scelti dalle voci del magazzino (anche a zero)
   let articoli = await magazzino.articoliRicetta();
   const datiCosto = await costi.datiCosti();
+  // fusti vuoti: con due polykeg per lo stesso formato (con e senza sacca) la riga dice quale
+  const vuoti = await db.tutti('contenitore');
   // cotte non ancora fatte: antifoam, brewmix, antioxin e yeastvit già pronti negli additivi (lo storico non si tocca)
   if (c.data && c.data >= oggiISO()) c.sali = conAdditiviDefault(c.sali);
 
@@ -702,6 +714,7 @@ async function vistaCotta(id) {
 
   function disegna() {
     const s = statoCotta(c, stato.durate, undefined, stato.cotte);
+    const conScelta = c.confezionato.some(r => contenitoriPerRiga(vuoti, r.tipo, r.litri).length > 1);
     const fine = c.data ? fineCotta(c, stato.durate) : null;
     const giorniTank = c.data && fine ? diffGiorni(c.data, fine) + 1 : null;
     const giornoOggi = c.data ? diffGiorni(c.data, oggiISO()) + 1 : null;
@@ -889,11 +902,12 @@ async function vistaCotta(id) {
       <div class="scheda" id="sez-conf">
         <h2>Confezionamento${g.length > 1 ? html` <span class="totale">· lotto ${lottoGruppo(g)}</span>` : ''}</h2>
         <div class="scroll-x"><table class="tab-edit">
-          <thead><tr><th>Formato</th><th style="width:90px">Pezzi</th><th style="width:100px">Litri/pezzo</th><th style="width:140px">Data</th><th></th></tr></thead>
+          <thead><tr><th>Formato</th><th style="width:90px">Pezzi</th><th style="width:100px">Litri/pezzo</th>${conScelta ? html`<th>Contenitore</th>` : ''}<th style="width:140px">Data</th><th></th></tr></thead>
           <tbody>${c.confezionato.map((r, i) => html`<tr>
             <td><select data-path="confezionato.${i}.tipo">${['fusto', 'lattina/bottiglia'].map(t => html`<option value="${t}" ${t === r.tipo ? 'selected' : ''}>${t === 'fusto' ? 'fusto' : 'lattina'}</option>`)}</select></td>
             <td><input data-path="confezionato.${i}.pezzi" type="number" step="1" inputmode="numeric" value="${r.pezzi ?? ''}"></td>
             <td><input data-path="confezionato.${i}.litri" type="number" step="any" inputmode="decimal" value="${r.litri ?? ''}"></td>
+            ${conScelta ? html`<td>${(() => { const k = contenitoriPerRiga(vuoti, r.tipo, r.litri); return k.length > 1 ? html`<select data-path="confezionato.${i}.contenitore" title="Quale contenitore vuoto si scala in Contenitori">${k.map((x, j) => html`<option value="${x.id}" ${x.id === r.contenitore || (j === 0 && !k.some(y => y.id === r.contenitore)) ? 'selected' : ''}>${x.nome}</option>`)}</select>` : k[0]?.nome || ''; })()}</td>` : ''}
             <td><input data-path="confezionato.${i}.data" type="date" value="${r.data || ''}"></td>
             <td class="az"><button class="piccolo" data-del="confezionato.${i}" title="Rimuovi">✕</button></td>
           </tr>`)}</tbody>
@@ -1888,7 +1902,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

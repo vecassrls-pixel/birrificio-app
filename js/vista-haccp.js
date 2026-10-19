@@ -8,6 +8,7 @@ import { ID_OPERATORI, operatoriDa, opzioniOperatori, CONTROLLI_ARRIVO, FASI_PUL
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { interroga } from './sync.js';
 import { CELLE, fmt } from './temperature.js';
+import { vuotiDelleCotte } from './contenitori.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -39,7 +40,7 @@ export async function vistaHaccp() {
       <p class="totale" style="margin:2px 0 0">Registri e controlli del piano di autocontrollo.</p></div></div>
     <div class="haccp-griglia">
       ${voce('#/registro-s6', '📒', 'Registro S6', 'Carico e scarico delle materie prime con lotti e scadenze, per settimana. Da stampare.')}
-      ${voce('#/rintracciabilita', '🔎', 'Rintracciabilità per lotto', 'Da un lotto di birra: materie prime usate con lotto e fornitore, confezionamento e a chi è andata.')}
+      ${voce('#/rintracciabilita', '🔎', 'Rintracciabilità per lotto', 'Da un lotto di birra: materie prime usate con lotto e fornitore, confezionamento con i lotti di lattine e fusti, e a chi è andata.')}
       ${voce('#/controllo-arrivi', '📦', 'Controllo merci in arrivo', 'Spunte di controllo su ogni bolla di carico e registro da stampare.',
         daControllare ? html`<span class="haccp-badge">${daControllare} ${daControllare === 1 ? 'bolla' : 'bolle'} da controllare</span>` : '')}
       ${voce('#/pulizie', '🧽', 'Pulizie e sanificazioni', 'CIP di fermentatori e linee: data, fasi, prodotti e chi l\'ha fatta. Avviso se un FV si riempie senza pulizia.',
@@ -71,10 +72,11 @@ export async function vistaRintracciabilita(id) {
     };
     return;
   }
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, imp] = await Promise.all([
-    ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, contenitori, movVuoti, invVuoti, imp] = await Promise.all([
+    ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra', 'contenitore', 'movcontenitore', 'inventariocontenitori'].map(t => u.db.tutti(t)),
     u.db.leggi(ID_IMPOSTAZIONI),
   ]);
+  const vuoti = vuotiDelleCotte(scelto.gruppo.map(c => c.id), { contenitori, movimenti: movVuoti, inventari: invVuoti, cotte: u.stato.cotte }, u.oggiISO()).filter(x => x.contato);
   const r = rintracciabilita(scelto,
     { articoli, bolle, inventari, scarichi, cotte: u.stato.cotte },
     { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari: inventariBirra, prodotti, impostazioni: imp && !imp.eliminato ? imp : null });
@@ -102,7 +104,13 @@ export async function vistaRintracciabilita(id) {
         <thead><tr><th>Data</th><th>Formato</th><th class="n">Pezzi</th><th class="n">Litri</th></tr></thead>
         <tbody>${r.confezionato.map(x => html`<tr><td>${x.data ? u.dataIT(x.data) : ''}</td><td>${nomeFormato(x.tipo, x.litri)}</td><td class="n">${u.numIT(x.pezzi, 0)}</td><td class="n">${u.numIT(x.pezzi * x.litri, 1)}</td></tr>`)}</tbody></table>`
       : html`<p class="vuoto">Non ancora confezionata.</p>`}
-      <h2>3. Uscite della birra (destinatari)</h2>
+      <h2>3. Lattine e fusti usati (lotti dei vuoti)</h2>
+      ${vuoti.length ? html`<table class="tab-s6">
+        <thead><tr><th>Data</th><th>Contenitore</th><th class="n">Pezzi</th><th>Lotto</th><th>Fornitore / documento</th><th>Arrivato il</th></tr></thead>
+        <tbody>${vuoti.flatMap(v => v.lotti.map(l => html`<tr><td>${u.dataIT(v.data)}</td><td>${v.contenitore.nome}</td><td class="n">${u.numIT(l.pezzi, 0)}</td>
+          <td>${l.lotto || html`<span class="rt-manca">manca</span>`}</td><td>${[l.fornitore, l.documento].filter(Boolean).join(' · ')}</td><td>${l.arrivo ? u.dataIT(l.arrivo) : ''}</td></tr>`))}</tbody></table>`
+      : html`<p class="vuoto">${contenitori.length ? 'Nessun contenitore scalato da questo confezionamento (pagina Contenitori).' : 'I lotti di lattine e fusti si vedono qui quando usi la pagina Contenitori.'}</p>`}
+      <h2>4. Uscite della birra (destinatari)</h2>
       ${r.uscite.length ? html`<table class="tab-s6">
         <thead><tr><th>Data</th><th>Prodotto</th><th class="n">Pezzi</th><th class="n">Litri</th><th>Destinatario / documento</th></tr></thead>
         <tbody>${r.uscite.map(x => html`<tr><td>${u.dataIT(x.data)}</td><td>${x.prodotto}</td><td class="n">${u.numIT(x.pezzi, 0)}</td><td class="n">${u.numIT(x.litri, 1)}</td><td>${x.chi}</td></tr>`)}</tbody></table>`
