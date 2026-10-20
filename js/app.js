@@ -16,6 +16,7 @@ import * as preventivi from './vista-preventivi.js';
 import * as backup from './backup.js';
 import * as home from './vista-home.js';
 import { ID_OPERATORI, operatoriDa } from './haccp.js';
+import { ID_TREBBIE, destinatarioDa } from './trebbie.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
 import * as cantina from './vista-cantina.js';
@@ -218,6 +219,7 @@ const routes = [
   [/^#\/scadenzario$/, () => haccp.vistaScadenzario()],
   [/^#\/temperature-celle$/, () => haccp.vistaTemperatureCelle()],
   [/^#\/pulizie$/, () => haccp.vistaPulizie()],
+  [/^#\/trebbie$/, () => haccp.vistaTrebbie()],
   [/^#\/birra$/, () => magBirra.vistaBirra()],
   [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
   [/^#\/movbirra\/(.+)$/, id => magBirra.vistaMovimento(id)],
@@ -256,7 +258,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
@@ -1592,6 +1594,7 @@ async function vistaImpostazioni() {
   const impHome = (await db.leggi(home.ID_HOME)) || {};
   const logoScelto = impHome.eliminato ? 'gb' : impHome.logo || 'gb';
   const operatori = [...operatoriDa(await db.leggi(ID_OPERATORI))];
+  const destTrebbie = destinatarioDa(await db.leggi(ID_TREBBIE));
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
     <div class="scheda">
@@ -1619,6 +1622,11 @@ async function vistaImpostazioni() {
         <td class="az"><button class="piccolo" data-op-giu="${i}" ${i < operatori.length - 1 ? '' : 'disabled'} title="Sposta giù">↓</button></td>
         <td class="az"><button class="piccolo" data-op-del="${i}" ${operatori.length > 1 ? '' : 'disabled'} title="Togli">✕</button></td></tr>`)}</tbody></table>
       <button class="piccolo" id="op-nuovo">+ Aggiungi operatore</button>
+    </div>
+    <div class="scheda">
+      <h2>Registro trebbie</h2>
+      <label style="max-width:320px">Destinazione di default<input id="trebbie-dest" value="${destTrebbie}" placeholder="es. FABIO VALERIO"></label>
+      <p class="totale">Chi ritira le trebbie: va da solo su ogni cotta del <a href="#/trebbie">registro trebbie</a> (si può cambiare riga per riga).</p>
     </div>
     <div class="scheda">
       <h2>Fermentatori</h2>
@@ -1700,6 +1708,10 @@ async function vistaImpostazioni() {
   };
   const salvaOperatori = async nomi => { await db.salva({ id: ID_OPERATORI, tipo: 'impostazione', nomi: nomi.map(x => x.trim()).filter(Boolean) }); vistaImpostazioni(); };
   const $op = document.getElementById('operatori');
+  document.getElementById('trebbie-dest').onchange = async e => {
+    await db.salva({ id: ID_TREBBIE, tipo: 'impostazione', destinatario: e.target.value.trim() });
+    toast('Destinazione delle trebbie salvata');
+  };
   $op.onchange = e => {
     const i = e.target.dataset.op;
     if (i === undefined) return;
@@ -1914,7 +1926,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button, .tr-anni button, #tr-excel';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

@@ -9,6 +9,8 @@ import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { interroga } from './sync.js';
 import { CELLE, fmt } from './temperature.js';
 import { vuotiDelleCotte } from './contenitori.js';
+import { ID_TREBBIE, destinatarioDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
+import { creaXlsx } from './xlsx.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -46,6 +48,7 @@ export async function vistaHaccp() {
       ${voce('#/pulizie', '🧽', 'Pulizie e sanificazioni', 'CIP di fermentatori e linee: data, fasi, prodotti e chi l\'ha fatta. Avviso se un FV si riempie senza pulizia.',
         sporchi ? html`<span class="haccp-badge urgente">${sporchi} FV da pulire</span>` : '')}
       ${voce('#/temperature-celle', '🌡️', 'Temperature celle frigo', 'Registro giornaliero automatico di Cella 1, Cella 2 e frigo luppoli dalle sonde: minima, massima, media ed esito. Da stampare.')}
+      ${voce('#/trebbie', '🌾', 'Registro trebbie', 'Sottoprodotto di ogni cotta: data, numero cotta, kg (dai malti della scheda) e destinazione. Da stampare o scaricare in Excel.')}
       ${voce('#/scadenzario', '🗓️', 'Scadenzario HACCP', 'Analisi dell\'acqua, tarature, manutenzioni, disinfestazione e formazione, con avviso in Home.',
         scadute || vicine ? html`<span class="haccp-badge ${scadute ? 'urgente' : ''}">${[scadute && `${scadute} ${scadute === 1 ? 'scaduta' : 'scadute'}`, vicine && `${vicine} in scadenza`].filter(Boolean).join(' · ')}</span>` : '')}
     </div>`;
@@ -416,4 +419,98 @@ export async function vistaTemperatureCelle() {
     u.toast('Nota salvata');
     vistaTemperatureCelle();
   });
+}
+
+// ---------- registro trebbie ----------
+const trb = { anno: '' };
+export async function vistaTrebbie() {
+  const { html } = u;
+  const [trebbie, imp] = await Promise.all([u.db.tutti('trebbia'), u.db.leggi(ID_TREBBIE)]);
+  const destinatario = destinatarioDa(imp);
+  const tutte = registroTrebbie(u.stato.cotte, trebbie, destinatario, u.oggiISO());
+  const anni = [...new Set(tutte.map(r => r.data.slice(0, 4)))].sort().reverse();
+  if (!trb.anno || !anni.includes(trb.anno)) trb.anno = anni[0] || u.oggiISO().slice(0, 4);
+  const righe = tutte.filter(r => r.data.startsWith(trb.anno));
+  const tot = totaliTrebbie(righe);
+  const destinatari = [...new Set([destinatario, ...trebbie.map(t => t.destinatario).filter(Boolean)])];
+  const kg = v => (v == null ? '' : `${u.numIT(v, v % 1 ? 1 : 0)} kg`);
+  u.$app.innerHTML = html`
+    <div class="barra">
+      <a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Registro trebbie</h1><span class="spazio"></span>
+      <button id="tr-excel">Scarica Excel</button>
+      <button class="primario" id="stampa">Stampa / Salva PDF</button>
+    </div>
+    <div class="barra non-stampa">
+      <div class="segmenti tr-anni">${(anni.length ? anni : [trb.anno]).map(a => html`<button data-anno="${a}" class="${a === trb.anno ? 'attivo' : ''}">${a}</button>`)}</div>
+    </div>
+    <p class="totale non-stampa">Si compila da solo con ogni cotta fatta: kg = kg di malti della scheda cotta, destinazione = quella di <a href="#/impostazioni">Impostazioni</a> (${destinatario}).
+      Se cambi kg, destinazione o note di una riga resta la tua correzione (↺ torna al valore automatico).</p>
+    <div class="home-kpi non-stampa">
+      <div class="w-kpi" style="--w:var(--ok)"><span>Trebbie ${trb.anno}</span><b>${u.numIT(tot.kg, 0)} kg</b><small>${tot.cotte} ${tot.cotte === 1 ? 'cotta' : 'cotte'}</small></div>
+      ${tot.perDestinatario.length < 2 ? '' : tot.perDestinatario.map(x => html`<div class="w-kpi" style="--w:var(--s-pianificata)"><span>${x.destinatario}</span><b>${u.numIT(x.kg, 0)} kg</b><small>${x.cotte} ${x.cotte === 1 ? 'cotta' : 'cotte'}</small></div>`)}
+    </div>
+    <div class="s6">
+      ${testa('REGISTRO TREBBIE', `Anno ${trb.anno} · totale ${u.numIT(tot.kg, 0)} kg in ${tot.cotte} ${tot.cotte === 1 ? 'cotta' : 'cotte'}`)}
+      ${righe.length ? html`<div class="scroll-x"><table class="tab-s6 tab-trebbie">
+        <thead><tr><th>Data</th><th class="n">Numero cotta</th><th>Birra</th><th class="n">Qtà</th><th>Destinazione</th><th>Note</th><th class="non-stampa"></th></tr></thead>
+        <tbody>${righe.map(r => html`<tr>
+          <td>${u.dataIT(r.data)}</td>
+          <td class="n"><a href="#/cotta/${encodeURIComponent(r.cotta.id)}">${r.numero}</a></td>
+          <td>${r.birra}</td>
+          <td class="n"><input class="s6-lotto tr-kg" data-tr="${r.cotta.id}|kg" type="number" min="0" step="any" inputmode="decimal" value="${r.kg ?? ''}" placeholder="manca" title="${r.kgMalti ? `Malti della cotta: ${kg(r.kgMalti)}` : 'Nella scheda cotta non ci sono malti'}"></td>
+          <td><input class="s6-lotto" data-tr="${r.cotta.id}|destinatario" list="tr-dest" value="${r.destinatario}"></td>
+          <td><input class="s6-lotto" data-tr="${r.cotta.id}|note" value="${r.note}" placeholder=""></td>
+          <td class="az non-stampa">${r.corretta ? html`<button class="piccolo solo-editori" data-tr-auto="${r.cotta.id}" title="Torna ai valori automatici">↺</button>` : ''}</td></tr>`)}</tbody>
+        <tfoot><tr class="c"><td colspan="3">Totale ${trb.anno}</td><td class="n">${kg(tot.kg)}</td><td colspan="3"></td></tr></tfoot></table></div>`
+      : html`<p class="vuoto">Nessuna cotta fatta nel ${trb.anno}.</p>`}
+      <datalist id="tr-dest">${destinatari.map(d => html`<option value="${d}">`)}</datalist>
+    </div>`;
+
+  const riga = id => righe.find(r => r.cotta.id === id);
+  u.$app.onchange = async e => {
+    const t = e.target;
+    if (!t.dataset.tr) return;
+    const [id, campo] = t.dataset.tr.split('|');
+    const r = riga(id);
+    const prima = (await u.db.leggi(idTrebbia(id))) || {};
+    const { aggiornato: _a, ...rec } = prima.eliminato ? {} : prima;
+    const nuovo = { kg: r.kg, destinatario: r.destinatario, note: r.note, ...rec, id: idTrebbia(id), tipo: 'trebbia', cottaId: id };
+    nuovo[campo] = campo === 'kg' ? (t.value === '' ? null : Math.max(0, Number(t.value) || 0)) : t.value.trim();
+    if (campo === 'destinatario' && !nuovo.destinatario) nuovo.destinatario = destinatario;
+    await u.db.salva(nuovo);
+    u.toast('Registro trebbie aggiornato');
+    vistaTrebbie();
+  };
+  u.$app.onclick = async e => {
+    const t = e.target;
+    const a = t.closest('[data-anno]');
+    if (a) { trb.anno = a.dataset.anno; return vistaTrebbie(); }
+    const auto = t.closest('[data-tr-auto]');
+    if (auto) { await u.db.elimina(idTrebbia(auto.dataset.trAuto)); u.toast('Riga tornata ai valori automatici'); return vistaTrebbie(); }
+    if (t.id === 'stampa') return stampa(`Registro trebbie ${trb.anno}`);
+    if (t.id === 'tr-excel') return excelTrebbie(tutte);
+  };
+}
+
+function excelTrebbie(righe) {
+  const testa = ['Data', 'Numero cotta', 'Lotto', 'Birra', 'Qtà (kg)', 'Destinazione', 'Note'].map(v => ({ v, grassetto: true, sfondo: 'EEEEEE' }));
+  const anni = [...new Set(righe.map(r => r.data.slice(0, 4)))].sort().reverse();
+  const fogli = anni.map(a => {
+    const del = righe.filter(r => r.data.startsWith(a));
+    const tot = totaliTrebbie(del);
+    return {
+      nome: a,
+      righe: [testa, ...del.map(r => [u.dataIT(r.data), r.cotta.numero ?? '', r.cotta.lotto || '', r.birra, r.kg, r.destinatario, r.note]),
+        [{ v: 'Totale', grassetto: true }, '', '', '', { v: Math.round(tot.kg * 10) / 10, grassetto: true }, '', ''],
+        ...tot.perDestinatario.map(x => ['', '', '', '', Math.round(x.kg * 10) / 10, x.destinatario, `${x.cotte} cotte`])],
+      larghezze: [11, 13, 10, 28, 10, 24, 30], blocca: { righe: 1 },
+    };
+  });
+  if (!fogli.length) return u.toast('Nessuna cotta nel registro');
+  const blob = creaXlsx(fogli);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `registro-trebbie-${u.oggiISO()}.xlsx`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }

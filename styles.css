@@ -1068,3 +1068,8 @@ body.ordina { background: var(--bg); }
 .cn-formati { border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; }
 .cn-formati legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
 @media (max-width: 760px) { .cs-kpi { grid-template-columns: 1fr 1fr; gap: 8px; } .cs-kpi .w-kpi { padding: 10px 12px; } .cs-kpi .w-kpi b { font-size: 1.25rem; } }
+
+/* registro trebbie */
+.tab-trebbie input.tr-kg { width: 90px; min-width: 70px; text-align: right; }
+.tab-trebbie td.n:has(.tr-kg) { width: 1%; }
+@media print { .tab-trebbie input.tr-kg::-webkit-inner-spin-button { display: none; } .s6 .scroll-x { overflow: visible; } }
