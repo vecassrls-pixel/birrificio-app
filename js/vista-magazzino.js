@@ -8,7 +8,8 @@ import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from '.
 import {
   CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi,
 } from './magazzino.js';
-import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
+import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione, incrociaBolla } from './bolla-pdf.js';
+import { trovaContenitore } from './contenitori.js';
 import { chiediAi, fotoBase64 } from './ai.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
@@ -56,7 +57,7 @@ export async function vistaMagazzino() {
   const scollegati = daCollegare(dati.cotte, dati.articoli, inizioControllo(dati.inventari)).slice(0, 40);
   const bolle = [...dati.bolle].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 8);
   // fatture dei fornitori arrivate con l'import automatico notturno (netlify/lib/automazioni.mjs)
-  const acquisti = (await u.db.tutti('importsospeso')).filter(x => x.fonte === 'acquisti').sort((a, b) => String(b.doc?.data).localeCompare(String(a.doc?.data)));
+  const acquisti = (await u.db.tutti('importsospeso')).filter(x => x.fonte === 'acquisti' && !x.mpFatte).sort((a, b) => String(b.doc?.data).localeCompare(String(a.doc?.data)));
 
   u.$app.innerHTML = html`
     <div class="barra">
@@ -429,14 +430,34 @@ export async function vistaBolla(id) {
   if (id !== 'nuova' && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Bolla non trovata. <a href="#/materie-prime">Torna alle materie prime</a></p>`; return; }
   const bozza = id === 'nuova' ? bozzaBolla : null;
   bozzaBolla = null;
+  // righe della fattura che sono lattine o fusti vuoti: vanno in Contenitori, non in magazzino
+  const contenitori = bozza?.sospesoId ? await u.db.tutti('contenitore') : [];
+  const vuoto = r => { const t = trovaContenitore(r, contenitori); return !!t && !t.ignora; };
   const b = esistente ? JSON.parse(JSON.stringify(esistente))
-    : bozza ? { tipo: 'bolla', data: bozza.data || u.oggiISO(), fornitore: bozza.fornitore || '', numero: bozza.numero || '', righe: proponiRighe(bozza, dati.articoli).map(r => ({ ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) })), ...(bozza.rifEsterno ? { rifEsterno: bozza.rifEsterno } : {}) }
+    : bozza ? { tipo: 'bolla', data: bozza.data || u.oggiISO(), fornitore: bozza.fornitore || '', numero: bozza.numero || '', righe: proponiRighe(bozza, dati.articoli).map((r, i) => (vuoto(bozza.righe[i]) ? { ...r, includi: false, nota: 'vuoto: si carica in Contenitori' } : { ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) })), ...(bozza.rifEsterno ? { rifEsterno: bozza.rifEsterno } : {}) }
     : { tipo: 'bolla', data: u.oggiISO(), fornitore: '', numero: '', righe: [{ nome: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
   const perId = new Map(dati.articoli.map(a => [a.id, a]));
   for (const r of b.righe) if (r.articoloId && !r.nome) r.nome = perId.get(r.articoloId)?.nome || '';
   const fornitori = [...new Set(dati.bolle.map(x => x.fornitore).filter(Boolean))].sort();
   let pdfStato = '';
   const daPdf = () => b.righe.some(r => r.descrizione);
+  // bolla nuova aperta da una fattura: il PDF o la foto della bolla non sostituiscono le righe, le incrociano
+  const daFattura = !esistente && !!bozza?.rifEsterno;
+  const noto = r => r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome);
+  const applica = (ddt, lette, origine) => {
+    if (!daFattura) {
+      b.data = ddt.data || b.data;
+      b.numero = ddt.numero || b.numero;
+      b.fornitore = ddt.fornitore || b.fornitore;
+      b.righe = lette;
+      return `${origine}: ${lette.filter(r => r.includi).length} righe da caricare, ${lette.filter(r => !r.includi).length} escluse (spese, imballi…).`;
+    }
+    if (ddt.numero) b.ddt = ddt.numero;
+    const { righe, avvisi } = incrociaBolla(b.righe, lette.filter(noto));
+    b.righe = righe;
+    const lotti = righe.filter(r => r.includi !== false && r.lotto).length;
+    return `${origine}: lotti e scadenze presi dalla bolla (${lotti} righe con lotto)${avvisi ? ` · ${avvisi} da controllare, segnate con ⚠` : ' · quantità uguali alla fattura'}.`;
+  };
 
   async function leggiPdf(file) {
     pdfStato = 'Leggo il PDF…';
@@ -444,12 +465,7 @@ export async function vistaBolla(id) {
     try {
       const ddt = leggiDdt(await estraiTesto(file));
       if (!ddt.righe.length) throw new Error('Non ho trovato righe articolo: il PDF è una scansione o ha un formato che non conosco. Inserisci le righe a mano.');
-      b.data = ddt.data || b.data;
-      b.numero = ddt.numero || b.numero;
-      b.fornitore = ddt.fornitore || b.fornitore;
-      b.righe = proponiRighe(ddt, dati.articoli);
-      const n = b.righe.filter(r => r.includi).length;
-      pdfStato = `${file.name}: ${n} righe da caricare, ${b.righe.length - n} escluse (spese, imballi…).`;
+      pdfStato = applica(ddt, proponiRighe(ddt, dati.articoli), file.name);
     } catch (ex) {
       // scansione o formato sconosciuto: ci prova Claude
       return leggiAi(file, `${ex.message.split(':')[0]}: lo faccio leggere all'AI…`);
@@ -464,13 +480,9 @@ export async function vistaBolla(id) {
     try {
       const { json: ddt } = await chiediAi({ azione: 'bolla', ...(await fotoBase64(file)) });
       if (!ddt?.righe?.length) throw new Error('Non ho trovato righe articolo nella foto: rifalla più dritta e illuminata, o inserisci le righe a mano.');
-      b.data = /^\d{4}-\d{2}-\d{2}$/.test(ddt.data) ? ddt.data : b.data;
-      b.numero = ddt.numero || b.numero;
-      b.fornitore = ddt.fornitore || b.fornitore;
       const righe = ddt.righe.map(r => ({ ...r, prezzo: r.prezzo ?? undefined, scadenza: /^\d{4}-\d{2}-\d{2}$/.test(r.scadenza) ? r.scadenza : '' }));
-      b.righe = proponiRighe({ ...ddt, righe }, dati.articoli).map(r => ({ ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) }));
-      const n = b.righe.filter(r => r.includi).length;
-      pdfStato = `Letta dall'AI: ${n} righe da caricare, ${b.righe.length - n} escluse. Controlla quantità e lotti prima di salvare.`;
+      const lette = proponiRighe({ ...ddt, righe }, dati.articoli).map(r => ({ ...r, includi: noto(r) }));
+      pdfStato = `${applica({ ...ddt, data: /^\d{4}-\d{2}-\d{2}$/.test(ddt.data) ? ddt.data : '' }, lette, 'Letta dall\'AI')} Controlla quantità e lotti prima di salvare.`;
     } catch (ex) {
       pdfStato = ex.message;
     }
@@ -484,6 +496,7 @@ export async function vistaBolla(id) {
       <div class="scheda">
         <h1 style="margin-top:0">${esistente ? 'Bolla di carico' : 'Nuova bolla di carico'}</h1>
         ${esistente ? '' : html`<div class="barra">
+          ${daFattura ? html`<span class="totale" style="margin:0;flex-basis:100%">Righe dalla fattura di Fatture in Cloud, senza lotti e scadenze: leggi il PDF o la foto della bolla (DDT) e li prendo da lì, controllando che le quantità siano le stesse.</span>` : ''}
           <label class="btn primario">📄 Leggi il PDF della bolla<input type="file" id="pdf" accept="application/pdf,.pdf" hidden></label>
           <label class="btn" title="Fotografa la bolla di carta: la legge Claude">📷 Foto della bolla<input type="file" id="foto-bolla" accept="image/*" capture="environment" hidden></label>
           <span class="totale" id="pdf-stato" style="margin:0">${pdfStato}</span>
@@ -516,7 +529,7 @@ export async function vistaBolla(id) {
             const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
             return html`<tr class="${r.includi === false ? 'escluso' : ''}">
               ${daPdf() ? html`<td><input type="checkbox" data-r="${i}.includi" ${r.includi === false ? '' : 'checked'} style="width:auto;min-height:auto"></td>` : ''}
-              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px">${r.descrizione ? html`<div class="totale" style="margin:2px 0 0">${r.descrizione}${art || r.includi === false ? '' : ' · articolo nuovo'}</div>` : ''}</td>
+              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px">${r.descrizione ? html`<div class="totale" style="margin:2px 0 0">${r.descrizione}${art || r.includi === false ? '' : ' · articolo nuovo'}</div>` : ''}${r.nota ? html`<div class="totale nota-riga">⚠ ${r.nota}</div>` : ''}</td>
               <td>${art ? html`<span class="totale">${CATEGORIE[art.categoria]}</span>` : html`<select data-r="${i}.categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (r.categoria || 'malto') ? 'selected' : ''}>${v}</option>`)}</select>`}</td>
               <td><input data-r="${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
               <td><select data-r="${i}.unita">${UNITA.map(x => html`<option ${x === (r.unita || art?.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></td>
@@ -584,7 +597,15 @@ export async function vistaBolla(id) {
       });
       if (nuovi.length || aggiornati.size) await u.db.salvaMolti([...nuovi, ...aggiornati.values()].map(({ aggiornato: _a, ...a }) => a));
       await u.db.salva({ ...b, id: b.id || u.db.nuovoId('bolla'), righe: out });
-      if (bozza?.sospesoId) await u.db.elimina(bozza.sospesoId);
+      if (bozza?.sospesoId) {
+        // la fattura resta per Contenitori se ha lattine o fusti non ancora caricati là
+        const rec = await u.db.leggi(bozza.sospesoId);
+        const vuoti = (rec?.doc?.righe || []).filter(vuoto);
+        if (rec && !rec.eliminato && !rec.vuotiVisti && vuoti.length) {
+          const { aggiornato: _a, ...daSalvare } = rec;
+          await u.db.salva({ ...daSalvare, mpFatte: true, doc: { ...rec.doc, righe: vuoti } });
+        } else await u.db.elimina(bozza.sospesoId);
+      }
       u.toast(`Bolla salvata${nuovi.length ? ` · ${nuovi.length} articoli nuovi` : ''}`);
       location.hash = '#/materie-prime';
     }

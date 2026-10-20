@@ -205,3 +205,34 @@ export function proponiRighe(ddt, articoli) {
   });
 }
 
+
+// Fattura d'acquisto + bolla (DDT) dello stesso arrivo: dalla bolla si prendono lotti e scadenze
+// (la fattura non li ha) e si segnalano le differenze di quantità. Entrambe già passate da proponiRighe.
+// Due righe di bolla per la stessa riga di fattura (due lotti): la riga si divide.
+export function incrociaBolla(fattura, bolla) {
+  const norm = s => String(s || '').replace(/\s+/g, '').toUpperCase();
+  const uguali = (f, d) => (f.codice && d.codice && norm(f.codice) === norm(d.codice))
+    || (f.nome && d.nome && chiaveNome(f.nome) === chiaveNome(d.nome))
+    || (f.descrizione && d.descrizione && compatta(f.descrizione) === compatta(d.descrizione));
+  const gruppi = fattura.map(() => []);
+  const sole = [];
+  for (const d of bolla) {
+    // prima per codice, poi per nome o descrizione
+    const i = fattura.findIndex(f => f.codice && d.codice && norm(f.codice) === norm(d.codice));
+    const j = i >= 0 ? i : fattura.findIndex(f => uguali(f, d));
+    if (j >= 0) gruppi[j].push(d); else sole.push(d);
+  }
+  const fmt = n => String(Math.round(n * 1000) / 1000).replace('.', ',');
+  const righe = fattura.flatMap((f, i) => {
+    const g = gruppi[i];
+    if (!g.length) return [{ ...f, nota: f.includi === false ? f.nota || '' : 'non è nella bolla' }];
+    const tot = g.reduce((t, d) => t + (Number(d.qta) || 0), 0);
+    const diversa = g.every(d => d.unita === f.unita) && Math.abs(tot - Number(f.qta)) > 1e-6;
+    const nota = diversa ? `in bolla ${fmt(tot)} ${f.unita}, in fattura ${fmt(Number(f.qta))}` : '';
+    if (g.length === 1) return [{ ...f, lotto: g[0].lotto || f.lotto || '', scadenza: g[0].scadenza || f.scadenza || '', nota }];
+    return g.map((d, k) => ({ ...f, qta: d.qta, unita: d.unita, lotto: d.lotto || '', scadenza: d.scadenza || '', nota: k ? '' : nota }));
+  });
+  for (const d of sole) righe.push({ ...d, nota: 'solo nella bolla, non in fattura' });
+  // la nota delle righe escluse (es. vuoti per Contenitori) non è una differenza tra fattura e bolla
+  return { righe, avvisi: righe.filter(r => r.nota && (r.includi !== false || r.nota.startsWith('solo nella bolla'))).length };
+}

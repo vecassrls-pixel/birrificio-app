@@ -125,7 +125,8 @@ export async function vistaContenitori() {
     const f = d.fatture.find(x => x.x.id === (b.dataset.fatt || b.dataset.fattNo));
     if (b.dataset.fattNo) {
       const { aggiornato: _a, ...rec } = f.x;
-      await u.db.salva({ ...rec, vuotiVisti: true });
+      // materie prime già caricate dalla stessa fattura: non resta niente da fare
+      if (rec.mpFatte) await u.db.elimina(rec.id); else await u.db.salva({ ...rec, vuotiVisti: true });
       return vistaContenitori();
     }
     dialogFattura(d, f);
@@ -185,7 +186,7 @@ function dialogFattura(d, f) {
     const caricate = new Set(vuoti.map(r => chiaveRiga(r)));
     const resto = f.x.doc.righe.filter(r => !caricate.has(chiaveRiga(r)));
     const { aggiornato: _a, ...rec } = f.x;
-    if (resto.length) await u.db.salva({ ...rec, vuotiVisti: true, doc: { ...rec.doc, righe: resto } });
+    if (resto.length && !rec.mpFatte) await u.db.salva({ ...rec, vuotiVisti: true, doc: { ...rec.doc, righe: resto } });
     else await u.db.elimina(f.x.id);
     u.toast(vuoti.length ? `Caricati ${vuoti.length === 1 ? '1 contenitore' : `${vuoti.length} contenitori`} da ${f.x.doc.fornitore || 'fattura'}` : 'Fattura segnata: niente vuoti');
     vistaContenitori();
