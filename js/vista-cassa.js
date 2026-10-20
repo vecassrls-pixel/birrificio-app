@@ -1,5 +1,5 @@
 // Prima nota di cassa (#/cassa): contanti in entrata e in uscita, saldo, conte della cassa,
-// soldi da sistemare (sospesi), incassi da registrare per gli scarichi taproom/spaccio/eventi,
+// soldi in sospeso (sospesi), incassi da registrare per gli scarichi taproom/spaccio/eventi,
 // Excel e import da "Cassa Vecas".
 
 import { CATEGORIE_CASSA, categoriaCassa, cassaDaExcel, importo, registroCassa, saldoCassa, sospesiAperti } from './cassa.js';
@@ -42,12 +42,12 @@ export async function vistaCassa() {
       <div class="w-kpi" style="--w:var(--ok)"><span>In cassa oggi</span><b>${euro(saldo)}</b><small>${conta ? `contata il ${u.dataIT(conta.data)}: ${euro(conta.saldo)}` : 'mai contata'}</small></div>
       <div class="w-kpi" style="--w:var(--s-pianificata)"><span>Entrate ${filtro.anno}</span><b>${euro(entrate)}</b><small>${delAnno.filter(m => m.entrata).length} movimenti</small></div>
       <div class="w-kpi" style="--w:var(--warn)"><span>Uscite ${filtro.anno}</span><b>${euro(uscite)}</b><small>${perCat.filter(x => x.v < 0).sort((a, b) => a.v - b.v).slice(0, 2).map(x => `${CATEGORIE_CASSA[x.k]} ${euro(-x.v)}`).join(' · ')}</small></div>
-      ${sosp.aperti.length ? html`<button type="button" class="w-kpi w-kpi-btn st-libero" id="cs-vai-sosp" style="--w:var(--s-tank)"><span>Da sistemare</span><b>${sosp.aperti.length}</b><small>${[sosp.daIncassare && `da incassare ${euro(sosp.daIncassare)}`, sosp.daPagare && `da pagare ${euro(sosp.daPagare)}`, sosp.daCapire && `da capire ${euro(sosp.daCapire)}`].filter(Boolean).join(' · ')}</small></button>` : ''}
+      ${sosp.aperti.length ? html`<button type="button" class="w-kpi w-kpi-btn st-libero" id="cs-vai-sosp" style="--w:var(--s-tank)"><span>In sospeso</span><b>${sosp.aperti.length}</b><small>${[sosp.daIncassare && `da incassare ${euro(sosp.daIncassare)}`, sosp.daPagare && `da pagare ${euro(sosp.daPagare)}`, sosp.daCapire && `da capire ${euro(sosp.daCapire)}`].filter(Boolean).join(' · ')}</small></button>` : ''}
     </div>
 
     <form class="scheda solo-editori" id="cs-nuovo">
       <h2 style="margin-top:0">Nuovo movimento</h2>
-      <div class="segmenti" id="cs-verso"><button type="button" data-v="entrata" class="attivo">+ Entrata</button><button type="button" data-v="uscita">− Uscita</button><button type="button" data-v="sospeso" title="Soldi che qualcuno ci deve o che dobbiamo dare: non toccano la cassa finché non li segni incassati o pagati">⏳ Da sistemare</button></div>
+      <div class="segmenti" id="cs-verso"><button type="button" data-v="entrata" class="attivo">+ Entrata</button><button type="button" data-v="uscita">− Uscita</button><button type="button" data-v="sospeso" title="Soldi che qualcuno ci deve o che dobbiamo dare: non toccano la cassa finché non li segni incassati o pagati">⏳ In sospeso</button></div>
       <div class="griglia" style="margin-top:8px">
         <label>Data <input type="date" name="data" value="${nuovo.data}" required></label>
         <label style="grid-column:span 2">Descrizione <input name="descrizione" list="dl-cassa" required placeholder="es. taproom, Adua, versato BPPM"></label>
@@ -61,7 +61,7 @@ export async function vistaCassa() {
     </form>
 
     ${sosp.aperti.length ? html`<div class="scheda" id="cs-sospesi">
-      <h2>Da sistemare <span class="totale">non toccano la cassa finché non li segni incassati o pagati</span></h2>
+      <h2>In sospeso <span class="totale">non toccano la cassa finché non li segni incassati o pagati</span></h2>
       <ul class="w-lista">${sosp.aperti.map(x => html`<li class="acq-riga"><span class="w-testo"><b>${x.descrizione} · ${euro(x.importo)}</b>
         <small>dal ${u.dataIT(x.data)} · ${x.verso === 'entrata' ? 'ce li devono' : x.verso === 'uscita' ? 'li dobbiamo' : 'da capire chi deve a chi'}${x.note ? ` · ${x.note}` : ''}</small></span>
         <span class="solo-editori" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
@@ -175,7 +175,7 @@ export async function vistaCassa() {
     const descrizione = form.descrizione.value.trim();
     if (verso === 'sospeso') {
       await u.db.salva({ id: u.db.nuovoId('sospesocassa'), tipo: 'sospesocassa', data: form.data.value, descrizione, importo: val, verso: form.chi.value, note: '', chiuso: null });
-      u.toast(`${euro(val)} da sistemare: ${form.chi.value === 'entrata' ? 'da incassare' : 'da pagare'}`);
+      u.toast(`${euro(val)} in sospeso: ${form.chi.value === 'entrata' ? 'da incassare' : 'da pagare'}`);
       return vistaCassa();
     }
     await u.db.salva({
@@ -237,8 +237,8 @@ async function importaExcel(file, esistenti) {
   const d = document.createElement('dialog');
   d.innerHTML = html`<form method="dialog">
     <h2 style="margin-top:0">Importa la cassa da Excel</h2>
-    <p class="totale">Scegli i fogli da importare. Il "RIPORTO" di ogni anno diventa una conta della cassa al 31/12 dell'anno prima, così il saldo riparte dal valore del foglio. Le righe con solo "da pagare" vanno in "Da sistemare". Se reimporti un foglio, i movimenti importati prima da quel foglio vengono sostituiti.</p>
-    ${fogli.map((f, i) => html`<label class="spunta"><input type="checkbox" name="f${i}" ${f.conta ? 'checked' : ''}> <span><b>${f.nome}</b> · ${f.movimenti.length} movimenti dal ${u.dataIT(f.movimenti[0].data)} al ${u.dataIT(f.movimenti.at(-1).data)}${f.conta ? ` · riporto ${euro(f.conta.saldo)}` : ' · senza riporto e con date mancanti'}${f.sospesi.length ? ` · ${f.sospesi.length} da sistemare` : ''}</span></label>`)}
+    <p class="totale">Scegli i fogli da importare. Il "RIPORTO" di ogni anno diventa una conta della cassa al 31/12 dell'anno prima, così il saldo riparte dal valore del foglio. Le righe con solo "da pagare" vanno in "In sospeso". Se reimporti un foglio, i movimenti importati prima da quel foglio vengono sostituiti.</p>
+    ${fogli.map((f, i) => html`<label class="spunta"><input type="checkbox" name="f${i}" ${f.conta ? 'checked' : ''}> <span><b>${f.nome}</b> · ${f.movimenti.length} movimenti dal ${u.dataIT(f.movimenti[0].data)} al ${u.dataIT(f.movimenti.at(-1).data)}${f.conta ? ` · riporto ${euro(f.conta.saldo)}` : ' · senza riporto e con date mancanti'}${f.sospesi.length ? ` · ${f.sospesi.length} in sospeso` : ''}</span></label>`)}
     <div class="barra"><span class="spazio"></span><button value="no" formnovalidate>Annulla</button><button class="primario" value="si">Importa</button></div>
   </form>`.s;
   document.body.appendChild(d);
