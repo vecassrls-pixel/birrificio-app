@@ -174,11 +174,11 @@ export function fvDaPulire(stati, pulizie, oggi = oggiISO()) {
     .sort((a, b) => (a.giorni ?? 999) - (b.giorni ?? 999));
 }
 
-// ---------- schede ISSAN: monitoraggio insetti e roditori, esecuzione pulizie ambienti ----------
-// Moduli del consulente HACCP (ISSAN SRL), annata da marzo a febbraio. Si compilano da soli e si correggono:
+// ---------- schede HACCP: monitoraggio insetti e roditori, esecuzione pulizie ambienti ----------
+// Come i moduli cartacei, annata da marzo a febbraio. Si compilano da soli e si correggono:
 //   infestanti       { mese: 'AAAA-MM', voci: { chiave: 'assenza'|'presenza' }, chi, note }  (id 'infestanti-AAAA-MM')
 //   puliziaambiente  { data, fatta: bool, chi }  (id 'pamb-AAAA-MM-GG'; fatta false = riga automatica tolta)
-export const MODULO_ISSAN = { ditta: 'VECAS DI ROMAIN VERRECCHIA', consulente: 'ISSAN SRL', dottoressa: 'Dott.ssa Mariagrazia Mercuri', rev: 'Rev. 01', revData: '13/03/2025' };
+export const DITTA_MODULI = 'VECAS DI ROMAIN VERRECCHIA';
 export const VOCI_INFESTANTI = [
   ['peli', 'Peli o piume'], ['rasure', 'Rasure o segni di roditori'], ['insettiVivi', 'Insetti vivi'], ['insettiMorti', 'Insetti morti'],
   ['roditori', 'Roditori'], ['contenitori', 'Contenitori danneggiati da insetti o roditori'], ['feci', 'Feci o altri escrementi di roditori'],

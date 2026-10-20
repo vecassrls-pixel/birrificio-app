@@ -1111,12 +1111,10 @@ body.ordina { background: var(--bg); }
 .tab-pulizie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
 @media print { .tab-pulizie select.s6-lotto { border: none; } }
 
-/* schede ISSAN (insetti e roditori, esecuzione pulizie): come il modulo cartaceo del consulente */
+/* schede HACCP insetti e roditori, esecuzione pulizie: come i moduli cartacei */
 .iss-foglio { background: #fff; color: #000; padding: 16px; border-radius: 8px; margin-bottom: 12px; }
-.iss-testa { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: .85rem; }
+.iss-testa { font-size: .85rem; }
 .iss-testa i { display: block; }
-.iss-testa .iss-c { text-align: center; }
-.iss-testa .iss-d { text-align: right; }
 .iss-titolo { text-align: center; font-family: "Times New Roman", Times, serif; font-size: 1.15rem; margin: 14px 0 12px; color: #000; }
 .iss-titolo small { font-size: .85em; font-weight: 600; }
 .iss-tab { width: 100%; border-collapse: collapse; }

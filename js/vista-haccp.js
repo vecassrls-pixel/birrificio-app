@@ -11,7 +11,7 @@ import { CELLE, fmt } from './temperature.js';
 import { vuotiDelleCotte } from './contenitori.js';
 import { ID_TREBBIE, destinatarioDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
 import { creaXlsx } from './xlsx.js';
-import { MODULO_ISSAN, VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
+import { DITTA_MODULI, VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -51,8 +51,8 @@ export async function vistaHaccp() {
         sporchi ? html`<span class="haccp-badge urgente">${sporchi} FV da pulire</span>` : '')}
       ${voce('#/temperature-celle', '🌡️', 'Temperature celle frigo', 'Registro giornaliero automatico di Cella 1, Cella 2 e frigo luppoli dalle sonde: minima, massima, media ed esito. Da stampare.')}
       ${voce('#/trebbie', '🌾', 'Registro trebbie', 'Sottoprodotto di ogni cotta: data, numero cotta, kg (dai malti della scheda) e destinazione. Da stampare o scaricare in Excel.')}
-      ${voce('#/infestanti', '🐭', 'Monitoraggio insetti e roditori', 'Scheda mensile ISSAN: si compila da sola con tutto "Assenza" e l\'operatore; segna "Presenza" se trovi qualcosa. Da stampare.')}
-      ${voce('#/pulizie-ambienti', '🧹', 'Esecuzione pulizie', 'Griglia ISSAN giorni × mesi (marzo-febbraio): "sì" e firma circa due volte al mese, da sola; tocca un giorno per aggiungere o togliere.')}
+      ${voce('#/infestanti', '🐭', 'Monitoraggio insetti e roditori', 'Scheda mensile: si compila da sola con tutto "Assenza" e l\'operatore; segna "Presenza" se trovi qualcosa. Da stampare.')}
+      ${voce('#/pulizie-ambienti', '🧹', 'Esecuzione pulizie', 'Griglia giorni × mesi (marzo-febbraio): "sì" e firma circa due volte al mese, da sola; tocca un giorno per aggiungere o togliere.')}
       ${voce('#/scadenzario', '🗓️', 'Scadenzario HACCP', 'Analisi dell\'acqua, tarature, manutenzioni, disinfestazione e formazione, con avviso in Home.',
         scadute || vicine ? html`<span class="haccp-badge ${scadute ? 'urgente' : ''}">${[scadute && `${scadute} ${scadute === 1 ? 'scaduta' : 'scadute'}`, vicine && `${vicine} in scadenza`].filter(Boolean).join(' · ')}</span>` : '')}
     </div>`;
@@ -546,11 +546,9 @@ function excelTrebbie(righe) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-// ---------- schede ISSAN: insetti e roditori, esecuzione pulizie ----------
+// ---------- schede HACCP: insetti e roditori, esecuzione pulizie ----------
 const issTesta = () => u.html`<div class="iss-testa">
-  <div><i>${MODULO_ISSAN.ditta}</i><i>Modulistica H.A.C.C.P.</i></div>
-  <div class="iss-c"><i>${MODULO_ISSAN.consulente}</i><i>${MODULO_ISSAN.dottoressa}</i></div>
-  <div class="iss-d">${MODULO_ISSAN.rev}<br>${MODULO_ISSAN.revData}</div></div>`;
+  <div><i>${DITTA_MODULI}</i><i>Modulistica H.A.C.C.P.</i></div></div>`;
 const annate = (oggi, salvate) => {
   const da = annataHaccp(`${INIZIO_SCHEDE}-01`), a = annataHaccp(oggi);
   const anni = new Set(salvate.map(annataHaccp));
