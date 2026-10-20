@@ -29,7 +29,7 @@ export async function vistaCassa() {
   const perCat = Object.keys(CATEGORIE_CASSA).map(k => ({ k, v: delAnno.filter(m => m.categoria === k).reduce((t, m) => t + importo(m), 0) })).filter(x => x.v);
   // scarichi di birra venduta a contanti (ultimi 14 giorni) senza incasso registrato
   const registrati = new Set(movimenti.filter(m => !m.eliminato).map(m => m.rifMovBirra).filter(Boolean));
-  const daIncassare = movBirra.filter(m => !m.eliminato && m.verso !== 'carico' && MOTIVI_INCASSO.includes(m.motivo) && m.data >= u.addGiorni(oggi, -14) && !registrati.has(m.id))
+  const daIncassare = movBirra.filter(m => !m.eliminato && m.verso !== 'carico' && MOTIVI_INCASSO.includes(m.motivo) && m.data >= u.addGiorni(oggi, -14) && !registrati.has(m.id) && !m.incassoScartato)
     .sort((a, b) => b.data.localeCompare(a.data));
   const descrizioni = [...new Set(movimenti.map(m => m.descrizione).filter(Boolean))].slice(-300);
   const nuovo = { data: oggi, verso: 'entrata' };
@@ -65,6 +65,7 @@ export async function vistaCassa() {
       <ul class="w-lista">${sosp.aperti.map(x => html`<li class="acq-riga"><span class="w-testo"><b>${x.descrizione} · ${euro(x.importo)}</b>
         <small>dal ${u.dataIT(x.data)} · ${x.verso === 'entrata' ? 'ce li devono' : x.verso === 'uscita' ? 'li dobbiamo' : 'da capire chi deve a chi'}${x.note ? ` · ${x.note}` : ''}</small></span>
         <span class="solo-editori" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          ${!x.verso ? html`<button class="piccolo" data-verso-sosp="${x.id}" data-v="entrata" title="Segna solo chi deve a chi, il sospeso resta aperto">Ce li devono</button><button class="piccolo" data-verso-sosp="${x.id}" data-v="uscita" title="Segna solo chi deve a chi, il sospeso resta aperto">Li dobbiamo</button>` : ''}
           ${x.verso !== 'uscita' ? html`<button class="piccolo" data-chiudi="${x.id}" data-come="entrata">Incassato</button>` : ''}
           ${x.verso !== 'entrata' ? html`<button class="piccolo" data-chiudi="${x.id}" data-come="uscita">Pagato</button>` : ''}
           <button class="piccolo" data-del-sosp="${x.id}" title="Elimina senza movimento di cassa">✕</button></span></li>`)}</ul>
@@ -74,7 +75,8 @@ export async function vistaCassa() {
       <h2>Incassi da registrare <span class="totale">scarichi di birra degli ultimi 14 giorni senza incasso in cassa</span></h2>
       <ul class="w-lista">${daIncassare.map(m => html`<li class="acq-riga"><span class="w-testo"><b>${nomeMotivo(m)} ${u.dataIT(m.data)}</b>${m.cliente ? ` · ${m.cliente}` : ''}${m.scontrinato === false ? ' · non scontrinato' : ''}
         <small>${(m.righe || []).map(r => { const p = daChiave(r.prodotto); return `${r.pezzi} × ${p.birra} ${p.litri} L`; }).join(' · ')}</small></span>
-        <button class="piccolo" data-incassa="${m.id}">Registra incasso</button></li>`)}</ul>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="piccolo" data-incassa="${m.id}">Registra incasso</button>
+        <button class="piccolo" data-scarta-inc="${m.id}" title="Togli dall'elenco senza registrare l'incasso (pagato in altro modo, omaggio…)">Scarta</button></span></li>`)}</ul>
     </div>` : ''}
 
     <div class="scheda">
@@ -121,6 +123,21 @@ export async function vistaCassa() {
       const { aggiornato: _a, ...rec } = x;
       await u.db.salva({ ...rec, chiuso: u.oggiISO(), rifMovCassa: mov.id });
       u.toast(entrata ? 'Incasso registrato' : 'Pagamento registrato');
+      return vistaCassa();
+    }
+    const vs = t.closest('[data-verso-sosp]');
+    if (vs) { // solo il verso, il sospeso resta aperto (Romain 2026-10-20)
+      const { aggiornato: _a, ...rec } = sosp.aperti.find(s => s.id === vs.dataset.versoSosp);
+      await u.db.salva({ ...rec, verso: vs.dataset.v });
+      return vistaCassa();
+    }
+    const sc = t.closest('[data-scarta-inc]');
+    if (sc) { // scarico senza incasso in cassa: non si propone più (Romain 2026-10-20)
+      const m = daIncassare.find(x => x.id === sc.dataset.scartaInc);
+      if (!(await u.chiedi(`${nomeMotivo(m)} ${u.dataIT(m.data)}: togliere dagli incassi da registrare senza registrare niente in cassa?`, 'Scarta'))) return;
+      const { aggiornato: _a, ...rec } = m;
+      await u.db.salva({ ...rec, incassoScartato: u.oggiISO() });
+      u.toast('Tolto dagli incassi da registrare');
       return vistaCassa();
     }
     const delS = t.closest('[data-del-sosp]');
