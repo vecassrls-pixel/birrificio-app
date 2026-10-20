@@ -292,12 +292,15 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
 }
 @media (min-width: 761px) { .solo-telefono { display: none !important; } }
 @media print {
-  @page { size: A4; margin: 12mm; }
+  /* margini dati dal contenuto (main), ripetuti su ogni pagina: restano anche con "Margini: nessuno"
+     o se la stampante non arriva al bordo; i fogli che hanno i loro margini (preventivo, lista birre) li tolgono */
+  @page { size: A4; margin: 0; }
   :root { color-scheme: light; }
   body { background: #fff !important; color: #000 !important; font-size: 11px; }
   .top, #app > .barra, .testa-scheda, .filtri-stato, details.legenda-box, button, .calc-hlt, .stato-salvataggio { display: none !important; }
   input[type="date"][value=""] { color: transparent !important; }
-  main { padding: 0 !important; max-width: none !important; }
+  main { padding: 12mm 13mm !important; max-width: none !important; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  main:has(.pv-foglio, .lista-clienti) { padding: 0 !important; }
   .scheda { border: none; padding: 0; margin: 0 0 10px; break-inside: avoid; background: none !important; box-shadow: none !important; }
   .riga-cotta { box-shadow: none; }
   .scroll-x { overflow: visible !important; }
@@ -342,7 +345,7 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-s6 tr { break-inside: avoid; }
 .tab-tempcelle .tc-nota { width: 100%; min-height: 30px; padding: 3px 8px; font-size: .85rem; }
 .tab-tempcelle td { vertical-align: middle; }
-@page s6 { size: A4 landscape; margin: 10mm; }
+@page s6 { size: A4 landscape; margin: 0; }
 @media print { .s6 { padding: 0; } .s6-testa img { height: 44px; } .tab-s6 { font-size: 10px; } .tab-s6 th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
 /* profilo in sola lettura: niente pulsanti di modifica, campi non modificabili */
@@ -799,7 +802,7 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .rt-lotti a { display: block; padding: 7px 8px; border-radius: 8px; text-decoration: none; color: var(--text); }
 .rt-lotti a:hover { background: var(--surface-2); }
 .rt-lotti small { display: block; color: var(--muted); }
-.rt-foglio h2 { font-size: 1rem; margin: 18px 0 6px; color: #000; }
+.rt-foglio h2 { font-size: 1rem; margin: 18px 0 6px; color: #000; break-after: avoid; }
 .rt-manca { color: #b42318; font-weight: 600; }
 .tab-arrivi th.c, .tab-arrivi td.c { text-align: center; width: 70px; }
 .tab-arrivi th.c { white-space: normal; font-size: .7rem; }
@@ -1086,3 +1089,17 @@ body.ordina { background: var(--bg); }
 .g-bar.beerfirm { background-image: repeating-linear-gradient(135deg, rgb(0 0 0 / .1) 0 6px, transparent 6px 12px); }
 .cn-fab summary { cursor: pointer; }
 .cn-fab .w-lista { margin-top: 8px; }
+/* stampa S6: un foglio A4 orizzontale ogni 18 righe, righe alte che riempiono la pagina (i margini sono quelli di main) */
+@media print {
+  .s6.s6-pag { break-after: page; }
+  .s6.s6-pag:last-of-type { break-after: auto; }
+  .s6-pag + .s6-pag { break-before: auto; }
+  .s6-pag .s6-testa img { height: 14mm; }
+  .s6-pag .s6-testa h1 { font-size: 14pt; }
+  .s6-pag .s6-testa div div { font-size: 10pt; }
+  .s6-pag .s6-legenda { font-size: 9pt; margin: 2.5mm 0 2mm; }
+  .s6-pag .tab-s6 { font-size: 10.5pt; }
+  .s6-pag .tab-s6 thead tr { height: 7.5mm; }
+  .s6-pag .tab-s6 tbody tr { height: 8mm; }
+  .s6-pag .tab-s6 td, .s6-pag .tab-s6 th { padding: 0 2.2mm; vertical-align: middle; }
+}
