@@ -396,6 +396,14 @@ export async function vistaArticolo(id) {
     if (cambio) {
       if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${fd.get('unita')}? Le quantità contate negli inventari, la scorta minima e il prezzo vengono convertiti.`, 'Converti'))) return;
       await u.db.salvaMolti([cambio.art, ...cambio.inventari].map(({ aggiornato: _a, ...x }) => x));
+    } else if (a.unita && a.unita !== fd.get('unita') && converti(1, a.unita, fd.get('unita')) === null) {
+      // pz ↔ kg non si converte: era solo l'unità sbagliata (fattura senza unità). Le righe di bolle e carichi
+      // scritte nella vecchia unità passano alla nuova con gli stessi numeri, così tornano nella giacenza.
+      const nuova = fd.get('unita');
+      const tocca = [...dati.bolle, ...dati.scarichi].filter(d => (d.righe || []).some(r => r.articoloId === id && (r.unita || a.unita) === a.unita));
+      if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${nuova}? Le quantità di bolle e carichi scritte in ${a.unita}${tocca.length ? ` (${tocca.length} document${tocca.length === 1 ? 'o' : 'i'})` : ''} restano con lo stesso numero ma in ${nuova}.`, 'Cambia unità'))) return;
+      const docs = tocca.map(({ aggiornato: _a, ...d }) => ({ ...d, righe: d.righe.map(r => (r.articoloId === id && (r.unita || a.unita) === a.unita ? { ...r, unita: nuova } : r)) }));
+      await u.db.salvaMolti([{ ...rec, unita: nuova }, ...docs].map(({ aggiornato: _a, ...x }) => x));
     } else await u.db.salva({ ...rec, unita: fd.get('unita') });
     u.toast('Articolo salvato');
     vistaArticolo(id);
