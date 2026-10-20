@@ -11,7 +11,7 @@ import { CELLE, fmt } from './temperature.js';
 import { vuotiDelleCotte } from './contenitori.js';
 import { ID_TREBBIE, destinatarioDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
 import { creaXlsx } from './xlsx.js';
-import { DITTA_MODULI, VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
+import { VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -547,8 +547,6 @@ function excelTrebbie(righe) {
 }
 
 // ---------- schede HACCP: insetti e roditori, esecuzione pulizie ----------
-const issTesta = () => u.html`<div class="iss-testa">
-  <div><i>${DITTA_MODULI}</i><i>Modulistica H.A.C.C.P.</i></div></div>`;
 const annate = (oggi, salvate) => {
   const da = annataHaccp(`${INIZIO_SCHEDE}-01`), a = annataHaccp(oggi);
   const anni = new Set(salvate.map(annataHaccp));
@@ -569,10 +567,9 @@ export async function vistaInfestanti() {
   if (!schede.some(x => x.mese === inf.mese)) inf.mese = schede.at(-1)?.mese || '';
   const i = schede.findIndex(x => x.mese === inf.mese);
   const presenze = sc => VOCI_INFESTANTI.filter(([k]) => sc.voci?.[k] === 'presenza').length;
-  const foglio = (sc, attuale) => html`<div class="iss-foglio iss-ritratto ${attuale ? '' : 'iss-altro'}">
-    ${issTesta()}
-    <h2 class="iss-titolo">SCHEDA MONITORAGGIO INSETTI E RODITORI<br>MESE DI <u>${meseLungo(sc.mese).split(' ')[0].toUpperCase()}</u> (${inf.annata}/${inf.annata + 1})</h2>
-    <table class="iss-tab iss-inf"><thead><tr><th></th><th class="c">Assenza</th><th class="c">Presenza</th></tr></thead>
+  const foglio = (sc, attuale) => html`<div class="s6 iss-foglio iss-pag ${attuale ? '' : 'iss-altro'}">
+    ${testa('MONITORAGGIO INSETTI E RODITORI', `Mese di ${meseLungo(sc.mese)} · annata ${inf.annata}/${inf.annata + 1}`)}
+    <table class="tab-s6 iss-tab iss-inf"><thead><tr><th></th><th class="c">Assenza</th><th class="c">Presenza</th></tr></thead>
       <tbody>${VOCI_INFESTANTI.map(([k, n]) => { const v = sc.voci?.[k] || 'assenza'; return html`<tr class="${v === 'presenza' ? 'iss-presenza' : ''}"><td>${n}</td>
         <td class="c"><span class="iss-box" role="button" tabindex="0" data-inf="${sc.mese}|${k}|assenza" aria-pressed="${v === 'assenza'}">${v === 'assenza' ? '☒' : '☐'}</span></td>
         <td class="c"><span class="iss-box" role="button" tabindex="0" data-inf="${sc.mese}|${k}|presenza" aria-pressed="${v === 'presenza'}">${v === 'presenza' ? '☒' : '☐'}</span></td></tr>`; })}</tbody></table>
@@ -632,9 +629,8 @@ export async function vistaPulizieAmbienti() {
     <div class="barra non-stampa">${segAnnate(lista, pamb.annata)}</div>
     <p class="totale non-stampa">Dal ${meseLungo(INIZIO_SCHEDE)} si compila da sola: "sì" e la sigla del primo operatore di <a href="#/impostazioni">Impostazioni</a> il giorno ${GIORNI_PULIZIA_AMBIENTI.join(' e ')} di ogni mese (sabato e domenica vanno al venerdì). Tocca un giorno per aggiungere una pulizia, tocca un "sì" per toglierlo. ${fatte} pulizie nell'annata.</p>
     <div class="s6 iss-foglio">
-      ${issTesta()}
-      <h2 class="iss-titolo">ESECUZIONE PULIZIE (${pamb.annata}/${pamb.annata + 1})<br><small>*Inserire sì e firma</small></h2>
-      <div class="scroll-x"><table class="iss-tab iss-griglia">
+      ${testa('ESECUZIONE PULIZIE', `Annata ${pamb.annata}/${pamb.annata + 1} (marzo-febbraio) · sì e sigla di chi l'ha fatta`)}
+      <div class="scroll-x"><table class="tab-s6 iss-tab iss-griglia">
         <thead><tr><th>DATA</th>${mesi.map(m => html`<th class="c">${meseCorto(m)}</th>`)}</tr></thead>
         <tbody>${Array.from({ length: 31 }, (_, g) => html`<tr><td class="c"><b>${g + 1}</b></td>${mesi.map(m => {
           if (g + 1 > giorniDelMese(m)) return html`<td class="iss-no"></td>`;
