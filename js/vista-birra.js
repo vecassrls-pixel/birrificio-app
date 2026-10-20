@@ -556,7 +556,12 @@ const scriviTolti = t => { try { localStorage.setItem(TOLTI, JSON.stringify([...
 const senzaTolti = (lista, tolti) => lista.map(b => ({ ...b, formati: b.formati.filter(f => !tolti.has(f.chiave)) })).filter(b => b.formati.length);
 // la lista (copia e PDF) ha solo le birre del marchio dell'unghia scelta in Birra
 const PRODUTTORE = { kashmir: 'Kashmir Brewing Company', exist: 'Exist' };
-const delMarchio = (lista, dati) => { const ex = birreExist(dati.prodotti); return lista.filter(b => ex.has(b.birra) === (filtri.marchio === 'exist')); };
+// e solo il formato scelto in Birra (Tutti / Fusti / Lattine)
+const delMarchio = (lista, dati) => {
+  const ex = birreExist(dati.prodotti);
+  return lista.filter(b => ex.has(b.birra) === (filtri.marchio === 'exist'))
+    .map(b => (filtri.formato ? { ...b, formati: b.formati.filter(f => f.tipo === filtri.formato) } : b)).filter(b => b.formati.length);
+};
 const listaClienti = dati => senzaTolti(delMarchio(listaDisponibili(dati, u.oggiISO()), dati), leggiTolti());
 const testoLista = lista => testoListaBirre(lista, u.oggiISO(), PRODUTTORE[filtri.marchio]);
 export async function vistaListaClienti(stampaSubito = false) {
@@ -575,6 +580,7 @@ export async function vistaListaClienti(stampaSubito = false) {
       <button id="lc-stampa" class="primario st-libero">🖨 Stampa / Salva PDF</button>
     </div>
     <div class="b-marchi lc-aiuto" role="tablist" aria-label="Marchio">${Object.entries(MARCHI).map(([k, v]) => html`<button role="tab" class="${filtri.marchio === k ? 'attivo' : ''}" aria-selected="${filtri.marchio === k}" data-marchio="${k}">${v}</button>`)}</div>
+    <div class="segmenti lc-aiuto" role="group" aria-label="Formato">${[['', 'Tutti'], ...Object.entries(FORMATI).map(([k, v]) => [k, v === 'Fusto' ? 'Fusti' : 'Lattine'])].map(([k, v]) => html`<button class="st-libero ${k === filtri.formato ? 'attivo' : ''}" data-formato="${k}" aria-pressed="${k === filtri.formato}">${v}</button>`)}</div>
     <p class="totale lc-aiuto">Tocca ✕ per togliere una birra o un formato dalla lista da copiare e stampare.${quanti ? html` ${quanti} ${quanti === 1 ? 'articolo tolto' : 'articoli tolti'}: <button class="piccolo" id="lc-rimetti">Rimetti tutti</button>` : ''}</p>
     <div class="lista-clienti">
       <div class="lc-testa">
@@ -606,6 +612,7 @@ export async function vistaListaClienti(stampaSubito = false) {
     if (b.id === 'lc-copia') return u.copia(testoLista(senzaTolti(tutta, tolti)), 'Lista delle birre copiata');
     if (b.id === 'lc-stampa') return stampa();
     if (b.dataset.marchio) { filtri.marchio = b.dataset.marchio; return disegna(); }
+    if (b.dataset.formato !== undefined) { filtri.formato = b.dataset.formato; return disegna(); }
     if (b.id === 'lc-rimetti') tolti.clear();
     else if (b.dataset.k) { if (tolti.has(b.dataset.k)) tolti.delete(b.dataset.k); else tolti.add(b.dataset.k); }
     else if (b.dataset.birra) {
