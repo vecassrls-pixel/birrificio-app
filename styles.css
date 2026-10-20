@@ -354,6 +354,7 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .lettore #app input:disabled, .lettore #app select:disabled, .lettore #app textarea:disabled { opacity: 1; color: var(--text); cursor: default; }
 .tab-edit tr.escluso td { opacity: .45; }
 .tab-edit tr.escluso td:first-child { opacity: 1; }
+.tab-edit .nota-riga { margin: 2px 0 0; color: var(--warn, #b45309); font-weight: 600; }
 /* inventario: materie prime a zero nascoste (le quantità scritte restano) */
 .senza-zero:not(.filtrato) tr.zero, .senza-zero:not(.filtrato) .scheda.tutti-zero { display: none; }
 #elenco-inv [hidden] { display: none !important; }
