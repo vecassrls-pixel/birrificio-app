@@ -9,6 +9,7 @@ import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { conPulizieAutomatiche, fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
 import { attivitaGiorno, etichetteDaOrdinare } from './agenda.js';
 import { coperturaBirre, statoClienti } from './previsioni.js';
+import { tappeGiro } from './consegne.js';
 import {
   SIMBOLI, fasiCotta, fineCotta, gruppoCotta, litriConfezionati, lottoGruppo, periodiCotta, statoCotta,
 } from './dominio.js';
@@ -40,6 +41,8 @@ export async function vistaHome() {
     ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
     u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'), u.db.tutti('importsospeso'), u.db.tutti('cliente'), u.db.tutti('ordinecliente'),
   ]);
+  const giroOggi = tappeGiro(ordiniClienti, oggi).length;
+  const daSpedire = ordiniClienti.filter(o => o.modo === 'corriere' && ['confermato', 'pronto'].includes(o.stato) && (!o.consegna || o.consegna <= oggi)).length;
   const scadHaccp = scadenzeDaFare(scadenze, oggi);
   const pulizieTutte = conPulizieAutomatiche(stato.cotte, stato.durate, stato.fv, pulizie, '', oggi);
   const sporchi = fvDaPulire(statoFermentatori(stato.cotte, stato.durate, stato.fv, pulizieTutte, oggi), pulizieTutte, oggi);
@@ -129,6 +132,8 @@ export async function vistaHome() {
       </div>
     </section>
     ${ordiniClienti.some(o => o.stato === 'nuovo') ? html`<a class="avviso-riga" href="#/ordini-clienti">🛒 ${ordiniClienti.filter(o => o.stato === 'nuovo').length} ${ordiniClienti.filter(o => o.stato === 'nuovo').length === 1 ? 'ordine nuovo' : 'ordini nuovi'} dai clienti da confermare →</a>` : ''}
+    ${giroOggi ? html`<a class="avviso-riga" href="#/giro">🚐 ${giroOggi} ${giroOggi === 1 ? 'consegna' : 'consegne'} in zona da fare oggi →</a>` : ''}
+    ${daSpedire ? html`<a class="avviso-riga" href="#/ordini-clienti">📦 ${daSpedire} ${daSpedire === 1 ? 'ordine da spedire' : 'ordini da spedire'} con il corriere →</a>` : ''}
     ${daControllare ? html`<a class="avviso-riga" href="#/birra-importa/sospesi">📥 ${daControllare} ${daControllare === 1 ? 'documento importato aspetta' : 'documenti importati aspettano'} una scelta (prodotti non riconosciuti) →</a>` : ''}
     ${acquisti ? html`<a class="avviso-riga" href="#/materie-prime">🧾 ${acquisti} ${acquisti === 1 ? 'fattura di un fornitore da caricare' : 'fatture dei fornitori da caricare'} in magazzino →</a>` : ''}
 

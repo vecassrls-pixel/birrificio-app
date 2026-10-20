@@ -41,7 +41,7 @@ const leggiPref = () => { try { return localStorage.getItem(NASCONDI) !== '0'; }
 const scriviPref = v => { try { localStorage.setItem(NASCONDI, v ? '1' : '0'); } catch { /* vale solo ora */ } };
 const filtri = { q: '', formato: '', scad: false, marchio: 'kashmir' };
 
-// Scarico già compilato (dal carrello): lo usa il prossimo "Nuovo scarico"; dopo() parte quando si salva
+// Scarico già compilato (dal carrello): lo usa il prossimo "Nuovo scarico"; dopo(movimento) parte quando si salva
 let bozzaScarico = null;
 export function apriScarico(bozza) { bozzaScarico = bozza; location.hash = '#/movbirra/scarico'; }
 
@@ -417,9 +417,9 @@ export async function vistaMovimento(id) {
         if (troppo && !(await u.chiedi(`${nomeProdotto(troppo.prodotto)}: in magazzino risultano ${g.get(troppo.prodotto)?.giacenza || 0} pezzi, ne stai scaricando ${troppo.pezzi}. Salvare lo stesso?`, 'Salva'))) return;
       }
       const { aggiornato: _a, ...rec } = m;
-      await u.db.salva({ ...rec, id: m.id || u.db.nuovoId('movbirra'), righe });
+      const salvato = await u.db.salva({ ...rec, id: m.id || u.db.nuovoId('movbirra'), righe });
       u.toast(carico() ? 'Carico salvato' : 'Scarico salvato');
-      if (bozza?.dopo && !carico()) bozza.dopo();
+      if (bozza?.dopo && !carico()) await bozza.dopo(salvato);
       location.hash = '#/birra';
     }
   };

@@ -1143,3 +1143,12 @@ body.ordina { background: var(--bg); }
   .iss-firma select, .iss-firma input { border: none !important; min-width: 0; }
   .iss-firma input::placeholder { color: transparent; }
 }
+
+/* ordini: dettagli e giro consegne */
+.or-dett .od-modi { display: flex; flex-wrap: wrap; margin: 4px 0 10px; }
+.or-dett [hidden] { display: none !important; }
+.gi-tappe { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 12px; }
+.or-modi { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 0 0 10px; }
+.or-modi legend { padding: 0 4px; font-weight: 600; }
+.or-indirizzo[hidden] { display: none; }
+.or-modi label.spunta { min-height: auto; margin: 6px 0; display: flex; gap: 8px; align-items: center; font-size: .95rem; }
