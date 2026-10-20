@@ -139,6 +139,11 @@ export function leggiDdt(pagine) {
 
 // ---------- 3. righe per la bolla ----------
 const UNITA_PDF = { kg: 'kg', g: 'g', gr: 'g', l: 'L', lt: 'L', ml: 'ml' };
+// unità scritta in fattura o bolla: "KG", "Kg.", "KGM", "kilogrammi", "LT.", "litri"
+const unitaDaUm = um => {
+  const x = String(um || '').toLowerCase().replace(/[^a-z]/g, '');
+  return UNITA_PDF[x] || (/^(kgm|kgs|kili|kilo|kilogramm|chilo|chilogramm)/.test(x) ? 'kg' : /^(grammi|grm)/.test(x) ? 'g' : /^(litr|ltr|ltn)/.test(x) ? 'L' : null);
+};
 const PEZZI = /^(pz|nr|n|cf|conf|sc|sac|pc|pcs|un)\.?$/i;
 // confezione nella descrizione: "20 kg", "kg 25", "g 100"
 export function confezione(desc) {
@@ -187,7 +192,7 @@ export function proponiRighe(ddt, articoli) {
     const conf = confezione(r.descrizione);
     const pezzi = PEZZI.test(r.um) || !r.um;
     let qta = pezzi && conf ? r.qta * conf.qta : r.qta;
-    let unita = pezzi ? (conf?.unita || 'pz') : (UNITA_PDF[r.um.toLowerCase()] || 'pz');
+    let unita = pezzi ? (conf?.unita || 'pz') : (unitaDaUm(r.um) || 'pz');
     // articolo già noto: stessa descrizione vista in una bolla precedente, oppure nome uguale
     const parole = new Set(chiaveNome(r.descrizione).split(' '));
     const art = articoli.find(a => (a.alias || []).some(x => compatta(x) === compatta(r.descrizione)))
