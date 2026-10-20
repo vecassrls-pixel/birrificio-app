@@ -6,7 +6,7 @@ import { token } from './auth.js';
 import { sincronizza } from './sync.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
 import { chiediAi, fotoBase64 } from './ai.js';
@@ -47,6 +47,8 @@ export async function vistaMagazzino() {
     && !(nascondiZero && aZero(x.giacenza) && aZero(x.impegnato)));
   const sotto = [...g.values()].filter(x => x.sottoScorta || x.disponibile < 0);
   const scadenze = [...g.values()].filter(x => x.statoScadenza);
+  // inventari con numeri da grammi su articoli in kg/L (6300 contati = 6300 kg di luppolo): da correggere ÷1000
+  const sospetti = [...g.values()].filter(x => x.inventario && ['kg', 'L'].includes(x.articolo.unita) && !['malto', 'zucchero'].includes(x.articolo.categoria) && x.inventario.qta >= 1000);
   const scollegati = daCollegare(dati.cotte, dati.articoli, inizioControllo(dati.inventari)).slice(0, 40);
   const bolle = [...dati.bolle].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 8);
   // fatture dei fornitori arrivate con l'import automatico notturno (netlify/lib/automazioni.mjs)
@@ -69,6 +71,13 @@ export async function vistaMagazzino() {
       <a class="btn primario" href="#/bolla/nuova">+ Bolla di carico</a>
       <button class="solo-editori" id="importa-fic" title="Scarica adesso le fatture dei fornitori (e le vendite) da Fatture in Cloud, senza aspettare l'import della notte">⟳ Importa da Fatture in Cloud</button>
     </div>
+    ${sospetti.length ? html`<div class="scheda avviso solo-editori" id="sospetti"><h2>⚠ Quantità da controllare</h2>
+      <p class="totale">In questi inventari il numero contato sembra in grammi ma l'articolo è in kg (o in ml con l'articolo in L). Se è così tocca "÷ 1000": cambia solo quella riga di inventario.</p>
+      <div class="scroll-x"><table class="tab-mag"><tbody>${sospetti.map(x => html`<tr>
+        <td><a href="#/materia/${encodeURIComponent(x.articolo.id)}">${x.articolo.nome}</a></td>
+        <td>inventario del ${u.dataIT(x.inventario.data)}</td>
+        <td class="n">${fmt(x.inventario.qta, x.articolo.unita)}</td>
+        <td class="az"><button class="piccolo" data-diviso="${x.articolo.id}">÷ 1000 → ${fmt(x.inventario.qta / 1000, x.articolo.unita)}</button></td></tr>`)}</tbody></table></div></div>` : ''}
     ${acquisti.length ? html`<div class="scheda solo-editori" id="acquisti"><h2>📥 Acquisti da Fatture in Cloud <span class="totale">${acquisti.length} da controllare</span></h2>
       <p class="totale">Fatture dei fornitori importate di notte. "Carica" apre la bolla già compilata con righe e prezzi: controlli e salvi. "Scarta" per spese, servizi e tutto quello che non è materia prima.</p>
       <ul class="w-lista">${acquisti.map(x => html`<li class="acq-riga"><span class="w-testo"><b>${x.doc.fornitore || 'Fornitore'}</b> · ${x.doc.numero || ''} · ${u.dataIT(x.doc.data)}<small>${x.doc.righe.slice(0, 4).map(r => r.descrizione).join(' · ')}${x.doc.righe.length > 4 ? ` e altre ${x.doc.righe.length - 4}` : ''}</small></span>
@@ -170,7 +179,19 @@ export async function vistaMagazzino() {
     await u.db.salva({ ...a, alias: [...new Set([...(a.alias || []), scollegati[i].nome])] });
     u.toast(`"${scollegati[i].nome}" collegato a ${a.nome}`);
   };
-  u.$app.onclick = e => {
+  u.$app.onclick = async e => {
+    const div = e.target.dataset.diviso;
+    if (div) {
+      const x = sospetti.find(s => s.articolo.id === div);
+      const inv = await u.db.leggi(x.inventario.id);
+      const i = Number(x.inventario.dove.path.split('.')[1]);
+      if (!inv?.righe?.[i] || inv.righe[i].articoloId !== div) return u.toast('Riga di inventario non trovata');
+      inv.righe[i] = { ...inv.righe[i], qta: Number(inv.righe[i].qta) / 1000 };
+      const { aggiornato: _a, ...daSalvare } = inv;
+      await u.db.salva(daSalvare);
+      u.toast(`${x.articolo.nome}: inventario corretto`);
+      return vistaMagazzino();
+    }
     const i = e.target.dataset.crea;
     if (i === undefined) return;
     const s = scollegati[i];
@@ -360,11 +381,17 @@ export async function vistaArticolo(id) {
   document.getElementById('f-art').onsubmit = async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    await u.db.salva({
-      ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'), unita: fd.get('unita'),
+    const rec = {
+      ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'),
       scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, densita: Number(fd.get('densita')) || null, prezzo: Number(fd.get('prezzo')) || null,
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
-    });
+    };
+    // unità cambiata (g ↔ kg, ml ↔ L): si convertono anche inventari, scorta minima, peso per pezzo e prezzo
+    const cambio = cambiaUnita(rec, fd.get('unita'), dati.inventari);
+    if (cambio) {
+      if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${fd.get('unita')}? Le quantità contate negli inventari, la scorta minima e il prezzo vengono convertiti.`, 'Converti'))) return;
+      await u.db.salvaMolti([cambio.art, ...cambio.inventari].map(({ aggiornato: _a, ...x }) => x));
+    } else await u.db.salva({ ...rec, unita: fd.get('unita') });
     u.toast('Articolo salvato');
     vistaArticolo(id);
   };

@@ -31,6 +31,21 @@ export function converti(qta, da, a) {
   return (q * FATTORE[da]) / FATTORE[a];
 }
 
+// Cambio di unità di un articolo (es. luppolo da g a kg): le righe degli inventari non hanno unità e valgono
+// nell'unità dell'articolo, quindi vanno convertite con lui, come scorta minima, peso per pezzo e prezzo.
+// Senza conversione 6300 g contati diventavano 6300 kg (Romain 2026-10-20). null se le unità non si convertono.
+export function cambiaUnita(art, nuova, inventari) {
+  const f = converti(1, art.unita, nuova);
+  if (!art.unita || art.unita === nuova || f === null) return null;
+  const per = v => (v === null || v === undefined || v === '' ? v : Math.round(Number(v) * f * 1e6) / 1e6);
+  const modificati = inventari.filter(inv => (inv.righe || []).some(r => r.articoloId === art.id))
+    .map(inv => ({ ...inv, righe: inv.righe.map(r => (r.articoloId === art.id ? { ...r, qta: per(r.qta) } : r)) }));
+  return {
+    art: { ...art, unita: nuova, scortaMin: per(art.scortaMin) || 0, pesoPezzo: per(art.pesoPezzo) || null, prezzo: art.prezzo ? Math.round(art.prezzo / f * 1e6) / 1e6 : art.prezzo },
+    inventari: modificati,
+  };
+}
+
 // Come converti, ma i pezzi (sacchi, confezioni) valgono il peso per pezzo dell'articolo, se c'è:
 // lolla di riso 3 pz con pesoPezzo 20 (kg) = 60 kg
 // e i liquidi passano da volume a peso con la densità (acido lattico 5 ml con articolo in kg = 0,006 kg)
