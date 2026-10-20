@@ -2,6 +2,8 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import { LOGO_KASHMIR } from './logo-kashmir.js';
+import { token } from './auth.js';
+import { sincronizza } from './sync.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
   CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO,
@@ -65,6 +67,7 @@ export async function vistaMagazzino() {
       <a class="btn" href="#/scarico/carico">+ Carico manuale</a>
       <a class="btn" href="#/scarico/nuovo">− Scarico manuale</a>
       <a class="btn primario" href="#/bolla/nuova">+ Bolla di carico</a>
+      <button class="solo-editori" id="importa-fic" title="Scarica adesso le fatture dei fornitori (e le vendite) da Fatture in Cloud, senza aspettare l'import della notte">⟳ Importa da Fatture in Cloud</button>
     </div>
     ${acquisti.length ? html`<div class="scheda solo-editori" id="acquisti"><h2>📥 Acquisti da Fatture in Cloud <span class="totale">${acquisti.length} da controllare</span></h2>
       <p class="totale">Fatture dei fornitori importate di notte. "Carica" apre la bolla già compilata con righe e prezzi: controlli e salvi. "Scarta" per spese, servizi e tutto quello che non è materia prima.</p>
@@ -124,6 +127,22 @@ export async function vistaMagazzino() {
   $('cat')?.addEventListener('change', e => { filtri.categoria = e.target.value; vistaMagazzino(); });
   $('nascondi-zero')?.addEventListener('change', e => { scriviPref(e.target.checked); vistaMagazzino(); });
   $('nuovo-art').onclick = () => dialogArticolo({});
+  // import subito, lo stesso dell'automazione notturna (POST automazioni { azione: 'importa' }) (Romain 2026-10-20)
+  $('importa-fic').onclick = async e => {
+    const b = e.currentTarget;
+    b.disabled = true; b.textContent = '⟳ Importo…';
+    try {
+      const t = await token();
+      const res = await fetch('/.netlify/functions/automazioni', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }, body: JSON.stringify({ azione: 'importa' }) });
+      let r = null;
+      try { r = await res.json(); } catch { /* app non pubblicata su Netlify */ }
+      if (!res.ok || !r) throw new Error(r?.errore || (res.status === 404 ? 'L\'import funziona solo sull\'app pubblicata' : `Errore ${res.status}`));
+      const x = r.esito || {};
+      await sincronizza(); // porta nell'app quello che il server ha appena salvato
+      u.toast(`Import fatto: ${x.acquisti || 0} fatture fornitori da controllare, ${x.movimenti || 0} movimenti birra${x.errori?.length ? ` · ${x.errori.join(' · ')}` : ''}`);
+      if (location.hash === '#/materie-prime') vistaMagazzino();
+    } catch (ex) { u.toast(ex.message); b.disabled = false; b.textContent = '⟳ Importa da Fatture in Cloud'; }
+  };
   $('da-ricette')?.addEventListener('click', async () => {
     const proposti = articoliDaRicette(dati.cotte, dati.articoli, u.addGiorni(u.oggiISO(), -365));
     if (!proposti.length) return u.toast('Nessun ingrediente trovato nelle cotte recenti');
