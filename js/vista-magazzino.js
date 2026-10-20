@@ -6,7 +6,7 @@ import { token } from './auth.js';
 import { sincronizza } from './sync.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi, converti,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione, incrociaBolla } from './bolla-pdf.js';
 import { trovaContenitore } from './contenitori.js';
@@ -396,6 +396,14 @@ export async function vistaArticolo(id) {
     if (cambio) {
       if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${fd.get('unita')}? Le quantità contate negli inventari, la scorta minima e il prezzo vengono convertiti.`, 'Converti'))) return;
       await u.db.salvaMolti([cambio.art, ...cambio.inventari].map(({ aggiornato: _a, ...x }) => x));
+    } else if (a.unita && a.unita !== fd.get('unita') && converti(1, a.unita, fd.get('unita')) === null) {
+      // pz ↔ kg non si converte: era solo l'unità sbagliata (fattura senza unità). Le righe di bolle e carichi
+      // scritte nella vecchia unità passano alla nuova con gli stessi numeri, così tornano nella giacenza.
+      const nuova = fd.get('unita');
+      const tocca = [...dati.bolle, ...dati.scarichi].filter(d => (d.righe || []).some(r => r.articoloId === id && (r.unita || a.unita) === a.unita));
+      if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${nuova}? Le quantità di bolle e carichi scritte in ${a.unita}${tocca.length ? ` (${tocca.length} document${tocca.length === 1 ? 'o' : 'i'})` : ''} restano con lo stesso numero ma in ${nuova}.`, 'Cambia unità'))) return;
+      const docs = tocca.map(({ aggiornato: _a, ...d }) => ({ ...d, righe: d.righe.map(r => (r.articoloId === id && (r.unita || a.unita) === a.unita ? { ...r, unita: nuova } : r)) }));
+      await u.db.salvaMolti([{ ...rec, unita: nuova }, ...docs].map(({ aggiornato: _a, ...x }) => x));
     } else await u.db.salva({ ...rec, unita: fd.get('unita') });
     u.toast('Articolo salvato');
     vistaArticolo(id);
@@ -453,10 +461,23 @@ export async function vistaBolla(id) {
       return `${origine}: ${lette.filter(r => r.includi).length} righe da caricare, ${lette.filter(r => !r.includi).length} escluse (spese, imballi…).`;
     }
     if (ddt.numero) b.ddt = ddt.numero;
-    const { righe, avvisi } = incrociaBolla(b.righe, lette.filter(noto));
+    const { righe, avvisi } = incrociaBolla(b.righe, lette, noto);
     b.righe = righe;
     const lotti = righe.filter(r => r.includi !== false && r.lotto).length;
     return `${origine}: lotti e scadenze presi dalla bolla (${lotti} righe con lotto)${avvisi ? ` · ${avvisi} da controllare, segnate con ⚠` : ' · quantità uguali alla fattura'}.`;
+  };
+
+  // totale kg di luppoli e di malti della bolla, tutti insieme (Romain 2026-10-20)
+  const totali = () => {
+    const t = { luppolo: 0, malto: 0 };
+    for (const r of b.righe) {
+      if (r.includi === false || !(Number(r.qta) > 0)) continue;
+      const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
+      const cat = art?.categoria || r.categoria;
+      const kg = converti(Number(r.qta), r.unita || art?.unita || 'kg', 'kg');
+      if (cat in t && kg !== null) t[cat] += kg;
+    }
+    return [['luppolo', 'Totale luppoli'], ['malto', 'Totale malti']].filter(([k]) => t[k] > 0).map(([k, n]) => `${n}: ${u.numIT(t[k], t[k] < 100 ? 2 : 0)} kg`).join(' · ');
   };
 
   async function leggiPdf(file) {
@@ -540,7 +561,7 @@ export async function vistaBolla(id) {
             </tr>`;
           })}</tbody>
         </table></div>
-        <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><span class="spazio"></span>
+        <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><b id="tot-bolla">${totali()}</b><span class="spazio"></span>
           <button class="primario" id="salva">Salva bolla</button></div>
       </div>`;
   }
@@ -558,6 +579,8 @@ export async function vistaBolla(id) {
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
       b.righe[i][k] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
+      const $tot = document.getElementById('tot-bolla');
+      if ($tot) $tot.textContent = totali();
       if (k === 'includi' && e.type === 'change') disegna();
       // nome scelto: mostra categoria e unità dell'articolo esistente
       if (k === 'nome' && e.type === 'change') {

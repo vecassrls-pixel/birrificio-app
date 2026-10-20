@@ -222,6 +222,8 @@ const routes = [
   [/^#\/temperature-celle$/, () => haccp.vistaTemperatureCelle()],
   [/^#\/pulizie$/, () => haccp.vistaPulizie()],
   [/^#\/trebbie$/, () => haccp.vistaTrebbie()],
+  [/^#\/infestanti$/, () => haccp.vistaInfestanti()],
+  [/^#\/pulizie-ambienti$/, () => haccp.vistaPulizieAmbienti()],
   [/^#\/birra$/, () => magBirra.vistaBirra()],
   [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
   [/^#\/movbirra\/(.+)$/, id => magBirra.vistaMovimento(id)],
@@ -261,7 +263,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
@@ -1971,7 +1973,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #s6-prec, #s6-succ, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button, .tr-anni button, #tr-excel';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #s6-prec, #s6-succ, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button, .tr-anni button, #tr-excel, .iss-anni button, #inf-prec, #inf-succ';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

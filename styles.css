@@ -1105,3 +1105,41 @@ body.ordina { background: var(--bg); }
   .s6-pag .tab-s6 tbody tr { height: 8mm; }
   .s6-pag .tab-s6 td, .s6-pag .tab-s6 th { padding: 0 2.2mm; vertical-align: middle; }
 }
+
+/* pulizie automatiche */
+.pl-auto { display: inline-block; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 0 5px; border-radius: 4px; background: var(--accent-tenue); color: var(--accent); vertical-align: 1px; }
+.tab-pulizie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
+@media print { .tab-pulizie select.s6-lotto { border: none; } }
+
+/* schede HACCP insetti e roditori, esecuzione pulizie: stesso stile degli altri registri (.s6, .tab-s6) */
+.iss-foglio { margin-bottom: 12px; }
+.iss-tab { margin-top: 10px; }
+.iss-tab .c { text-align: center; }
+.iss-inf td:first-child { font-weight: 600; padding: 10px 8px; }
+.iss-inf th.c, .iss-inf td.c { width: 120px; }
+.iss-inf tr.iss-presenza td { background: color-mix(in srgb, #b42318 10%, #fff); }
+.iss-box { display: inline-block; font-size: 1.5rem; line-height: 1; padding: 2px 10px; color: #000; cursor: pointer; user-select: none; }
+.lettore .iss-box { cursor: default; }
+.iss-firma { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: .85rem; }
+.iss-firma select, .iss-firma input { width: auto; min-width: 200px; }
+.iss-note { display: flex; align-items: center; gap: 6px; flex: 1; }
+.iss-note input { flex: 1; }
+.iss-griglia th, .iss-griglia td { padding: 2px 4px; height: 22px; min-width: 52px; white-space: nowrap; }
+.iss-griglia td[data-pamb] { cursor: pointer; }
+.iss-griglia td[data-pamb]:hover { background: #f3f3f3; }
+.iss-griglia td.iss-si { font-weight: 600; }
+.iss-griglia td.iss-no { background: #e5e5e5; }
+@media screen { .iss-foglio.iss-altro { display: none; } }
+@media print {
+  .iss-foglio { margin: 0; }
+  .iss-pag { break-after: page; }
+  .iss-pag:last-of-type { break-after: auto; }
+  .iss-inf { font-size: 11pt; }
+  .iss-inf td:first-child { padding: 4.5mm 3mm; }
+  .iss-box { font-size: 15pt; }
+  .iss-griglia { font-size: 8.5pt; }
+  .iss-griglia th, .iss-griglia td { height: 4.4mm; padding: 0 1.5mm; }
+  .iss-griglia td.iss-no, .iss-inf tr.iss-presenza td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .iss-firma select, .iss-firma input { border: none !important; min-width: 0; }
+  .iss-firma input::placeholder { color: transparent; }
+}
