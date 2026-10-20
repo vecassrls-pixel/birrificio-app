@@ -206,7 +206,8 @@ export function trovaContenitore(riga, contenitori) {
     return k ? conX(k) : null;
   }
   if (/ (keg|polykeg|fust|fusti|fusto|petainer|keykeg)/.test(d)) {
-    const l = d.match(/(?:^|[^0-9,.])(\d{2})\s*(?:l|lt|litri)\b/);
+    // "24 L", "24lt" ma anche "lt 24" ("PolyKeg PRO 2.0 baion.lt 24 valvola 4.0")
+    const l = d.match(/(?:^|[^0-9,.])(\d{2})\s*(?:l|lt|litri)\b/) || d.match(/(?:^|[^a-z])(?:l|lt|litri)\s*(\d{2})\b/);
     const litri = l ? Number(l[1]) : null;
     const sacca = / (sacca|bag|bib|inner)/.test(d);
     const fusti = vivi.filter(x => x.categoria === 'fusto');
