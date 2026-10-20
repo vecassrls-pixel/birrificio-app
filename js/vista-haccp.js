@@ -4,7 +4,7 @@
 // Calcoli in haccp.js.
 
 import { ID_IMPOSTAZIONI, nomeFormato } from './birra.js';
-import { ID_OPERATORI, operatoriDa, opzioniOperatori, CONTROLLI_ARRIVO, FASI_PULIZIA, LINEE, fvDaPulire, inizioRegistroPulizie, statoFermentatori, SCADENZE_CONSIGLIATE, GIORNI_PREAVVISO, controlloFatto, lottiBirra, rintracciabilita, statoScadenzaHaccp } from './haccp.js';
+import { ID_OPERATORI, operatoriDa, opzioniOperatori, CONTROLLI_ARRIVO, FASI_PULIZIA, LINEE, fvDaPulire, inizioRegistroPulizie, statoFermentatori, conPulizieAutomatiche, PRODOTTI_PULIZIE, FASI_DEFAULT_PULIZIA, SCADENZE_CONSIGLIATE, GIORNI_PREAVVISO, controlloFatto, lottiBirra, rintracciabilita, statoScadenzaHaccp } from './haccp.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { interroga } from './sync.js';
 import { CELLE, fmt } from './temperature.js';
@@ -27,7 +27,8 @@ const testa = (titolo, sotto) => u.html`<div class="s6-testa"><img src="${LOGO_K
 
 export async function vistaHaccp() {
   const { html } = u;
-  const [bolle, scadenze, pulizie] = await Promise.all([u.db.tutti('bolla'), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia')]);
+  const [bolle, scadenze, pulizieReg] = await Promise.all([u.db.tutti('bolla'), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia')]);
+  const pulizie = conPulizieAutomatiche(u.stato.cotte, u.stato.durate, u.stato.fv, pulizieReg, '', u.oggiISO());
   const sporchi = fvDaPulire(statoFermentatori(u.stato.cotte, u.stato.durate, u.stato.fv, pulizie, u.oggiISO()), pulizie, u.oggiISO()).length;
   const da30 = u.addGiorni(u.oggiISO(), -30);
   const daControllare = bolle.filter(b => !b.eliminato && b.data >= da30 && !controlloFatto(b)).length;
@@ -237,21 +238,22 @@ export async function vistaScadenzario() {
 // ---------- pulizie e sanificazioni (CIP) ----------
 // con cosa si pulisce: di default soda 3% e sanificante 2%, fasi tutte tranne l'acido (Romain, 2026-10-15);
 // chi la fa: il primo degli operatori in Impostazioni. Tutto si cambia nel modulo.
-const PRODOTTI_PULIZIE = 'Soda 3%, sanificante 2%'; // default di Romain, 2026-10-15
 const regP = { da: '', a: '' };
 export async function vistaPulizie(cosaScelta = '') {
   const { html } = u;
   const oggi = u.oggiISO();
   if (!regP.da) { regP.da = `${oggi.slice(0, 7)}-01`; regP.a = oggi; }
-  const pulizie = (await u.db.tutti('pulizia')).filter(p => !p.eliminato);
+  const pulizieReg = await u.db.tutti('pulizia');
   const operatori = operatoriDa(await u.db.leggi(ID_OPERATORI));
+  // registrate + automatiche (una per ogni FV svuotato senza pulizia registrata), vedi conPulizieAutomatiche
+  const pulizie = conPulizieAutomatiche(u.stato.cotte, u.stato.durate, u.stato.fv, pulizieReg, operatori[0], oggi);
   const stati = statoFermentatori(u.stato.cotte, u.stato.durate, u.stato.fv, pulizie, oggi);
   const daPulire = new Set(fvDaPulire(stati, pulizie, oggi).map(s => s.fv.nome));
   const inizio = inizioRegistroPulizie(pulizie);
   const nel = pulizie.filter(p => p.data >= regP.da && p.data <= regP.a).sort((a, b) => a.data.localeCompare(b.data) || a.cosa.localeCompare(b.cosa, 'it', { numeric: true }));
-  const prodottiUsati = [...new Set(pulizie.map(p => p.prodotti).filter(Boolean))];
+  const prodottiUsati = [...new Set(pulizieReg.map(p => p.prodotti).filter(Boolean))];
   const lineeUsate = [...new Set([...LINEE, ...pulizie.map(p => p.cosa)])].filter(x => !u.stato.fv.some(f => f.nome === x));
-  const nuova = { data: oggi, cosa: cosaScelta, fasi: FASI_PULIZIA.filter(f => f !== 'Acido'), prodotti: PRODOTTI_PULIZIE, chi: operatori[0], note: '' };
+  const nuova = { data: oggi, cosa: cosaScelta, fasi: FASI_DEFAULT_PULIZIA, prodotti: PRODOTTI_PULIZIE, chi: operatori[0], note: '' };
   const birraDi = r => r.cotte.map(c => c.birra).filter((x, i, a) => a.indexOf(x) === i).join(' + ');
   u.$app.innerHTML = html`
     <div class="barra non-stampa"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Pulizie e sanificazioni</h1></div>
@@ -289,18 +291,38 @@ export async function vistaPulizie(cosaScelta = '') {
       <span class="spazio"></span>
       <button class="primario" id="stampa">Stampa / Salva PDF</button>
     </div>
+    <p class="totale non-stampa">Si compila da solo: quando un FV si svuota (fine in FV o travaso) c'è la sua pulizia di quel giorno con ${FASI_DEFAULT_PULIZIA.join(', ').toLowerCase()}, ${PRODOTTI_PULIZIE.toLowerCase()} e ${operatori[0]} (primo operatore in <a href="#/impostazioni">Impostazioni</a>).
+      Le righe <span class="pl-auto">auto</span> si correggono scrivendo qui sotto; ✕ su una riga automatica vuol dire che quella pulizia non è stata fatta.</p>
     <div class="s6">
       ${testa('REGISTRO PULIZIE E SANIFICAZIONI', `Periodo: dal ${u.dataIT(regP.da)} al ${u.dataIT(regP.a)}`)}
-      ${nel.length ? html`<table class="tab-s6">
+      ${nel.length ? html`<table class="tab-s6 tab-pulizie">
         <thead><tr><th>Data</th><th>FV / linea</th><th>Fasi</th><th>Prodotti e concentrazione</th><th>Fatta da</th><th>Note</th><th class="non-stampa"></th></tr></thead>
-        <tbody>${nel.map(p => html`<tr><td>${u.dataIT(p.data)}</td><td>${p.cosa}</td><td>${(p.fasi || []).join(', ')}</td><td>${p.prodotti || ''}</td><td>${p.chi || ''}</td><td>${p.note || ''}</td>
-          <td class="non-stampa az"><button class="piccolo solo-editori" data-del="${p.id}" title="Elimina">✕</button></td></tr>`)}</tbody></table>`
-      : html`<p class="vuoto">Nessuna pulizia registrata nel periodo.</p>`}
+        <tbody>${nel.map(p => html`<tr><td>${u.dataIT(p.data)}</td><td>${p.cosa}${p.auto && !p.corretta ? html` <span class="pl-auto non-stampa" title="Pulizia automatica dallo svuotamento del FV${p.birra ? ` (${p.birra})` : ''}">auto</span>` : ''}</td><td>${(p.fasi || []).join(', ')}</td>
+          <td><input class="s6-lotto" data-pl="${p.id}|prodotti" list="pl-prod" value="${p.prodotti || ''}"></td>
+          <td><select class="s6-lotto" data-pl="${p.id}|chi">${opzioniOperatori(operatori, p.chi).map(n => html`<option ${n === p.chi ? 'selected' : ''}>${n}</option>`)}</select></td>
+          <td><input class="s6-lotto" data-pl="${p.id}|note" value="${p.note || ''}"></td>
+          <td class="non-stampa az"><button class="piccolo solo-editori" data-del="${p.id}" title="${p.auto ? 'Non è stata fatta: togli la riga' : 'Elimina'}">✕</button></td></tr>`)}</tbody></table>`
+      : html`<p class="vuoto">Nessuna pulizia nel periodo.</p>`}
     </div>`;
   const $ = id => document.getElementById(id);
   $('pl-da').onchange = e => { regP.da = e.target.value; vistaPulizie(); };
   $('pl-a').onchange = e => { regP.a = e.target.value; vistaPulizie(); };
   $('stampa').onclick = () => stampa(`Registro pulizie ${regP.da} ${regP.a}`);
+  // correzione di una riga: quella automatica diventa un record salvato con lo stesso id
+  const salvaPulizia = async (p, campi) => {
+    const { aggiornato: _a, birra: _b, ...rec } = p;
+    await u.db.salva({ ...rec, ...campi, ...(p.auto ? { auto: true, corretta: true } : {}) });
+  };
+  u.$app.onchange = async e => {
+    const t = e.target;
+    if (!t.dataset.pl) return;
+    const [id, campo] = t.dataset.pl.split('|');
+    const p = pulizie.find(x => x.id === id);
+    if (!p) return;
+    await salvaPulizia(p, { [campo]: t.value.trim() });
+    u.toast('Pulizia aggiornata');
+    vistaPulizie();
+  };
   u.$app.onclick = async e => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -323,6 +345,12 @@ export async function vistaPulizie(cosaScelta = '') {
     }
     if (b.dataset.del) {
       const p = pulizie.find(x => x.id === b.dataset.del);
+      if (p.auto) {
+        // la riga automatica non si cancella (tornerebbe): si segna come non fatta, così il FV risulta da pulire
+        if (!(await u.chiedi(`La pulizia di ${p.cosa} del ${u.dataIT(p.data)} non è stata fatta? La tolgo dal registro e ${p.cosa} risulta da pulire.`, 'Non fatta'))) return;
+        await salvaPulizia(p, { nonFatta: true });
+        return vistaPulizie();
+      }
       if (!(await u.chiedi(`Eliminare la pulizia di ${p.cosa} del ${u.dataIT(p.data)}?`, 'Elimina'))) return;
       await u.db.elimina(p.id);
       return vistaPulizie();

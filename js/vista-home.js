@@ -6,7 +6,7 @@ import { fabbisogno } from './ordine.js';
 import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
-import { fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
+import { conPulizieAutomatiche, fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
 import { attivitaGiorno, etichetteDaOrdinare } from './agenda.js';
 import { coperturaBirre, statoClienti } from './previsioni.js';
 import {
@@ -41,7 +41,8 @@ export async function vistaHome() {
     u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'), u.db.tutti('importsospeso'), u.db.tutti('cliente'), u.db.tutti('ordinecliente'),
   ]);
   const scadHaccp = scadenzeDaFare(scadenze, oggi);
-  const sporchi = fvDaPulire(statoFermentatori(stato.cotte, stato.durate, stato.fv, pulizie, oggi), pulizie, oggi);
+  const pulizieTutte = conPulizieAutomatiche(stato.cotte, stato.durate, stato.fv, pulizie, '', oggi);
+  const sporchi = fvDaPulire(statoFermentatori(stato.cotte, stato.durate, stato.fv, pulizieTutte, oggi), pulizieTutte, oggi);
   const logo = logoHome(impHome);
   const cotte = stato.cotte;
   const ctx = { durate: stato.durate, fv: stato.fv };

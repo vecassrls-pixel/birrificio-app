@@ -3,7 +3,8 @@
 // Record nell'archivio:
 //   bolla.controllo  { imballo, etichetta, scadenza, trasporto: bool, esito: 'conforme'|'non conforme', chi, note }
 //   scadenzahaccp    { nome, ogniMesi, ultima: 'AAAA-MM-GG', note, storico: [{ data }] }
-//   pulizia          { data, cosa (nome del FV o della linea), fasi: [], prodotti, chi, note }
+//   pulizia          { data, cosa (nome del FV o della linea), fasi: [], prodotti, chi, note, auto?, nonFatta? }
+//                    auto: nata dallo svuotamento di un FV (id 'pulizia-auto-<FV>-<data>'), nonFatta: riga automatica tolta a mano
 
 import { addGiorni, diffGiorni, gruppoCotta, nomeBirra, oggiISO, periodiCotta } from './dominio.js';
 import { registroS6 } from './magazzino.js';
@@ -99,7 +100,7 @@ const kc = s => String(s || '').trim().toLowerCase();
 // Il FV "si svuota" il giorno dopo la fine in FV (o il giorno del travaso): la pulizia vale da quel giorno
 // fino al giorno del riempimento compreso.
 export function statoFermentatori(cotte, durate, fvs, pulizie, oggi = oggiISO()) {
-  const valide = pulizie.filter(p => !p.eliminato && p.data);
+  const valide = pulizie.filter(p => !p.eliminato && !p.nonFatta && p.data);
   return fvs.map(fv => {
     const periodi = cotte.filter(c => !c.eliminato).flatMap(c => periodiCotta(c, durate, fvs)).filter(p => p.fv === fv.nome)
       .sort((a, b) => a.da.localeCompare(b.da));
@@ -124,9 +125,32 @@ export function statoFermentatori(cotte, durate, fvs, pulizie, oggi = oggiISO())
     return { fv, ora, prossimo, svuotato, ultima: sue[0] || null, pulitoOra, riempimenti };
   });
 }
+// Pulizie automatiche (Romain 2026-10-20): ogni FV che si svuota (fine in FV o travaso) ha la sua pulizia
+// il giorno dello svuotamento, con fasi e prodotti di default e il primo operatore, se non ce n'è già una registrata
+// tra lo svuotamento e il riempimento dopo. Restituisce le pulizie registrate più quelle automatiche (non salvate).
+export const PRODOTTI_PULIZIE = 'Soda 3%, sanificante 2%'; // default di Romain, 2026-10-15
+export const FASI_DEFAULT_PULIZIA = FASI_PULIZIA.filter(f => f !== 'Acido');
+export const idPuliziaAuto = (fv, data) => `pulizia-auto-${fv}-${data}`;
+export function conPulizieAutomatiche(cotte, durate, fvs, pulizie, chi = '', oggi = oggiISO()) {
+  const registrate = pulizie.filter(p => !p.eliminato);
+  const ids = new Set(registrate.map(p => p.id));
+  const auto = [];
+  for (const s of statoFermentatori(cotte, durate, fvs, registrate, oggi)) {
+    s.riempimenti.forEach((r, i) => {
+      const data = addGiorni(r.a, 1);
+      if (data > oggi) return;
+      const id = idPuliziaAuto(s.fv.nome, data);
+      if (ids.has(id)) return;
+      const prossimo = s.riempimenti[i + 1]?.da || oggi;
+      const fatta = registrate.some(p => !p.nonFatta && kc(p.cosa) === kc(s.fv.nome) && p.data >= addGiorni(data, -1) && p.data <= prossimo);
+      if (!fatta) auto.push({ id, tipo: 'pulizia', auto: true, data, cosa: s.fv.nome, fasi: FASI_DEFAULT_PULIZIA, prodotti: PRODOTTI_PULIZIE, chi, note: '', birra: r.cotte[0]?.birra || '' });
+    });
+  }
+  return [...registrate.filter(p => !p.nonFatta), ...auto];
+}
 // FV da pulire prima di un riempimento vicino (entro GIORNI_AVVISO_PULIZIA giorni) o vuoti e sporchi.
 // Si parte dal giorno della prima pulizia registrata: prima di allora il registro non c'era.
-export const inizioRegistroPulizie = pulizie => pulizie.filter(p => !p.eliminato && p.data).map(p => p.data).sort()[0] || '';
+export const inizioRegistroPulizie = pulizie => pulizie.filter(p => !p.eliminato && !p.nonFatta && p.data).map(p => p.data).sort()[0] || '';
 export function fvDaPulire(stati, pulizie, oggi = oggiISO()) {
   const inizio = inizioRegistroPulizie(pulizie);
   if (!inizio) return [];

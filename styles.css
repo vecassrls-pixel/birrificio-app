@@ -1105,3 +1105,8 @@ body.ordina { background: var(--bg); }
   .s6-pag .tab-s6 tbody tr { height: 8mm; }
   .s6-pag .tab-s6 td, .s6-pag .tab-s6 th { padding: 0 2.2mm; vertical-align: middle; }
 }
+
+/* pulizie automatiche */
+.pl-auto { display: inline-block; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 0 5px; border-radius: 4px; background: var(--accent-tenue); color: var(--accent); vertical-align: 1px; }
+.tab-pulizie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
+@media print { .tab-pulizie select.s6-lotto { border: none; } }
