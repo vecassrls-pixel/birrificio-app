@@ -1638,7 +1638,7 @@ async function vistaImpostazioni() {
     </div>
     <div class="scheda" id="beerfirm">
       <h2>Beerfirm</h2>
-      <p class="totale">Le cotte fatte per un beerfirm si scelgono nella cotta e si vedono nel planning con il nome. "Polykeg con sacca": per le sue cotte il calcolo dei vuoti in Contenitori usa i polykeg con sacca (come le Nitro).</p>
+      <p class="totale">Le cotte fatte per un beerfirm si scelgono nella cotta e si vedono nel planning con il nome. "Polykeg con sacca": per le sue cotte il calcolo dei vuoti in Packaging usa i polykeg con sacca (come le Nitro).</p>
       <table class="tab-edit"><thead><tr><th>Nome</th><th>Polykeg con sacca</th><th></th></tr></thead><tbody>${stato.beerfirm.map((b, i) => html`<tr>
         <td><input data-bf="${i}" value="${b.nome}"></td>
         <td><input type="checkbox" data-bf-sacca="${i}" ${b.sacca ? 'checked' : ''}></td>

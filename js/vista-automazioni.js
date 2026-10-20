@@ -80,7 +80,7 @@ export async function scheda(box) {
           <option value="fatture" ${imp.importa.vendite === 'fatture' ? 'selected' : ''}>dalle fatture (e ricevute)</option>
           <option value="ddt" ${imp.importa.vendite === 'ddt' ? 'selected' : ''}>dai DDT (e ricevute)</option></select></label>
         <label class="spunta"><input type="checkbox" data-imp="importa.shopify" ${imp.importa.shopify ? 'checked' : ''}> Ordini Shopify spediti</label>
-        <label class="spunta"><input type="checkbox" data-imp="importa.acquisti" ${imp.importa.acquisti ? 'checked' : ''}> Fatture dei fornitori (diventano bolle da confermare; lattine e fusti vuoti già riconosciuti vanno in Contenitori da soli)</label>
+        <label class="spunta"><input type="checkbox" data-imp="importa.acquisti" ${imp.importa.acquisti ? 'checked' : ''}> Fatture dei fornitori (diventano bolle da confermare; lattine, fusti ed etichette già riconosciuti vanno in Packaging da soli)</label>
       </div>
       <p class="totale">Fatture o DDT: scegline uno solo, altrimenti la stessa vendita esce due volte dal magazzino. I documenti con prodotti non riconosciuti aspettano in Birra → Importa.</p>
       <details class="au-anteprima"><summary>Anteprima dell'agenda di oggi</summary><div id="au-ag" class="tg-msg">Preparo…</div></details>`;

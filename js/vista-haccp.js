@@ -111,12 +111,12 @@ export async function vistaRintracciabilita(id) {
         <thead><tr><th>Data</th><th>Formato</th><th class="n">Pezzi</th><th class="n">Litri</th></tr></thead>
         <tbody>${r.confezionato.map(x => html`<tr><td>${x.data ? u.dataIT(x.data) : ''}</td><td>${nomeFormato(x.tipo, x.litri)}</td><td class="n">${u.numIT(x.pezzi, 0)}</td><td class="n">${u.numIT(x.pezzi * x.litri, 1)}</td></tr>`)}</tbody></table>`
       : html`<p class="vuoto">Non ancora confezionata.</p>`}
-      <h2>3. Lattine e fusti usati (lotti dei vuoti)</h2>
+      <h2>3. Packaging usato (lotti di lattine, fusti ed etichette)</h2>
       ${vuoti.length ? html`<table class="tab-s6">
         <thead><tr><th>Data</th><th>Contenitore</th><th class="n">Pezzi</th><th>Lotto</th><th>Fornitore / documento</th><th>Arrivato il</th></tr></thead>
         <tbody>${vuoti.flatMap(v => v.lotti.map(l => html`<tr><td>${u.dataIT(v.data)}</td><td>${v.contenitore.nome}</td><td class="n">${u.numIT(l.pezzi, 0)}</td>
           <td>${l.lotto || html`<span class="rt-manca">manca</span>`}</td><td>${[l.fornitore, l.documento].filter(Boolean).join(' · ')}</td><td>${l.arrivo ? u.dataIT(l.arrivo) : ''}</td></tr>`))}</tbody></table>`
-      : html`<p class="vuoto">${contenitori.length ? 'Nessun contenitore scalato da questo confezionamento (pagina Contenitori).' : 'I lotti di lattine e fusti si vedono qui quando usi la pagina Contenitori.'}</p>`}
+      : html`<p class="vuoto">${contenitori.length ? 'Nessun contenitore scalato da questo confezionamento (pagina Packaging).' : 'I lotti di lattine e fusti si vedono qui quando usi la pagina Contenitori.'}</p>`}
       <h2>4. Uscite della birra (destinatari)</h2>
       ${r.uscite.length ? html`<table class="tab-s6">
         <thead><tr><th>Data</th><th>Prodotto</th><th class="n">Pezzi</th><th class="n">Litri</th><th>Destinatario / documento</th></tr></thead>
