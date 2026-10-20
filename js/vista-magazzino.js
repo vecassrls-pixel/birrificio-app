@@ -6,7 +6,7 @@ import { token } from './auth.js';
 import { sincronizza } from './sync.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi, converti,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione, incrociaBolla } from './bolla-pdf.js';
 import { trovaContenitore } from './contenitori.js';
@@ -459,6 +459,19 @@ export async function vistaBolla(id) {
     return `${origine}: lotti e scadenze presi dalla bolla (${lotti} righe con lotto)${avvisi ? ` · ${avvisi} da controllare, segnate con ⚠` : ' · quantità uguali alla fattura'}.`;
   };
 
+  // totale kg di luppoli e di malti della bolla, tutti insieme (Romain 2026-10-20)
+  const totali = () => {
+    const t = { luppolo: 0, malto: 0 };
+    for (const r of b.righe) {
+      if (r.includi === false || !(Number(r.qta) > 0)) continue;
+      const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
+      const cat = art?.categoria || r.categoria;
+      const kg = converti(Number(r.qta), r.unita || art?.unita || 'kg', 'kg');
+      if (cat in t && kg !== null) t[cat] += kg;
+    }
+    return [['luppolo', 'Totale luppoli'], ['malto', 'Totale malti']].filter(([k]) => t[k] > 0).map(([k, n]) => `${n}: ${u.numIT(t[k], t[k] < 100 ? 2 : 0)} kg`).join(' · ');
+  };
+
   async function leggiPdf(file) {
     pdfStato = 'Leggo il PDF…';
     disegna();
@@ -540,7 +553,7 @@ export async function vistaBolla(id) {
             </tr>`;
           })}</tbody>
         </table></div>
-        <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><span class="spazio"></span>
+        <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><b id="tot-bolla">${totali()}</b><span class="spazio"></span>
           <button class="primario" id="salva">Salva bolla</button></div>
       </div>`;
   }
@@ -558,6 +571,8 @@ export async function vistaBolla(id) {
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
       b.righe[i][k] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
+      const $tot = document.getElementById('tot-bolla');
+      if ($tot) $tot.textContent = totali();
       if (k === 'includi' && e.type === 'change') disegna();
       // nome scelto: mostra categoria e unità dell'articolo esistente
       if (k === 'nome' && e.type === 'change') {

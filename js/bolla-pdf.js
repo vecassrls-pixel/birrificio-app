@@ -143,7 +143,7 @@ const PEZZI = /^(pz|nr|n|cf|conf|sc|sac|pc|pcs|un)\.?$/i;
 // confezione nella descrizione: "20 kg", "kg 25", "g 100"
 export function confezione(desc) {
   const d = String(desc || '').toLowerCase().replace(/®|™/g, ' ');
-  const m = /(\d+(?:[.,]\d+)?)\s*(kg|gr|g|lt|l|ml)\b/.exec(d) || /\b(kg|gr|g|lt|l|ml)\s*(\d+(?:[.,]\d+)?)\b/.exec(d);
+  const m = /(?<![a-z0-9])(\d+(?:[.,]\d+)?)\s*(kg|gr|g|lt|l|ml)\b/.exec(d) || /\b(kg|gr|g|lt|l|ml)\s*(\d+(?:[.,]\d+)?)\b/.exec(d);
   if (!m) return null;
   const [n, u] = /\d/.test(m[1]) ? [m[1], m[2]] : [m[2], m[1]];
   return { qta: Number(n.replace(',', '.')), unita: UNITA_PDF[u] };
