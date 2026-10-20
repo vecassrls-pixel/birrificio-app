@@ -51,12 +51,12 @@ insert into sensori (fv, nome, tipo) values
   ('FV11', 'PLC S7-200 SMART (da collegare)', 'plc')
 on conflict (fv) do nothing;
 
--- Celle frigo e frigo luppoli (unghia "Celle" della pagina Cantina): sonda DS18B20 su ESP32, solo lettura.
+-- Celle frigo e frigo luppoli (unghia "Celle" della pagina Cantina): celle lette dai regolatori Pego (Modbus RTU), frigo luppoli con sonda DS18B20 su ESP32, solo lettura.
 -- La colonna fv qui contiene il codice della cella. Allarme se la temperatura esce da temp_min..temp_max
 -- (valori di partenza DA VERIFICARE con Romain; si cambiano con un update, vedi in fondo).
 insert into sensori (fv, nome, tipo, temp_min, temp_max) values
-  ('CELLA1', 'ESP32 + DS18B20', 'esp32', 0, 8),
-  ('CELLA2', 'ESP32 + DS18B20', 'esp32', 0, 8),
+  ('CELLA1', 'Pego ECP200 indirizzo 1', 'modbus', 0, 8),
+  ('CELLA2', 'Pego ECP200 indirizzo 2', 'modbus', 0, 8),
   ('FRIGO-LUPPOLI', 'ESP32 + DS18B20', 'esp32', null, 4)
 on conflict (fv) do nothing;
 
@@ -69,7 +69,7 @@ create table if not exists letture_temperature (
   setpoint            numeric(5, 2),                     -- null se la sorgente non lo dà
   raffreddamento      boolean,                           -- freddo acceso almeno una volta nel periodo (null se non si sa)
   raffreddamento_pct  smallint check (raffreddamento_pct between 0 and 100), -- % del periodo con il freddo acceso
-  fonte               text                               -- 'modbus' | 'esp32' | 'plc' | 'simulazione'
+  fonte               text                               -- 'modbus' | 'pego' | 'esp32' | 'plc' | 'simulazione'
 );
 -- (fv, ts) unico: se il gateway rimanda una lettura dal buffer offline non si creano doppioni.
 -- È anche l'indice per i grafici (letture di un FV in un intervallo di date).
