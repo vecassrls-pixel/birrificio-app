@@ -295,12 +295,12 @@ export async function vistaPulizie(cosaScelta = '') {
       <button class="primario" id="stampa">Stampa / Salva PDF</button>
     </div>
     <p class="totale non-stampa">Si compila da solo: quando un FV si svuota (fine in FV o travaso) e nei giorni di confezionamento in lattina (inlattinatrice) c'è la pulizia di quel giorno con ${FASI_DEFAULT_PULIZIA.join(', ').toLowerCase()}, ${PRODOTTI_PULIZIE.toLowerCase()} e ${operatori[0]} (primo operatore in <a href="#/impostazioni">Impostazioni</a>).
-      Le righe <span class="pl-auto">auto</span> si correggono scrivendo qui sotto; ✕ su una riga automatica vuol dire che quella pulizia non è stata fatta.</p>
+      Ogni riga si corregge scrivendo qui sotto; ✕ su una riga automatica vuol dire che quella pulizia non è stata fatta.</p>
     <div class="s6">
       ${testa('REGISTRO PULIZIE E SANIFICAZIONI', `Periodo: dal ${u.dataIT(regP.da)} al ${u.dataIT(regP.a)}`)}
       ${nel.length ? html`<table class="tab-s6 tab-pulizie">
         <thead><tr><th>Data</th><th>FV / linea</th><th>Fasi</th><th>Prodotti e concentrazione</th><th>Fatta da</th><th>Note</th><th class="non-stampa"></th></tr></thead>
-        <tbody>${nel.map(p => html`<tr><td>${u.dataIT(p.data)}</td><td>${p.cosa}${p.auto && !p.corretta ? html` <span class="pl-auto non-stampa" title="Pulizia automatica dallo svuotamento del FV${p.birra ? ` (${p.birra})` : ''}">auto</span>` : ''}</td><td>${(p.fasi || []).join(', ')}</td>
+        <tbody>${nel.map(p => html`<tr><td>${u.dataIT(p.data)}</td><td>${p.cosa}</td><td>${(p.fasi || []).join(', ')}</td>
           <td><input class="s6-lotto" data-pl="${p.id}|prodotti" list="pl-prod" value="${p.prodotti || ''}"></td>
           <td><select class="s6-lotto" data-pl="${p.id}|chi">${opzioniOperatori(operatori, p.chi).map(n => html`<option ${n === p.chi ? 'selected' : ''}>${n}</option>`)}</select></td>
           <td><input class="s6-lotto" data-pl="${p.id}|note" value="${p.note || ''}"></td>
@@ -582,7 +582,7 @@ export async function vistaInfestanti() {
     <div class="barra non-stampa">${segAnnate(lista, inf.annata)}</div>
     <p class="totale non-stampa">Ogni mese, dal ${meseLungo(INIZIO_SCHEDE)}, la scheda si compila da sola con tutto "Assenza" e il primo operatore di <a href="#/impostazioni">Impostazioni</a>. Tocca "Presenza" se trovi qualcosa e scrivi cosa hai fatto. In stampa escono tutti i mesi dell'annata, uno per foglio.</p>
     ${schede.length > 1 ? html`<div class="barra non-stampa s6-pagine"><button id="inf-prec" ${i > 0 ? '' : 'disabled'} aria-label="Mese prima">◀</button>
-      <span><b>${meseLungo(inf.mese)}</b>${schede[i].auto ? html` <span class="pl-auto">auto</span>` : ''}${presenze(schede[i]) ? html` <span class="rt-manca">${presenze(schede[i])} presenze</span>` : ''}</span>
+      <span><b>${meseLungo(inf.mese)}</b>${presenze(schede[i]) ? html` <span class="rt-manca">${presenze(schede[i])} presenze</span>` : ''}</span>
       <button id="inf-succ" ${i < schede.length - 1 ? '' : 'disabled'} aria-label="Mese dopo">▶</button></div>` : ''}
     ${schede.length ? schede.map(sc => foglio(sc, sc.mese === inf.mese)) : html`<p class="vuoto">Nessuna scheda in questa annata.</p>`}`;
   const salvaScheda = async (mese, campi) => {
