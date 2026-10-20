@@ -18,6 +18,12 @@ export const CATEGORIE = {
   sale: 'Sali', aggiunta: 'Aggiunte', coadiuvante: 'Coadiuvanti',
 };
 export const GIORNI_IN_SCADENZA = 30;
+// sopra questa quantità un articolo in kg/L è quasi certamente stato scritto in grammi/ml
+// (6300 kg di luppolo, 750 kg di Yeastvit); malti e zuccheri esclusi
+export function sogliaGrammi(art) {
+  if (!['kg', 'L'].includes(art?.unita) || ['malto', 'zucchero'].includes(art.categoria)) return null;
+  return art.categoria === 'luppolo' ? 1000 : 200;
+}
 export const UNITA = ['kg', 'g', 'L', 'ml', 'pz'];
 const FATTORE = { kg: 1000, g: 1, L: 1000, ml: 1, pz: 1 };
 const FAMIGLIA = { kg: 'peso', g: 'peso', L: 'volume', ml: 'volume', pz: 'pezzi' };
