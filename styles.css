@@ -1073,3 +1073,8 @@ body.ordina { background: var(--bg); }
 .tab-trebbie input.tr-kg { width: 90px; min-width: 70px; text-align: right; }
 .tab-trebbie td.n:has(.tr-kg) { width: 1%; }
 @media print { .tab-trebbie input.tr-kg::-webkit-inner-spin-button { display: none; } .s6 .scroll-x { overflow: visible; } }
+/* registro S6 a fogli da 18 righe: a video un foglio alla volta, in stampa tutti */
+.s6-pagine { align-items: center; gap: 10px; }
+.s6-pagine button { min-width: 48px; }
+@media screen { .s6-pag.s6-altra { display: none; } }
+@media print { .s6-pag + .s6-pag { break-before: page; } }
