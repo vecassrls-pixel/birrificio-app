@@ -16,6 +16,7 @@ import * as preventivi from './vista-preventivi.js';
 import * as backup from './backup.js';
 import * as home from './vista-home.js';
 import { ID_OPERATORI, operatoriDa } from './haccp.js';
+import { ID_TREBBIE, destinatarioDa } from './trebbie.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
 import * as cantina from './vista-cantina.js';
@@ -25,6 +26,7 @@ import * as automazioni from './vista-automazioni.js';
 import * as cassa from './vista-cassa.js';
 import * as contenitori from './vista-contenitori.js';
 import { contenitoriPerRiga } from './contenitori.js';
+import { ID_BEERFIRM, beerfirmDa } from './beerfirm.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
@@ -116,6 +118,7 @@ async function carica() {
   if (await allineaNumeri()) stato.cotte = await db.tutti('cotta');
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
   stato.durate = durateTipiche(stato.cotte);
+  stato.beerfirm = beerfirmDa(await db.leggi(ID_BEERFIRM));
 }
 // Correzione dello storico importato (ok di Romain, 2026-10-12): nelle cotte di Regula lo Styrian era
 // 1250 kg invece di 1,25 kg e il nome era "SCHEDA COTTA REGULA". Si sistema una volta, poi non trova più nulla.
@@ -218,6 +221,7 @@ const routes = [
   [/^#\/scadenzario$/, () => haccp.vistaScadenzario()],
   [/^#\/temperature-celle$/, () => haccp.vistaTemperatureCelle()],
   [/^#\/pulizie$/, () => haccp.vistaPulizie()],
+  [/^#\/trebbie$/, () => haccp.vistaTrebbie()],
   [/^#\/birra$/, () => magBirra.vistaBirra()],
   [/^#\/birra-prodotto\/(.+)$/, chiave => magBirra.vistaProdotto(chiave)],
   [/^#\/movbirra\/(.+)$/, id => magBirra.vistaMovimento(id)],
@@ -234,7 +238,8 @@ const routes = [
   [/^#\/copertura$/, () => previsioni.vistaCopertura()],
   [/^#\/clienti$/, () => previsioni.vistaClienti()],
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
-  [/^#\/cassa$/, () => cassa.vistaCassa()],
+  // la cassa (contanti) non la vede chi è in sola lettura (Romain 2026-10-19)
+  [/^#\/cassa$/, () => (lettore ? (location.hash = '#/home') : cassa.vistaCassa())],
   [/^#\/contenitori$/, () => contenitori.vistaContenitori()],
   [/^#\/contenitore\/(.+)$/, id => contenitori.vistaContenitore(id)],
   [/^#\/movcontenitore\/(.+)$/, id => contenitori.vistaMovimento(id)],
@@ -256,7 +261,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
@@ -323,7 +328,7 @@ function vistaCotte() {
       ${lista.length ? lista.slice(0, filtri.limite).map(({ c, s }) => html`
         <a class="riga-cotta ${s}" href="#/cotta/${encodeURIComponent(c.id)}">
           <span class="lotto">${c.lotto || '—'}${lotti.has(c.id) ? html`<small title="Cotta doppia/tripla">${lotti.get(c.id)}</small>` : ''}</span>
-          <span class="birra">${c.birra || 'Senza nome'}${c.materiePrime && ['pianificata', 'tank'].includes(s) ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
+          <span class="birra">${c.birra || 'Senza nome'}${c.beerfirm ? html` <span class="bf-chip" title="Beerfirm">${c.beerfirm}</span>` : ''}${c.materiePrime && ['pianificata', 'tank'].includes(s) ? html` <span class="mp" title="Materie prime ordinate o in magazzino">MP ✓</span>` : ''}${simboliPronti(c, s)}</span>
           <span class="chip ${s}">${STATI[s]}</span>
           ${(() => { const t = testoLottoScadenza(c, stato.cotte, stato.durate); return html`<button class="piccolo copia-lotto" data-copia="${t}" title="Copia: ${t}" aria-label="Copia lotto e scadenza">⧉<span class="solo-desktop"> Lotto e scad.</span></button>`; })()}
           <span class="dett">${dataIT(c.data)}${c.stile ? ` · ${c.stile}` : ''} · ${c.fv || 'FV ?'}${c.litri ? ` · ${numIT(c.litri, 0)} L` : ''}${c.og ? ` · OG ${numIT(c.og)} °P` : ''}</span>
@@ -359,6 +364,7 @@ function dialogNuovaCotta(pre = {}) {
         <label>Giorni in FV <input name="durata" type="number" min="1" max="120"></label>
         <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}" title="Le cotte pianificate si numerano da sole in ordine di data"></label>
         <label>Anno <input name="anno" type="number" value="${anno}"></label>
+        <label style="grid-column:1/-1">Per <select name="beerfirm"><option value="">noi (non beerfirm)</option>${(stato.beerfirm || []).map(b => html`<option value="${b.nome}" ${b.nome === pre.beerfirm ? 'selected' : ''}>beerfirm ${b.nome}</option>`)}</select></label>
       </div>
       <label style="margin-top:12px;display:block">Copia da <select name="copiaDa">
         <option value="">Ultima cotta della stessa birra</option>
@@ -384,11 +390,14 @@ function dialogNuovaCotta(pre = {}) {
     <datalist id="dl-birre">${birre.map(b => html`<option value="${b}">`)}</datalist>`;
   document.body.appendChild(dlg);
   const f = dlg.querySelector('form');
+  f.beerfirm.addEventListener('change', () => { f.beerfirm.dataset.toccato = '1'; });
   const srcScelta = () => (f.copiaDa.value === 'no' ? null : f.copiaDa.value ? stato.cotte.find(c => c.id === f.copiaDa.value) : ultimaCottaDi(f.birra.value));
   const aggiornaFv = () => {
     const birra = f.birra.value;
     // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
     const src0 = srcScelta();
+    // beerfirm: quello della cotta copiata, finché non lo cambi a mano
+    if (!f.beerfirm.dataset.toccato && pre.beerfirm === undefined) f.beerfirm.value = (stato.beerfirm || []).some(b => b.nome === src0?.beerfirm) ? src0.beerfirm : '';
     const durata = Number(f.durata.value) || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
     if (!f.durata.value || f.durata.dataset.auto) { f.durata.value = durata; f.durata.dataset.auto = '1'; }
     const da = f.data.value || oggiISO();
@@ -487,6 +496,7 @@ function dialogNuovaCotta(pre = {}) {
     base.dh = !!fd.get('dh');
     // travaso proposto dal pianificatore, se data e FV sono rimasti quelli della proposta
     if (travasoScelto?.perData === data && travasoScelto.perFv === fv) base.travaso = { fv: travasoScelto.fv, data: travasoScelto.data };
+    base.beerfirm = fd.get('beerfirm') || '';
     if (fd.get('materiePrime')) base.materiePrime = true;
     if (fd.get('lievitoOk')) base.lievitoOk = true;
     if (fd.get('etichetteOk')) base.etichetteOk = true;
@@ -779,6 +789,7 @@ async function vistaCotta(id) {
         <div class="griglia">
           <label style="grid-column:span 2">Birra <input data-path="birra" list="dl-birre2" value="${c.birra || ''}"></label>
           <label style="grid-column:span 2">Stile <input data-path="stile" list="dl-stili" value="${c.stile || ''}" placeholder="${stileDi(c.birra) || 'es. American IPA'}"></label>
+          <label>Per <select data-path="beerfirm"><option value="">noi (non beerfirm)</option>${[...(stato.beerfirm || []).map(b => b.nome), ...(c.beerfirm && !(stato.beerfirm || []).some(b => b.nome === c.beerfirm) ? [c.beerfirm] : [])].map(n => html`<option value="${n}" ${n === c.beerfirm ? 'selected' : ''}>beerfirm ${n}</option>`)}</select></label>
           ${campo('numero', 'Lotto n°')}
           ${campo('anno', 'Anno')}
           ${campo('data', 'Data cotta', 'date')}
@@ -1424,6 +1435,7 @@ function vistaPlanning() {
       <span>Tinta più scura = temperatura misurata più alta, sfumata giorno per giorno</span>
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
+      <span><span class="bf-chip">${stato.beerfirm[0]?.nome || 'Beerfirm'}</span> = cotta per un beerfirm (si sceglie nella cotta, nomi in Impostazioni)</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
       <span>${SIMBOLI.lievito} lievito pronto · ${SIMBOLI.etichette} etichette pronte · ${SIMBOLI.spurgo} spurgo · ${SIMBOLI.bubbling} bubbling</span>
       <span><span class="g-eta" style="position:static;padding:0 4px">12</span> = giorno della birra oggi (cotta = giorno 1)</span>
@@ -1471,10 +1483,11 @@ function vistaPlanning() {
               x0: diffGiorni(plan.inizio, f.da < da ? da : f.da) * W - left,
               x1: (diffGiorni(plan.inizio, f.a > a ? a : f.a) + 1) * W - left,
             })).filter(f => f.x1 - f.x0 >= 2 * W && f.x1 >= 110); // non sopra nome e lotto all'inizio della barra
-            return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
+            const bf = c0.beerfirm || '';
+            return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''} ${bf ? 'beerfirm' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
-              title="${c0.birra} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)} · ${testoLottoScadenza(c0, stato.cotte, stato.durate)}">
-              <b>${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · <span title="${fineTot > b.a ? `In totale, compreso il travaso (${diffGiorni(b.da, b.a) + 1} gg in questo FV)` : ''}">${diffGiorni(b.da, fineTot) + 1} gg</span></span>
+              title="${c0.birra}${bf ? ` · beerfirm ${bf}` : ''} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)} · ${testoLottoScadenza(c0, stato.cotte, stato.durate)}">
+              <b>${bf ? html`<span class="bf-chip">${bf}</span> ` : ''}${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · <span title="${fineTot > b.a ? `In totale, compreso il travaso (${diffGiorni(b.da, b.a) + 1} gg in questo FV)` : ''}">${diffGiorni(b.da, fineTot) + 1} gg</span></span>
               ${giorniFasi.map(f => html`<span class="g-fase" style="right:${Math.max(right - left - f.x1, 0) + 3}px" title="${FASI[f.fase]}: ${f.giorni} giorni">${f.giorni} gg</span>`)}
               ${(c0.fermentazione || []).filter(e => e.data && e.data >= da && e.data <= a && eventiGiorno(e).length).map(e => html`<span class="g-ev" style="left:${diffGiorni(plan.inizio, e.data) * W - left - 1}px;width:${W}px" title="${eventiGiorno(e).join(' + ')} il ${dataIT(e.data)}">${eventiGiorno(e).map(k => SIMBOLI[k]).join('')}</span>`)}
               ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
@@ -1592,6 +1605,7 @@ async function vistaImpostazioni() {
   const impHome = (await db.leggi(home.ID_HOME)) || {};
   const logoScelto = impHome.eliminato ? 'gb' : impHome.logo || 'gb';
   const operatori = [...operatoriDa(await db.leggi(ID_OPERATORI))];
+  const destTrebbie = destinatarioDa(await db.leggi(ID_TREBBIE));
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
     <div class="scheda">
@@ -1619,6 +1633,20 @@ async function vistaImpostazioni() {
         <td class="az"><button class="piccolo" data-op-giu="${i}" ${i < operatori.length - 1 ? '' : 'disabled'} title="Sposta giù">↓</button></td>
         <td class="az"><button class="piccolo" data-op-del="${i}" ${operatori.length > 1 ? '' : 'disabled'} title="Togli">✕</button></td></tr>`)}</tbody></table>
       <button class="piccolo" id="op-nuovo">+ Aggiungi operatore</button>
+    </div>
+    <div class="scheda" id="beerfirm">
+      <h2>Beerfirm</h2>
+      <p class="totale">Le cotte fatte per un beerfirm si scelgono nella cotta e si vedono nel planning con il nome. "Polykeg con sacca": per le sue cotte il calcolo dei vuoti in Contenitori usa i polykeg con sacca (come le Nitro).</p>
+      <table class="tab-edit"><thead><tr><th>Nome</th><th>Polykeg con sacca</th><th></th></tr></thead><tbody>${stato.beerfirm.map((b, i) => html`<tr>
+        <td><input data-bf="${i}" value="${b.nome}"></td>
+        <td><input type="checkbox" data-bf-sacca="${i}" ${b.sacca ? 'checked' : ''}></td>
+        <td class="az"><button class="piccolo" data-bf-del="${i}" title="Togli">✕</button></td></tr>`)}</tbody></table>
+      <button class="piccolo" id="bf-nuovo">+ Aggiungi beerfirm</button>
+    </div>
+    <div class="scheda">
+      <h2>Registro trebbie</h2>
+      <label style="max-width:320px">Destinazione di default<input id="trebbie-dest" value="${destTrebbie}" placeholder="es. FABIO VALERIO"></label>
+      <p class="totale">Chi ritira le trebbie: va da solo su ogni cotta del <a href="#/trebbie">registro trebbie</a> (si può cambiare riga per riga).</p>
     </div>
     <div class="scheda">
       <h2>Fermentatori</h2>
@@ -1700,6 +1728,10 @@ async function vistaImpostazioni() {
   };
   const salvaOperatori = async nomi => { await db.salva({ id: ID_OPERATORI, tipo: 'impostazione', nomi: nomi.map(x => x.trim()).filter(Boolean) }); vistaImpostazioni(); };
   const $op = document.getElementById('operatori');
+  document.getElementById('trebbie-dest').onchange = async e => {
+    await db.salva({ id: ID_TREBBIE, tipo: 'impostazione', destinatario: e.target.value.trim() });
+    toast('Destinazione delle trebbie salvata');
+  };
   $op.onchange = e => {
     const i = e.target.dataset.op;
     if (i === undefined) return;
@@ -1720,6 +1752,31 @@ async function vistaImpostazioni() {
     if (b.dataset.opSu) return sposta(Number(b.dataset.opSu), Number(b.dataset.opSu) - 1);
     if (b.dataset.opGiu) return sposta(Number(b.dataset.opGiu), Number(b.dataset.opGiu) + 1);
     if (b.dataset.opDel) { nomi.splice(Number(b.dataset.opDel), 1); salvaOperatori(nomi); }
+  };
+  const salvaBeerfirm = async elenco => {
+    const rec = { id: ID_BEERFIRM, tipo: 'impostazione', elenco: elenco.map(x => ({ nome: (x.nome || '').trim(), sacca: !!x.sacca })).filter(x => x.nome) };
+    await db.salva(rec);
+    stato.beerfirm = beerfirmDa(rec);
+    vistaImpostazioni();
+  };
+  const $bf = document.getElementById('beerfirm');
+  $bf.onchange = e => {
+    const el = e.target, elenco = stato.beerfirm.map(x => ({ ...x }));
+    if (el.dataset.bf !== undefined) (elenco[Number(el.dataset.bf)] ||= { sacca: false }).nome = el.value;
+    else if (el.dataset.bfSacca !== undefined) elenco[Number(el.dataset.bfSacca)].sacca = el.checked;
+    else return;
+    salvaBeerfirm(elenco);
+  };
+  $bf.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    e.stopPropagation();
+    if (b.id === 'bf-nuovo') { // riga vuota: si salva quando scrivi il nome
+      const n = stato.beerfirm.length, tb = $bf.querySelector('tbody');
+      tb.insertAdjacentHTML('beforeend', html`<tr><td><input data-bf="${n}" placeholder="Nome del beerfirm"></td><td></td><td></td></tr>`.s);
+      return tb.querySelector(`[data-bf="${n}"]`).focus();
+    }
+    if (b.dataset.bfDel) { const elenco = [...stato.beerfirm]; elenco.splice(Number(b.dataset.bfDel), 1); salvaBeerfirm(elenco); }
   };
   document.getElementById('nome-saluto').onchange = e => {
     try { localStorage.setItem(home.NOME_SALUTO, e.target.value.trim()); toast('Nome salvato: lo vedi in Home'); } catch { toast('Non riesco a salvare il nome su questo dispositivo'); }
@@ -1914,7 +1971,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #s6-prec, #s6-succ, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button, .tr-anni button, #tr-excel';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

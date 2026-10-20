@@ -4,6 +4,7 @@
 // Una sorgente che non risponde non blocca le altre.
 
 import { ModbusTcp, conSegno } from './modbus.mjs';
+import { ModbusRtu } from './modbus-rtu.mjs';
 import { S7Client, AREE, indirizzo, intero16, reale32 } from './s7.mjs';
 import { leggiEsp32 } from './esp32.mjs';
 
@@ -160,9 +161,65 @@ export class SorgentePlc {
   chiudi() { this.client.chiudi(); }
 }
 
+// ---------- Celle frigo: regolatori Pego ECP200 Expert via Modbus RTU (USB-RS485), SOLO LETTURA ----------
+// Mappa registri dal documento Pego "MODBUS-RTU protocol specifications" (ECP200 EXPERT): DA VERIFICARE con --test.
+export const PEGO = {
+  temperatura: 0x0100,  // sonda ambiente, 0x0101 evaporatore: decimi di °C con segno, > 45 °C = sonda guasta
+  setpoint: 0x0300,     // decimi di °C con segno
+  stato: 0x0500,        // 0x0500 uscite, 0x0501 ingressi, 0x0502 allarmi
+};
+const ALLARMI_PEGO = [
+  [0, 'sonda ambiente guasta (E0)'], [1, 'sonda evaporatore guasta (E1)'], [2, 'errore memoria (EE)'],
+  [3, 'temperatura alta (EH)'], [4, 'temperatura bassa (EL)'], [5, 'porta aperta (Ed)'],
+  [6, 'allarme uomo in cella (E8)'], [7, 'protezione compressore (Ec)'], [8, 'luce accesa da troppo (E9)'], [9, 'batteria orologio scarica (E6)'],
+];
+
+export class SorgentePego {
+  constructor(cfg, log, trasporto = null) {
+    this.cfg = cfg;
+    this.log = log;
+    this.fonte = 'pego';
+    this.client = new ModbusRtu({ porta: cfg.porta, baud: cfg.baud || 9600, parita: cfg.parita || 'none', timeoutMs: cfg.timeout_ms || 1000, trasporto });
+  }
+
+  async _uno(d) {
+    const out = { fv: d.fv, temperatura: null, setpoint: null, raffreddamento: null, errore: null, fonte: this.fonte };
+    const [ambiente, evaporatore] = await this.client.leggiRegistri(d.indirizzo, PEGO.temperatura, 2);
+    const t = conSegno(ambiente) / 10;
+    this.log.debug(`pego ${d.fv} indirizzo ${d.indirizzo}: ambiente ${t} °C, evaporatore ${conSegno(evaporatore) / 10} °C`);
+    if (t > 45) out.errore = 'il Pego segnala la sonda ambiente guasta';
+    else out.temperatura = arrotonda(t + (Number(d.offset) || 0));
+    try { out.setpoint = arrotonda(conSegno((await this.client.leggiRegistri(d.indirizzo, PEGO.setpoint, 1))[0]) / 10); }
+    catch (e) { this.log.debug(`pego ${d.fv}: setpoint non letto (${e.message})`); }
+    try {
+      const [uscite, , allarmi] = await this.client.leggiRegistri(d.indirizzo, PEGO.stato, 3);
+      out.raffreddamento = !!(uscite & 1); // bit 0 = relè compressore
+      if (uscite & 2) this.log.debug(`pego ${d.fv}: sbrinamento in corso`);
+      const attivi = ALLARMI_PEGO.filter(([bit]) => (allarmi >> bit) & 1).map(([, testo]) => testo);
+      if (attivi.length) {
+        this.log.debug(`pego ${d.fv}: allarmi ${attivi.join(', ')}`);
+        if (allarmi & 1 && !out.errore) { out.errore = 'il Pego segnala la sonda ambiente guasta (E0)'; out.temperatura = null; }
+      }
+    } catch (e) { this.log.debug(`pego ${d.fv}: stato non letto (${e.message})`); }
+    return out;
+  }
+
+  async leggi() {
+    const out = [];
+    for (const d of this.cfg.dispositivi || []) { // in fila: il bus RS485 è uno solo
+      try { out.push(await this._uno(d)); }
+      catch (e) { out.push({ fv: d.fv, temperatura: null, setpoint: null, raffreddamento: null, errore: e.message, fonte: this.fonte }); }
+    }
+    return out;
+  }
+
+  chiudi() { this.client.chiudi(); }
+}
+
 export function creaSorgenti(config, log) {
   const s = [];
   if (config.modbus?.attivo) s.push(new SorgenteModbus(config.modbus, log));
+  if (config.pego?.attivo) s.push(new SorgentePego(config.pego, log));
   if (config.esp32?.attivo) s.push(new SorgenteEsp32(config.esp32, log));
   if (config.plc?.attivo) s.push(new SorgentePlc(config.plc, log));
   return s;
@@ -172,6 +229,7 @@ export function creaSorgenti(config, log) {
 export function fvConfigurati(config) {
   return [
     ...(config.modbus?.attivo ? (config.modbus.dispositivi || []).map(d => ({ fv: d.fv, tipo: 'modbus', nome: `Autonics TK4S indirizzo ${d.unita}` })) : []),
+    ...(config.pego?.attivo ? (config.pego.dispositivi || []).map(d => ({ fv: d.fv, tipo: 'modbus', nome: `Pego ECP200 indirizzo ${d.indirizzo}` })) : []),
     ...(config.esp32?.attivo ? (config.esp32.dispositivi || []).map(d => ({ fv: d.fv, tipo: 'esp32', nome: `ESP32 ${d.host}` })) : []),
     ...(config.plc?.attivo ? (config.plc.canali || []).map(c => ({ fv: c.fv, tipo: 'plc', nome: `PLC ${c.ingresso || 'da collegare'}` })) : []),
   ];

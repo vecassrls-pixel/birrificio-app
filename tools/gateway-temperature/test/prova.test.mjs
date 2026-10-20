@@ -1,4 +1,4 @@
-// Prove senza hardware: finti Waveshare (Modbus TCP), PLC (S7) e scheda ESP32 in locale.
+// Prove senza hardware: finti Waveshare (Modbus TCP), Pego (Modbus RTU), PLC (S7) e scheda ESP32 in locale.
 //   npm test
 // Verificano che i messaggi siano costruiti e letti come da protocollo; NON sostituiscono la prova sul posto (--test).
 
@@ -9,7 +9,8 @@ import http from 'node:http';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SorgenteModbus, SorgenteEsp32, SorgentePlc, valida } from '../lib/sorgenti.mjs';
+import { SorgenteModbus, SorgenteEsp32, SorgentePlc, SorgentePego, valida } from '../lib/sorgenti.mjs';
+import { crc16 } from '../lib/modbus-rtu.mjs';
 import { indirizzo } from '../lib/s7.mjs';
 import { BufferOffline } from '../lib/buffer.mjs';
 import { SorgenteSimulata } from '../lib/simulazione.mjs';
@@ -50,6 +51,57 @@ test('Modbus: TK4S con PV 23.4 °C, un decimale, SV 18.0', async () => {
   assert.ok(richieste.every(r => r.fc === 3 || r.fc === 4), 'solo funzioni di lettura');
   assert.deepEqual(richieste[0], { unita: 1, fc: 4, ind: 1000, n: 2 });
   sorg.chiudi(); chiudi(srv);
+});
+
+// finto bus RS485 con due Pego: indirizzo 1 cella a 3,5 °C, setpoint 2,0, compressore acceso; indirizzo 2 sonda guasta (E0)
+function busPego({ disturbo = false } = {}) {
+  const richieste = [];
+  let ricevi = () => {};
+  const registri = {
+    1: { 0x0100: 35, 0x0101: 0x10000 - 52, 0x0300: 20, 0x0500: 0b101, 0x0501: 0, 0x0502: 0 },
+    2: { 0x0100: 470, 0x0101: 0x10000 - 80, 0x0300: 20, 0x0500: 0, 0x0501: 0, 0x0502: 0b1 },
+  };
+  const trasporto = {
+    suDati: fn => { ricevi = fn; },
+    ascolta() {},
+    chiudi() {},
+    scrivi(req) {
+      const unita = req[0], fc = req[1], ind = req.readUInt16BE(2), n = req.readUInt16BE(4);
+      assert.equal(crc16(req.subarray(0, 6)), req.readUInt16LE(6), 'CRC della richiesta');
+      richieste.push({ unita, fc, ind, n });
+      if (!registri[unita]) return; // nessuno risponde
+      const dati = Array.from({ length: n }, (_, k) => registri[unita][ind + k] ?? 0);
+      const r = Buffer.alloc(5 + n * 2);
+      r[0] = unita; r[1] = fc; r[2] = n * 2;
+      dati.forEach((v, k) => r.writeUInt16BE(v, 3 + k * 2));
+      r.writeUInt16LE(crc16(r.subarray(0, 3 + n * 2)), 3 + n * 2);
+      if (disturbo) r[3] ^= 0xff;
+      // risposta a pezzi, come arriva dalla seriale
+      setTimeout(() => { ricevi(r.subarray(0, 3)); setTimeout(() => ricevi(r.subarray(3)), 2); }, 2);
+    },
+  };
+  return { trasporto, richieste };
+}
+
+test('Pego: celle via Modbus RTU, solo funzione 03', async () => {
+  const { trasporto, richieste } = busPego();
+  const cfg = { baud: 9600, timeout_ms: 200, dispositivi: [{ fv: 'CELLA1', indirizzo: 1 }, { fv: 'CELLA2', indirizzo: 2 }, { fv: 'CELLA3', indirizzo: 3 }] };
+  const s = new SorgentePego(cfg, log, trasporto);
+  const [c1, c2, c3] = await s.leggi();
+  assert.deepEqual(c1, { fv: 'CELLA1', temperatura: 3.5, setpoint: 2, raffreddamento: true, errore: null, fonte: 'pego' });
+  assert.equal(c2.temperatura, null);
+  assert.match(c2.errore, /sonda ambiente guasta/);
+  assert.match(c3.errore, /non risponde/);
+  assert.ok(richieste.every(r => r.fc === 3), 'mai funzioni di scrittura');
+  assert.deepEqual(richieste.filter(r => r.unita === 1).map(r => [r.ind, r.n]), [[0x0100, 2], [0x0300, 1], [0x0500, 3]]);
+});
+
+test('Pego: risposta disturbata (CRC errato) scartata', async () => {
+  const { trasporto } = busPego({ disturbo: true });
+  const s = new SorgentePego({ timeout_ms: 200, dispositivi: [{ fv: 'CELLA1', indirizzo: 1 }] }, log, trasporto);
+  const [c1] = await s.leggi();
+  assert.equal(c1.temperatura, null);
+  assert.match(c1.errore, /CRC/);
 });
 
 test('S7: lettura AIW e bit Q, mai funzioni di scrittura', async () => {

@@ -685,7 +685,8 @@ export async function vistaInventario() {
 }
 
 // ---------- registro HACCP S6 carico/scarico (da stampare) ----------
-const s6 = { da: null, a: null, categoria: '' };
+const s6 = { da: null, a: null, categoria: '', pagina: 0 };
+const RIGHE_S6 = 18;
 export async function vistaRegistroS6() {
   const { html } = u;
   // date di default ricalcolate a ogni apertura (l'app può restare aperta per giorni); quelle scelte a mano restano
@@ -695,6 +696,10 @@ export async function vistaRegistroS6() {
   if (!s6.aScelto) s6.a = u.addGiorni(lun, 6);
   const dati = await datiMagazzino();
   const righe = registroS6(dati, s6.da, s6.a).filter(r => !s6.categoria || r.categoria === s6.categoria);
+  // fogli da RIGHE_S6 righe, ognuno con intestazione e nomi delle colonne (Romain 2026-10-20); a video uno alla volta
+  const pagine = [];
+  for (let i = 0; i < righe.length; i += RIGHE_S6) pagine.push(righe.slice(i, i + RIGHE_S6));
+  s6.pagina = Math.min(Math.max(0, s6.pagina || 0), Math.max(0, pagine.length - 1));
   u.$app.innerHTML = html`
     <div class="barra">
       <a href="#/haccp" class="btn">← HACCP</a>
@@ -705,27 +710,34 @@ export async function vistaRegistroS6() {
       <span class="spazio"></span>
       <button class="primario" id="stampa">Stampa / Salva PDF</button>
     </div>
-    <div class="s6">
+    ${righe.some(r => r.scollegato) ? html`<p class="totale non-stampa">${righe.filter(r => r.scollegato).length} righe hanno un ingrediente non collegato a un articolo del magazzino: compaiono col nome della scheda cotta e senza lotto. Collegali in Materie prime → "Ingredienti delle cotte non collegati".</p>` : ''}
+    ${pagine.length > 1 ? html`<div class="barra non-stampa s6-pagine">
+      <button id="s6-prec" ${s6.pagina ? '' : 'disabled'} aria-label="Pagina precedente">◀</button>
+      <span>Pagina <b>${s6.pagina + 1}</b> di ${pagine.length} · ${righe.length} righe</span>
+      <button id="s6-succ" ${s6.pagina < pagine.length - 1 ? '' : 'disabled'} aria-label="Pagina successiva">▶</button>
+      <span class="totale">In stampa escono tutte le pagine.</span></div>` : ''}
+    ${(pagine.length ? pagine : [[]]).map((pag, n) => html`<div class="s6 s6-pag ${n === s6.pagina ? '' : 's6-altra'}">
       <div class="s6-testa">
         <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
         <div><h1>S6 - CARICO - SCARICO /// VECAS SRLS</h1>
-          <div>Periodo: dal ${u.dataIT(s6.da)} al ${u.dataIT(s6.a)}${s6.categoria ? ` · ${CATEGORIE[s6.categoria]}` : ''} · stampato il ${u.dataIT(u.oggiISO())}</div></div>
+          <div>Periodo: dal ${u.dataIT(s6.da)} al ${u.dataIT(s6.a)}${s6.categoria ? ` · ${CATEGORIE[s6.categoria]}` : ''} · stampato il ${u.dataIT(u.oggiISO())}${pagine.length > 1 ? ` · pagina ${n + 1} di ${pagine.length}` : ''}</div></div>
       </div>
       <p class="s6-legenda">Legenda: C = carico - S = scarico - QTA = quantità - Dest = destinatario - Prov = Provenienza</p>
-      ${righe.some(r => r.scollegato) ? html`<p class="totale non-stampa">${righe.filter(r => r.scollegato).length} righe hanno un ingrediente non collegato a un articolo del magazzino: compaiono col nome della scheda cotta e senza lotto. Collegali in Materie prime → "Ingredienti delle cotte non collegati".</p>` : ''}
-      ${righe.length ? html`<table class="tab-s6">
+      ${pag.length ? html`<table class="tab-s6">
         <thead><tr><th>C/S</th><th>Data</th><th>Prodotto</th><th>Lotto</th><th class="n">QTA</th><th>Scadenza</th><th>Dest/Prov</th></tr></thead>
-        <tbody>${righe.map(r => html`<tr class="${r.cs === 'C' ? 'c' : ''}">
+        <tbody>${pag.map(r => html`<tr class="${r.cs === 'C' ? 'c' : ''}">
           <td>${r.cs}</td><td>${u.dataIT(r.data)}</td><td>${r.prodotto}</td>
           <td>${r.lotto || !r.dove ? r.lotto : html`<input class="s6-lotto" data-dove="${JSON.stringify(r.dove)}" placeholder="+ lotto" title="Scrivi il lotto: si salva su ${r.dove.tipo === 'cotta' ? 'la scheda cotta' : r.dove.tipo === 'bolla' ? 'la bolla' : 'il movimento manuale'}">`}</td>
           <td class="n">${fmt(r.qta, r.unita)}</td><td>${r.scadenza ? u.dataIT(r.scadenza) : ''}</td><td>${r.chi}</td>
         </tr>`)}</tbody></table>` : html`<p class="vuoto">Nessun movimento nel periodo.</p>`}
-    </div>`;
+    </div>`)}`;
   const $ = s => document.getElementById(s);
-  $('s6-da').onchange = e => { s6.da = e.target.value; s6.daScelto = !!e.target.value; vistaRegistroS6(); };
-  $('s6-a').onchange = e => { s6.a = e.target.value; s6.aScelto = !!e.target.value; vistaRegistroS6(); };
-  const logo = u.$app.querySelector('.s6-testa img');
-  $('s6-cat').onchange = e => { s6.categoria = e.target.value; vistaRegistroS6(); };
+  $('s6-da').onchange = e => { s6.da = e.target.value; s6.daScelto = !!e.target.value; s6.pagina = 0; vistaRegistroS6(); };
+  $('s6-a').onchange = e => { s6.a = e.target.value; s6.aScelto = !!e.target.value; s6.pagina = 0; vistaRegistroS6(); };
+  if ($('s6-prec')) $('s6-prec').onclick = () => { s6.pagina--; vistaRegistroS6(); };
+  if ($('s6-succ')) $('s6-succ').onclick = () => { s6.pagina++; vistaRegistroS6(); };
+  const loghi = [...u.$app.querySelectorAll('.s6-testa img')];
+  $('s6-cat').onchange = e => { s6.categoria = e.target.value; s6.pagina = 0; vistaRegistroS6(); };
   // lotto mancante scritto qui: va sulla riga di origine (ingrediente della cotta, riga della bolla o del movimento manuale)
   u.$app.querySelectorAll('.s6-lotto').forEach(el => {
     el.onchange = async () => {
@@ -744,7 +756,7 @@ export async function vistaRegistroS6() {
     };
   });
   $('stampa').onclick = async () => {
-    await logo.decode().catch(() => {}); // stampa col logo già caricato
+    await Promise.all(loghi.map(l => l.decode().catch(() => {}))); // stampa coi loghi già caricati
     const titolo = document.title;
     document.title = `S6 carico scarico ${s6.da} ${s6.a}`;
     addEventListener('afterprint', () => { document.title = titolo; }, { once: true });

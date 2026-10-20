@@ -7,6 +7,8 @@ Programma che gira sul mini PC **Lenovo ThinkCentre Tiny** in birrificio: legge 
 | FV1-FV5 | Autonics TK4S-B4RN (PT100), RS485 indirizzi 1-5, 9600 baud | Modbus TCP verso il Waveshare RS485 TO WIFI/ETH (porta 502) |
 | FV6-FV7 | Scheda ESP32 + relè con firmware ESPHome (`tools/esphome`) | pagina web della scheda (REST) |
 | FV8-FV11 | PLC Siemens S7-200 SMART CPU SR30 + EM AE08 + EM AE04 | protocollo S7, **solo lettura** |
+| Cella 1-2 | Regolatori Pego ECP200 Expert (AU = 7, Ad 1-2) | Modbus RTU da adattatore USB-RS485 sul Lenovo, **solo lettura** |
+| Frigo luppoli | Scheda ESP32 + DS18B20 (`tools/esphome/frigo-luppoli.yaml`) | pagina web della scheda (REST) |
 
 - Ogni **15 secondi** aggiorna `temperature_attuali` (pagina Cantina, in tempo reale).
 - Ogni **5 minuti** salva una riga di storico per FV in `letture_temperature` (media dei 5 minuti).
@@ -20,6 +22,7 @@ La guida completa (cablaggi, firmware ESP32, taratura) è in [`GUIDA-TEMPERATURE
 Il programma usa solo Node.js (versione 18 o più recente), senza pacchetti da scaricare:
 
 - **Modbus TCP**: servono solo le funzioni di lettura 03 e 04, poche righe (`lib/modbus.mjs`).
+- **Modbus RTU (Pego)**: la porta seriale si imposta con `stty` e si legge come un file (`lib/modbus-rtu.mjs`), senza `serialport` da compilare; solo funzione 03.
 - **PLC S7**: `node-snap7` richiede la compilazione di codice nativo (build-essential, python, node-gyp) e si rompe a ogni aggiornamento di Node; `nodes7` è puro JavaScript ma contiene anche le funzioni di scrittura. Il nostro client (`lib/s7.mjs`) costruisce **solo** i messaggi di connessione e di lettura: anche per errore non può scrivere nel PLC né fermarlo.
 - **ESP32 e Supabase**: semplici richieste HTTP con `fetch`, già dentro Node.
 
@@ -72,6 +75,7 @@ Per aggiornare il programma: copiare la nuova cartella e rilanciare `sudo bash i
 | `node gateway.mjs --simula --secco` | letture finte solo a schermo, nessun invio (funziona anche senza config.json) |
 | `node gateway.mjs --simula --storico 30` | in più carica 30 giorni di storico finto, per vedere le curve nelle schede cotta |
 | `node gateway.mjs --cerca-plc 192.168.2.0/24` | cerca nella rete chi ha la porta S7 (102) aperta: il PLC |
+| `node gateway.mjs --cerca-pego 1` | prova velocità e parità finché il Pego con indirizzo (Ad) 1 risponde, sola lettura |
 | `node gateway.mjs --cerca-v 0 400` | legge la memoria V del PLC (VB0-VB400, **sola lettura**) e mostra i numeri che sembrano temperature o setpoint |
 | `npm test` | prove del programma con strumenti finti (non serve l'hardware) |
 
@@ -86,7 +90,7 @@ delete from temperature_attuali where fonte = 'simulazione';
 ## File
 
 - `gateway.mjs` programma principale (ciclo di lettura, storico, buffer, modalità di prova)
-- `lib/modbus.mjs` client Modbus TCP (solo lettura) · `lib/s7.mjs` client S7 (solo lettura) · `lib/esp32.mjs` lettura REST ESPHome
-- `lib/sorgenti.mjs` i tre blocchi di FV e la conversione in °C · `lib/supabase.mjs` invio · `lib/buffer.mjs` buffer offline · `lib/simulazione.mjs`
+- `lib/modbus.mjs` client Modbus TCP (solo lettura) · `lib/modbus-rtu.mjs` client Modbus RTU su seriale (solo lettura) · `lib/s7.mjs` client S7 (solo lettura) · `lib/esp32.mjs` lettura REST ESPHome
+- `lib/sorgenti.mjs` i blocchi di FV e celle e la conversione in °C · `lib/supabase.mjs` invio · `lib/buffer.mjs` buffer offline · `lib/simulazione.mjs`
 - `config.esempio.json` configurazione di esempio (quella vera, `config.json`, non va su GitHub)
 - `gateway-temperature.service` servizio systemd · `installa.sh` installazione

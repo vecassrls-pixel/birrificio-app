@@ -6,7 +6,8 @@
 // (anche una fattura arrivata prima di creare il contenitore).
 //
 // Record nell'archivio:
-//   contenitore           { nome, categoria: 'lattina'|'fusto'|'altro', formati, ogni, pezziConfezione, scortaMin, note, creato }
+//   contenitore           { nome, categoria: 'lattina'|'fusto'|'altro', formati, ogni, pezziConfezione, perCotta, perCottaSacca, note, creato }
+//                         perCotta / perCottaSacca = pezzi che servono per ogni cotta da confezionare (vedi fabbisognoContenitori)
 //                         formati = formati del Confezionamento delle cotte che lo consumano ("lattina/bottiglia|0.33", "fusto|25"):
 //                         il polykeg 24 L si riempie a 25 L, quindi consuma "fusto|25" e "fusto|24". [] = solo movimenti a mano.
 //                         ogni = 1 contenitore ogni N pezzi confezionati (cartone da 12 = 12).
@@ -23,7 +24,7 @@
 // sa da quali lotti di vuoti viene. Un inventario con il lotto dice che i pezzi contati sono tutti di quel lotto;
 // senza lotto restano i lotti arrivati per ultimi, fino al numero contato.
 
-import { gruppoCotta, numIT } from './dominio.js';
+import { addGiorni, fineCotta, gruppoCotta, numIT } from './dominio.js';
 
 export const CATEGORIE_CONT = { lattina: 'Lattine', fusto: 'Fusti', altro: 'Altro (coperchi, cartoni…)' };
 export const MOTIVI_CARICO = { acquisto: 'Acquisto', rientro: 'Rientro vuoti', rettifica: 'Rettifica', altro: 'Altro' };
@@ -159,7 +160,6 @@ export function giacenzeContenitori({ contenitori, movimenti, inventari, cotte }
     out.set(k.id, {
       contenitore: k, giacenza, consumo, registro, ultimoInventario: ultimoInv, lotti: registro.lotti,
       giorni: alGiorno > 0 ? Math.max(0, Math.floor(giacenza / alGiorno)) : null,
-      sottoScorta: Number(k.scortaMin) > 0 && giacenza < Number(k.scortaMin),
       confezioni: Number(k.pezziConfezione) > 0 ? giacenza / Number(k.pezziConfezione) : null,
     });
   }
@@ -170,9 +170,9 @@ export function giacenzeContenitori({ contenitori, movimenti, inventari, cotte }
 // I polykeg 24 L si riempiono a 25 L: consumano i fusti da 25 e da 24 L del Confezionamento.
 export function contenitoriProposti() {
   return [
-    { nome: 'Lattine 0,33 L', categoria: 'lattina', formati: ['lattina/bottiglia|0.33'], ogni: 1 },
-    { nome: 'Polykeg 24 L', categoria: 'fusto', formati: ['fusto|25', 'fusto|24'], ogni: 1 },
-    { nome: 'Polykeg 24 L con sacca', categoria: 'fusto', formati: ['fusto|25', 'fusto|24'], ogni: 1 },
+    { nome: 'Lattine 0,33 L', categoria: 'lattina', formati: ['lattina/bottiglia|0.33'], ogni: 1, perCotta: 800 },
+    { nome: 'Polykeg 24 L', categoria: 'fusto', formati: ['fusto|25', 'fusto|24'], ogni: 1, perCotta: 30 },
+    { nome: 'Polykeg 24 L con sacca', categoria: 'fusto', formati: ['fusto|25', 'fusto|24'], ogni: 1, perCottaSacca: 40 },
     { nome: 'Polykeg 20 L', categoria: 'fusto', formati: ['fusto|20'], ogni: 1 },
     { nome: 'Polykeg 12 L', categoria: 'fusto', formati: ['fusto|12'], ogni: 1 },
   ];
@@ -252,4 +252,39 @@ export function vuotiDelleCotte(idsCotte, dati, oggi) {
     }
   }
   return out.sort((a, b) => a.data.localeCompare(b.data) || a.contenitore.nome.localeCompare(b.contenitore.nome, 'it'));
+}
+
+// ---------- fabbisogno: vuoti che servono per le cotte da confezionare ----------
+// Romain 2026-10-19: per ogni cotta che si confeziona nei prossimi 20 giorni servono 30 polykeg 24 L e 800 lattine;
+// le Nitro e le cotte dei beerfirm "con sacca" (Chimera) invece 40 polykeg 24 L con sacca.
+// Cotta da confezionare = fine in FV da 7 giorni fa a fra 20 giorni e nessun confezionamento scritto nel suo lotto.
+// Le cotte doppie contano una per cotta. I numeri per cotta si cambiano nella scheda di ogni contenitore.
+export const GIORNI_FABBISOGNO = 20;
+const PER_COTTA_DEFAULT = Object.fromEntries(contenitoriProposti().map(k => [k.nome.toLowerCase(), k]));
+export function perCottaDi(k) {
+  const d = PER_COTTA_DEFAULT[String(k.nome || '').toLowerCase()] || {};
+  const v = (x, y) => (x === undefined || x === null || x === '' ? Number(y) || 0 : Number(x) || 0);
+  return { normale: v(k.perCotta, d.perCotta), sacca: v(k.perCottaSacca, d.perCottaSacca) };
+}
+export const cottaConSacca = (c, beerfirm = []) => /nitro/i.test(c.birra || '') || beerfirm.some(b => b.sacca && b.nome === c.beerfirm);
+
+export function fabbisognoContenitori({ contenitori, cotte, durate, beerfirm = [] }, oggi, giorni = GIORNI_FABBISOGNO) {
+  const da = addGiorni(oggi, -7), fino = addGiorni(oggi, giorni);
+  const daConfezionare = [];
+  for (const c of cotte) {
+    if (c.eliminato || !c.data) continue;
+    const fine = fineCotta(c, durate);
+    if (!fine || fine < da || fine > fino) continue;
+    if (gruppoCotta(c, cotte).some(x => (x.confezionato || []).some(r => Number(r.pezzi) > 0))) continue;
+    daConfezionare.push({ cotta: c, fine, sacca: cottaConSacca(c, beerfirm) });
+  }
+  daConfezionare.sort((a, b) => a.fine.localeCompare(b.fine));
+  const servono = new Map();
+  for (const k of contenitori) {
+    if (k.eliminato) continue;
+    const p = perCottaDi(k);
+    const tot = daConfezionare.reduce((t, x) => t + (x.sacca ? p.sacca : p.normale), 0);
+    if (tot) servono.set(k.id, tot);
+  }
+  return { cotte: daConfezionare, servono, giorni };
 }
