@@ -257,7 +257,7 @@ const pulito = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-
 // Ritorna { prodotto, x } oppure { ignora: true } oppure null
 // formato: quello da usare quando il nome non lo dice (Shopify vende solo lattine da 33 cl)
 export const FORMATO_SHOPIFY = { tipo: 'lattina/bottiglia', litri: 0.33 };
-export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp, formato = null) {
+export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp, formato = null, cotte = []) {
   const cod = [codice, nome].map(s => String(s || '').trim().toLowerCase()).filter(Boolean);
   if (imp.codiciIgnorati.some(c => cod.includes(String(c).toLowerCase()))) return { ignora: true };
   for (const p of prodotti) {
@@ -266,10 +266,18 @@ export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp, formato =
   }
   // dal nome: deve contenere il nome della birra; il formato dai litri (24, 24l, 0,33, 33cl) o dalla parola
   const n = ` ${pulito(`${nome} ${codice}`)} `;
-  const candidati = chiavi.map(daChiave).filter(p => n.includes(` ${pulito(p.birra)} `) || n.includes(pulito(p.birra).replace(/ /g, '')));
+  const candidati = chiavi.map(daChiave).filter(p => n.includes(` ${pulito(p.birra)} `) || n.replace(/ /g, '').includes(pulito(p.birra).replace(/ /g, '')));
   if (!candidati.length) return null;
-  const lungo = Math.max(...candidati.map(p => p.birra.length));
-  const migliori = candidati.filter(p => p.birra.length === lungo); // "LA MORTE SUA HOLIDAY" prima di "LA MORTE SUA"
+  // "LA MORTE SUA HOLIDAY" prima di "LA MORTE SUA": via le birre il cui nome sta dentro quello di un'altra trovata
+  const nomi = [...new Set(candidati.map(p => pulito(p.birra)))];
+  let restano = nomi.filter(a => !nomi.some(b => b !== a && b.includes(a)));
+  // "432HZ SESSION IPA": via le birre che si chiamano come lo stile di un'altra trovata
+  const stili = new Set(candidati.map(p => { const c = caratteristiche(p.birra, prodotti, cotte); return pulito(c.stile || c.stileProposto); }).filter(Boolean));
+  if (restano.some(a => !stili.has(a))) restano = restano.filter(a => !stili.has(a));
+  // più birre diverse nel nome: vale quella scritta per prima
+  const pos = a => { const i = n.indexOf(` ${a} `); return i < 0 ? n.replace(/ /g, '').indexOf(a.replace(/ /g, '')) : i; };
+  const prima = restano.sort((a, b) => pos(a) - pos(b))[0];
+  const migliori = candidati.filter(p => pulito(p.birra) === prima);
   const perFormato = migliori.filter(p => {
     const l = p.litri;
     const cl = Math.round(l * 100);

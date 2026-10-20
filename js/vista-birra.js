@@ -718,7 +718,7 @@ export async function vistaImporta(fonte) {
         ...d,
         scegli: fonte !== 'shopify' || d.spedito,
         righe: d.righe.map(r => {
-          const t2 = trovaProdotto(r, prodotti, dati.prodotti, imp, fonte === 'shopify' ? FORMATO_SHOPIFY : null);
+          const t2 = trovaProdotto(r, prodotti, dati.prodotti, imp, fonte === 'shopify' ? FORMATO_SHOPIFY : null, dati.cotte);
           // lattina 33 cl di una birra che finora non l'aveva: entra nell'elenco dei prodotti
           if (t2?.prodotto && !prodotti.includes(t2.prodotto)) { prodotti.push(t2.prodotto); prodotti.sort((a, b) => a.localeCompare(b, 'it')); }
           return { ...r, prodotto: t2?.ignora ? '-' : t2?.prodotto || '', x: t2?.x || 1, auto: !!t2, lotto: '' };
