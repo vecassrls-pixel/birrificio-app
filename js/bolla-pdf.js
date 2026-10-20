@@ -139,11 +139,16 @@ export function leggiDdt(pagine) {
 
 // ---------- 3. righe per la bolla ----------
 const UNITA_PDF = { kg: 'kg', g: 'g', gr: 'g', l: 'L', lt: 'L', ml: 'ml' };
+// unità scritta in fattura o bolla: "KG", "Kg.", "KGM", "kilogrammi", "LT.", "litri"
+const unitaDaUm = um => {
+  const x = String(um || '').toLowerCase().replace(/[^a-z]/g, '');
+  return UNITA_PDF[x] || (/^(kgm|kgs|kili|kilo|kilogramm|chilo|chilogramm)/.test(x) ? 'kg' : /^(grammi|grm)/.test(x) ? 'g' : /^(litr|ltr|ltn)/.test(x) ? 'L' : null);
+};
 const PEZZI = /^(pz|nr|n|cf|conf|sc|sac|pc|pcs|un)\.?$/i;
 // confezione nella descrizione: "20 kg", "kg 25", "g 100"
 export function confezione(desc) {
   const d = String(desc || '').toLowerCase().replace(/®|™/g, ' ');
-  const m = /(\d+(?:[.,]\d+)?)\s*(kg|gr|g|lt|l|ml)\b/.exec(d) || /\b(kg|gr|g|lt|l|ml)\s*(\d+(?:[.,]\d+)?)\b/.exec(d);
+  const m = /(?<![a-z0-9])(\d+(?:[.,]\d+)?)\s*(kg|gr|g|lt|l|ml)\b/.exec(d) || /\b(kg|gr|g|lt|l|ml)\s*(\d+(?:[.,]\d+)?)\b/.exec(d);
   if (!m) return null;
   const [n, u] = /\d/.test(m[1]) ? [m[1], m[2]] : [m[2], m[1]];
   return { qta: Number(n.replace(',', '.')), unita: UNITA_PDF[u] };
@@ -152,6 +157,7 @@ export function confezione(desc) {
 // nome pulito per un articolo nuovo: "Cryo Hops® pellets Simcoe® kg 5" → "Cryo Simcoe"
 export function nomeDaDescrizione(desc) {
   return String(desc || '').replace(/®|™/g, ' ')
+    .replace(/\s+(rif\.?|riferimento|contratto|ordine|vs\.?\s*ord)\b.*$/i, ' ') // "Dingemans Pilsner Rif. contratto n. 39/M26…"
     .replace(/(\d+(?:[.,]\d+)?)\s*(kg|gr|g|lt|l|ml)\b/gi, ' ').replace(/\b(kg|gr|g|lt|l|ml)\s*\d+(?:[.,]\d+)?\b/gi, ' ')
     .replace(/\bconf(ezione)?\.?(\s+da)?\b/gi, ' ')
     .replace(/\b(luppolo|hops|pellets?|t90|t45|malto|monoidratato|in grani)\b/gi, ' ')
@@ -167,26 +173,37 @@ export function categoriaDaDescrizione(desc) {
   if (/gypsum|gesso|clorur|chlorur|solfato|calcio|magnesi|bicarbonat|\bsale\b|brewmix/.test(d)) return 'sale';
   if (/acido|lactic/.test(d)) return 'aggiunta';
   if (/cannella|arancia|scorza|coriandolo|zenzero|pepe|vaniglia|spezi|cacao|caff/.test(d)) return 'spezia';
-  if (/antifoam|antischiuma|zym|enzim|protafloc|polygel|spindasol|clarity|kieselsol|whirlfloc|nutrient|vit\b|silice|pvpp|gel\b/.test(d)) return 'coadiuvante';
+  if (/antifoam|antischiuma|zym|enzim|protafloc|polygel|spindasol|clarity|kieselsol|whirlfloc|nutrient|vit\b|silice|pvpp|gel\b|antiox|metabisolfit|tannin|ascorbic/.test(d)) return 'coadiuvante';
   return null; // fusti, imballi, spese: non sono materie prime
 }
 
 const compatta = n => chiaveNome(n).split(' ').sort().join('');
+// prime due parole uguali a quelle di un solo articolo: "Dingemans Pilsner …" = "Dingemans Pilsner" (Romain 2026-10-20)
+const primeDue = n => { const w = chiaveNome(n).split(' ').filter(Boolean); return w.length >= 2 ? `${w[0]} ${w[1]}` : ''; };
+function perPrimeDue(articoli, nome) {
+  const k = primeDue(nome);
+  if (!k) return null;
+  const trovati = articoli.filter(a => [a.nome, ...(a.alias || [])].some(x => primeDue(x) === k));
+  return trovati.length === 1 ? trovati[0] : null;
+}
 
 export function proponiRighe(ddt, articoli) {
   return ddt.righe.map(r => {
     const conf = confezione(r.descrizione);
     const pezzi = PEZZI.test(r.um) || !r.um;
     let qta = pezzi && conf ? r.qta * conf.qta : r.qta;
-    let unita = pezzi ? (conf?.unita || 'pz') : (UNITA_PDF[r.um.toLowerCase()] || 'pz');
+    let unita = pezzi ? (conf?.unita || 'pz') : (unitaDaUm(r.um) || 'pz');
     // articolo già noto: stessa descrizione vista in una bolla precedente, oppure nome uguale
     const parole = new Set(chiaveNome(r.descrizione).split(' '));
     const art = articoli.find(a => (a.alias || []).some(x => compatta(x) === compatta(r.descrizione)))
       || trovaArticolo(articoli, nomeDaDescrizione(r.descrizione))
       // nome corto dentro la descrizione: articolo "LN3" per "ATECREM ALE LN3 Conf. da Kg 1"
-      || articoli.find(a => { const p = chiaveNome(a.nome).split(' ').filter(Boolean); return p.join('').length >= 3 && p.every(x => parole.has(x)) && /\d/.test(a.nome); });
+      || articoli.find(a => { const p = chiaveNome(a.nome).split(' ').filter(Boolean); return p.join('').length >= 3 && p.every(x => parole.has(x)) && /\d/.test(a.nome); })
+      || perPrimeDue(articoli, nomeDaDescrizione(r.descrizione));
     // senza peso nella descrizione: il peso per pezzo dell'articolo (lolla di riso: 1 sacco = 20 kg)
     if (pezzi && !conf && art?.pesoPezzo > 0) { qta = r.qta * art.pesoPezzo; unita = art.unita; }
+    // fattura senza unità di misura (1175 per il Pilsner sfuso): vale l'unità dell'articolo, non "pz"
+    else if (!r.um && !conf && art?.unita && art.unita !== 'pz') unita = art.unita;
     const categoria = art?.categoria || categoriaDaDescrizione(r.descrizione);
     return {
       nome: art?.nome || nomeDaDescrizione(r.descrizione),
@@ -209,18 +226,24 @@ export function proponiRighe(ddt, articoli) {
 // Fattura d'acquisto + bolla (DDT) dello stesso arrivo: dalla bolla si prendono lotti e scadenze
 // (la fattura non li ha) e si segnalano le differenze di quantità. Entrambe già passate da proponiRighe.
 // Due righe di bolla per la stessa riga di fattura (due lotti): la riga si divide.
-export function incrociaBolla(fattura, bolla) {
+// tieni(riga): le righe della bolla senza corrispondenza si aggiungono solo se sono materie prime.
+const GENERICHE = new Set(['confezione', 'sacco', 'sacchi', 'flacone', 'tanica', 'busta', 'barattolo', 'pellet', 'pellets', 'luppolo', 'malto', 'lievito', 'birra', 'liquido', 'polvere']);
+const paroleForti = s => chiaveNome(s).split(' ').filter(w => w.length >= 5 && !/\d/.test(w) && !GENERICHE.has(w));
+export function incrociaBolla(fattura, bolla, tieni = () => true) {
   const norm = s => String(s || '').replace(/\s+/g, '').toUpperCase();
   const uguali = (f, d) => (f.codice && d.codice && norm(f.codice) === norm(d.codice))
     || (f.nome && d.nome && chiaveNome(f.nome) === chiaveNome(d.nome))
     || (f.descrizione && d.descrizione && compatta(f.descrizione) === compatta(d.descrizione));
+  // ultima prova: fattura e bolla scrivono la descrizione in modo diverso ma con lo stesso nome proprio ("ANTIOXIN SBT")
+  const simili = (f, d) => { const p = new Set(paroleForti(d.descrizione || d.nome)); return paroleForti(f.descrizione || f.nome).some(w => p.has(w)); };
   const gruppi = fattura.map(() => []);
   const sole = [];
   for (const d of bolla) {
     // prima per codice, poi per nome o descrizione
     const i = fattura.findIndex(f => f.codice && d.codice && norm(f.codice) === norm(d.codice));
-    const j = i >= 0 ? i : fattura.findIndex(f => uguali(f, d));
-    if (j >= 0) gruppi[j].push(d); else sole.push(d);
+    let j = i >= 0 ? i : fattura.findIndex(f => uguali(f, d));
+    if (j < 0) j = fattura.findIndex((f, k) => f.includi !== false && !gruppi[k].length && simili(f, d));
+    if (j >= 0) gruppi[j].push(d); else if (tieni(d)) sole.push(d);
   }
   const fmt = n => String(Math.round(n * 1000) / 1000).replace('.', ',');
   const righe = fattura.flatMap((f, i) => {
