@@ -167,7 +167,7 @@ export function categoriaDaDescrizione(desc) {
   if (/gypsum|gesso|clorur|chlorur|solfato|calcio|magnesi|bicarbonat|\bsale\b|brewmix/.test(d)) return 'sale';
   if (/acido|lactic/.test(d)) return 'aggiunta';
   if (/cannella|arancia|scorza|coriandolo|zenzero|pepe|vaniglia|spezi|cacao|caff/.test(d)) return 'spezia';
-  if (/antifoam|antischiuma|zym|enzim|protafloc|polygel|spindasol|clarity|kieselsol|whirlfloc|nutrient|vit\b|silice|pvpp|gel\b/.test(d)) return 'coadiuvante';
+  if (/antifoam|antischiuma|zym|enzim|protafloc|polygel|spindasol|clarity|kieselsol|whirlfloc|nutrient|vit\b|silice|pvpp|gel\b|antiox|metabisolfit|tannin|ascorbic/.test(d)) return 'coadiuvante';
   return null; // fusti, imballi, spese: non sono materie prime
 }
 
@@ -209,18 +209,24 @@ export function proponiRighe(ddt, articoli) {
 // Fattura d'acquisto + bolla (DDT) dello stesso arrivo: dalla bolla si prendono lotti e scadenze
 // (la fattura non li ha) e si segnalano le differenze di quantità. Entrambe già passate da proponiRighe.
 // Due righe di bolla per la stessa riga di fattura (due lotti): la riga si divide.
-export function incrociaBolla(fattura, bolla) {
+// tieni(riga): le righe della bolla senza corrispondenza si aggiungono solo se sono materie prime.
+const GENERICHE = new Set(['confezione', 'sacco', 'sacchi', 'flacone', 'tanica', 'busta', 'barattolo', 'pellet', 'pellets', 'luppolo', 'malto', 'lievito', 'birra', 'liquido', 'polvere']);
+const paroleForti = s => chiaveNome(s).split(' ').filter(w => w.length >= 5 && !/\d/.test(w) && !GENERICHE.has(w));
+export function incrociaBolla(fattura, bolla, tieni = () => true) {
   const norm = s => String(s || '').replace(/\s+/g, '').toUpperCase();
   const uguali = (f, d) => (f.codice && d.codice && norm(f.codice) === norm(d.codice))
     || (f.nome && d.nome && chiaveNome(f.nome) === chiaveNome(d.nome))
     || (f.descrizione && d.descrizione && compatta(f.descrizione) === compatta(d.descrizione));
+  // ultima prova: fattura e bolla scrivono la descrizione in modo diverso ma con lo stesso nome proprio ("ANTIOXIN SBT")
+  const simili = (f, d) => { const p = new Set(paroleForti(d.descrizione || d.nome)); return paroleForti(f.descrizione || f.nome).some(w => p.has(w)); };
   const gruppi = fattura.map(() => []);
   const sole = [];
   for (const d of bolla) {
     // prima per codice, poi per nome o descrizione
     const i = fattura.findIndex(f => f.codice && d.codice && norm(f.codice) === norm(d.codice));
-    const j = i >= 0 ? i : fattura.findIndex(f => uguali(f, d));
-    if (j >= 0) gruppi[j].push(d); else sole.push(d);
+    let j = i >= 0 ? i : fattura.findIndex(f => uguali(f, d));
+    if (j < 0) j = fattura.findIndex((f, k) => f.includi !== false && !gruppi[k].length && simili(f, d));
+    if (j >= 0) gruppi[j].push(d); else if (tieni(d)) sole.push(d);
   }
   const fmt = n => String(Math.round(n * 1000) / 1000).replace('.', ',');
   const righe = fattura.flatMap((f, i) => {

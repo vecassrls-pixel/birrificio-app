@@ -453,7 +453,7 @@ export async function vistaBolla(id) {
       return `${origine}: ${lette.filter(r => r.includi).length} righe da caricare, ${lette.filter(r => !r.includi).length} escluse (spese, imballi…).`;
     }
     if (ddt.numero) b.ddt = ddt.numero;
-    const { righe, avvisi } = incrociaBolla(b.righe, lette.filter(noto));
+    const { righe, avvisi } = incrociaBolla(b.righe, lette, noto);
     b.righe = righe;
     const lotti = righe.filter(r => r.includi !== false && r.lotto).length;
     return `${origine}: lotti e scadenze presi dalla bolla (${lotti} righe con lotto)${avvisi ? ` · ${avvisi} da controllare, segnate con ⚠` : ' · quantità uguali alla fattura'}.`;
