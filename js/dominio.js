@@ -24,6 +24,10 @@ export const ADDITIVI_DEFAULT = [
   { nome: 'Brewmix', qta: 100, unita: 'g' },
   { nome: 'Antioxin', qta: 100, unita: 'g' },
   { nome: 'Yeastvit', qta: 60, unita: 'g' },
+  // Romain 2026-10-20
+  { nome: 'Spindasol', qta: 250, unita: 'g' },
+  { nome: 'Protafloc', qta: 60, unita: 'g' },
+  { nome: 'Polygel', qta: 166, unita: 'g' },
 ];
 // altri modi in cui l'additivo è scritto nelle schede
 const ALTRI_NOMI = { yeastvit: ['vityeast', 'yeatvit', 'viteast', 'nutrientelievito', 'yeastnutrient'] };
