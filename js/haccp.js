@@ -91,7 +91,7 @@ export function scadenzeDaFare(scadenze, oggi = oggiISO()) {
 
 // ---------- pulizie e sanificazioni (CIP) ----------
 export const FASI_PULIZIA = ['Risciacquo', 'Alcalino (soda)', 'Acido', 'Sanificante'];
-export const LINEE = ['Sala cottura', 'Linea fusti', 'Linea lattine', 'Tubi e raccordi', 'Scambiatore'];
+export const LINEE = ['Sala cottura', 'Inlattinatrice', 'Linea fusti', 'Linea lattine', 'Tubi e raccordi', 'Scambiatore'];
 export const GIORNI_AVVISO_PULIZIA = 14;
 const kc = s => String(s || '').trim().toLowerCase();
 
@@ -130,6 +130,7 @@ export function statoFermentatori(cotte, durate, fvs, pulizie, oggi = oggiISO())
 // tra lo svuotamento e il riempimento dopo. Restituisce le pulizie registrate più quelle automatiche (non salvate).
 export const PRODOTTI_PULIZIE = 'Soda 3%, sanificante 2%'; // default di Romain, 2026-10-15
 export const FASI_DEFAULT_PULIZIA = FASI_PULIZIA.filter(f => f !== 'Acido');
+export const INLATTINATRICE = 'Inlattinatrice';
 export const idPuliziaAuto = (fv, data) => `pulizia-auto-${fv}-${data}`;
 export function conPulizieAutomatiche(cotte, durate, fvs, pulizie, chi = '', oggi = oggiISO()) {
   const registrate = pulizie.filter(p => !p.eliminato);
@@ -146,6 +147,19 @@ export function conPulizieAutomatiche(cotte, durate, fvs, pulizie, chi = '', ogg
       if (!fatta) auto.push({ id, tipo: 'pulizia', auto: true, data, cosa: s.fv.nome, fasi: FASI_DEFAULT_PULIZIA, prodotti: PRODOTTI_PULIZIE, chi, note: '', birra: r.cotte[0]?.birra || '' });
     });
   }
+  // inlattinatrice (Romain 2026-10-20): una pulizia per ogni giorno di confezionamento in lattina
+  const giorniLattine = new Map();
+  for (const c of cotte.filter(x => !x.eliminato)) {
+    for (const r of c.confezionato || []) {
+      const data = r.data || c.fine || '';
+      if (data && data <= oggi && Number(r.pezzi) > 0 && /lattin/i.test(r.tipo || '') && !giorniLattine.has(data)) giorniLattine.set(data, c.birra || '');
+    }
+  }
+  for (const [data, birra] of giorniLattine) {
+    const id = idPuliziaAuto(INLATTINATRICE, data);
+    if (ids.has(id) || registrate.some(p => !p.nonFatta && p.data === data && /inlattinatrice|linea lattine/i.test(p.cosa || ''))) continue;
+    auto.push({ id, tipo: 'pulizia', auto: true, data, cosa: INLATTINATRICE, fasi: FASI_DEFAULT_PULIZIA, prodotti: PRODOTTI_PULIZIE, chi, note: '', birra });
+  }
   return [...registrate.filter(p => !p.nonFatta), ...auto];
 }
 // FV da pulire prima di un riempimento vicino (entro GIORNI_AVVISO_PULIZIA giorni) o vuoti e sporchi.
@@ -159,3 +173,54 @@ export function fvDaPulire(stati, pulizie, oggi = oggiISO()) {
     .map(s => ({ ...s, giorni: s.prossimo ? diffGiorni(oggi, s.prossimo.da) : null }))
     .sort((a, b) => (a.giorni ?? 999) - (b.giorni ?? 999));
 }
+
+// ---------- schede ISSAN: monitoraggio insetti e roditori, esecuzione pulizie ambienti ----------
+// Moduli del consulente HACCP (ISSAN SRL), annata da marzo a febbraio. Si compilano da soli e si correggono:
+//   infestanti       { mese: 'AAAA-MM', voci: { chiave: 'assenza'|'presenza' }, chi, note }  (id 'infestanti-AAAA-MM')
+//   puliziaambiente  { data, fatta: bool, chi }  (id 'pamb-AAAA-MM-GG'; fatta false = riga automatica tolta)
+export const MODULO_ISSAN = { ditta: 'VECAS DI ROMAIN VERRECCHIA', consulente: 'ISSAN SRL', dottoressa: 'Dott.ssa Mariagrazia Mercuri', rev: 'Rev. 01', revData: '13/03/2025' };
+export const VOCI_INFESTANTI = [
+  ['peli', 'Peli o piume'], ['rasure', 'Rasure o segni di roditori'], ['insettiVivi', 'Insetti vivi'], ['insettiMorti', 'Insetti morti'],
+  ['roditori', 'Roditori'], ['contenitori', 'Contenitori danneggiati da insetti o roditori'], ['feci', 'Feci o altri escrementi di roditori'],
+  ['esche', 'Animali infestanti nelle esche/ trappole'],
+];
+export const INIZIO_SCHEDE = '2026-03'; // da qui le schede si compilano da sole (prima c'era la carta)
+export const GIORNI_PULIZIA_AMBIENTI = [7, 21]; // circa due volte al mese, come sul foglio
+export const annataHaccp = iso => (Number(iso.slice(5, 7)) >= 3 ? Number(iso.slice(0, 4)) : Number(iso.slice(0, 4)) - 1);
+export const mesiAnnata = anno => Array.from({ length: 12 }, (_, i) => {
+  const m = 3 + i, y = anno + (m > 12 ? 1 : 0);
+  return `${y}-${String(m > 12 ? m - 12 : m).padStart(2, '0')}`;
+});
+const MESI_CORTI = ['GEN', 'FEB', 'MAR', 'APR', 'MAG', 'GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV', 'DIC'];
+const MESI_LUNGHI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+export const meseCorto = ym => `${MESI_CORTI[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
+export const meseLungo = ym => `${MESI_LUNGHI[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+export const giorniDelMese = ym => new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate();
+
+// Scheda del mese: quella salvata, oppure tutto "Assenza" col primo operatore (dal mese di INIZIO_SCHEDE fino a quello in corso)
+export function schedaInfestanti(mese, salvate, chi, oggi = oggiISO()) {
+  const s = salvate.find(x => !x.eliminato && x.mese === mese);
+  if (s) return { ...s, auto: false };
+  if (mese < INIZIO_SCHEDE || mese > oggi.slice(0, 7)) return null;
+  return { id: `infestanti-${mese}`, tipo: 'infestanti', mese, voci: Object.fromEntries(VOCI_INFESTANTI.map(([k]) => [k, 'assenza'])), chi, note: '', auto: true };
+}
+
+// Giorni di pulizia ambienti di un mese: i GIORNI_PULIZIA_AMBIENTI (sabato e domenica vanno al venerdì prima),
+// fino a oggi e da INIZIO_SCHEDE, più quelli segnati a mano. Map 'AAAA-MM-GG' -> { data, chi, auto }
+export function pulizieAmbientiMese(mese, salvate, chi, oggi = oggiISO()) {
+  const out = new Map();
+  if (mese >= INIZIO_SCHEDE) {
+    for (const g of GIORNI_PULIZIA_AMBIENTI) {
+      let d = `${mese}-${String(Math.min(g, giorniDelMese(mese))).padStart(2, '0')}`;
+      const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
+      if (dow === 6) d = addGiorni(d, -1); else if (dow === 0) d = addGiorni(d, -2);
+      if (d <= oggi) out.set(d, { data: d, chi, auto: true });
+    }
+  }
+  for (const r of salvate.filter(x => !x.eliminato && x.data?.startsWith(mese))) {
+    if (r.fatta === false) out.delete(r.data);
+    else out.set(r.data, { data: r.data, chi: r.chi || chi, auto: false });
+  }
+  return out;
+}
+export const sigla = nome => String(nome || '').trim().split(/\s+/).filter(Boolean).map(p => `${p[0].toUpperCase()}.`).join('');

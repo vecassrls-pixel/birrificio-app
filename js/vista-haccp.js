@@ -11,6 +11,7 @@ import { CELLE, fmt } from './temperature.js';
 import { vuotiDelleCotte } from './contenitori.js';
 import { ID_TREBBIE, destinatarioDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
 import { creaXlsx } from './xlsx.js';
+import { MODULO_ISSAN, VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -50,6 +51,8 @@ export async function vistaHaccp() {
         sporchi ? html`<span class="haccp-badge urgente">${sporchi} FV da pulire</span>` : '')}
       ${voce('#/temperature-celle', '🌡️', 'Temperature celle frigo', 'Registro giornaliero automatico di Cella 1, Cella 2 e frigo luppoli dalle sonde: minima, massima, media ed esito. Da stampare.')}
       ${voce('#/trebbie', '🌾', 'Registro trebbie', 'Sottoprodotto di ogni cotta: data, numero cotta, kg (dai malti della scheda) e destinazione. Da stampare o scaricare in Excel.')}
+      ${voce('#/infestanti', '🐭', 'Monitoraggio insetti e roditori', 'Scheda mensile ISSAN: si compila da sola con tutto "Assenza" e l\'operatore; segna "Presenza" se trovi qualcosa. Da stampare.')}
+      ${voce('#/pulizie-ambienti', '🧹', 'Esecuzione pulizie', 'Griglia ISSAN giorni × mesi (marzo-febbraio): "sì" e firma circa due volte al mese, da sola; tocca un giorno per aggiungere o togliere.')}
       ${voce('#/scadenzario', '🗓️', 'Scadenzario HACCP', 'Analisi dell\'acqua, tarature, manutenzioni, disinfestazione e formazione, con avviso in Home.',
         scadute || vicine ? html`<span class="haccp-badge ${scadute ? 'urgente' : ''}">${[scadute && `${scadute} ${scadute === 1 ? 'scaduta' : 'scadute'}`, vicine && `${vicine} in scadenza`].filter(Boolean).join(' · ')}</span>` : '')}
     </div>`;
@@ -291,7 +294,7 @@ export async function vistaPulizie(cosaScelta = '') {
       <span class="spazio"></span>
       <button class="primario" id="stampa">Stampa / Salva PDF</button>
     </div>
-    <p class="totale non-stampa">Si compila da solo: quando un FV si svuota (fine in FV o travaso) c'è la sua pulizia di quel giorno con ${FASI_DEFAULT_PULIZIA.join(', ').toLowerCase()}, ${PRODOTTI_PULIZIE.toLowerCase()} e ${operatori[0]} (primo operatore in <a href="#/impostazioni">Impostazioni</a>).
+    <p class="totale non-stampa">Si compila da solo: quando un FV si svuota (fine in FV o travaso) e nei giorni di confezionamento in lattina (inlattinatrice) c'è la pulizia di quel giorno con ${FASI_DEFAULT_PULIZIA.join(', ').toLowerCase()}, ${PRODOTTI_PULIZIE.toLowerCase()} e ${operatori[0]} (primo operatore in <a href="#/impostazioni">Impostazioni</a>).
       Le righe <span class="pl-auto">auto</span> si correggono scrivendo qui sotto; ✕ su una riga automatica vuol dire che quella pulizia non è stata fatta.</p>
     <div class="s6">
       ${testa('REGISTRO PULIZIE E SANIFICAZIONI', `Periodo: dal ${u.dataIT(regP.da)} al ${u.dataIT(regP.a)}`)}
@@ -541,4 +544,117 @@ function excelTrebbie(righe) {
   a.download = `registro-trebbie-${u.oggiISO()}.xlsx`;
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ---------- schede ISSAN: insetti e roditori, esecuzione pulizie ----------
+const issTesta = () => u.html`<div class="iss-testa">
+  <div><i>${MODULO_ISSAN.ditta}</i><i>Modulistica H.A.C.C.P.</i></div>
+  <div class="iss-c"><i>${MODULO_ISSAN.consulente}</i><i>${MODULO_ISSAN.dottoressa}</i></div>
+  <div class="iss-d">${MODULO_ISSAN.rev}<br>${MODULO_ISSAN.revData}</div></div>`;
+const annate = (oggi, salvate) => {
+  const da = annataHaccp(`${INIZIO_SCHEDE}-01`), a = annataHaccp(oggi);
+  const anni = new Set(salvate.map(annataHaccp));
+  for (let y = da; y <= a; y++) anni.add(y);
+  return [...anni].sort((x, y) => y - x);
+};
+const segAnnate = (lista, scelta) => u.html`<div class="segmenti iss-anni">${lista.map(y => u.html`<button data-annata="${y}" class="${y === scelta ? 'attivo' : ''}">${y}/${y + 1}</button>`)}</div>`;
+
+const inf = { annata: null, mese: '' };
+export async function vistaInfestanti() {
+  const { html } = u;
+  const oggi = u.oggiISO();
+  const [salvate, opRec] = await Promise.all([u.db.tutti('infestanti'), u.db.leggi(ID_OPERATORI)]);
+  const operatori = operatoriDa(opRec);
+  const lista = annate(oggi, salvate.map(x => `${x.mese}-01`));
+  if (!lista.includes(inf.annata)) inf.annata = annataHaccp(oggi);
+  const schede = mesiAnnata(inf.annata).map(m => schedaInfestanti(m, salvate, operatori[0], oggi)).filter(Boolean);
+  if (!schede.some(x => x.mese === inf.mese)) inf.mese = schede.at(-1)?.mese || '';
+  const i = schede.findIndex(x => x.mese === inf.mese);
+  const presenze = sc => VOCI_INFESTANTI.filter(([k]) => sc.voci?.[k] === 'presenza').length;
+  const foglio = (sc, attuale) => html`<div class="iss-foglio iss-ritratto ${attuale ? '' : 'iss-altro'}">
+    ${issTesta()}
+    <h2 class="iss-titolo">SCHEDA MONITORAGGIO INSETTI E RODITORI<br>MESE DI <u>${meseLungo(sc.mese).split(' ')[0].toUpperCase()}</u> (${inf.annata}/${inf.annata + 1})</h2>
+    <table class="iss-tab iss-inf"><thead><tr><th></th><th class="c">Assenza</th><th class="c">Presenza</th></tr></thead>
+      <tbody>${VOCI_INFESTANTI.map(([k, n]) => { const v = sc.voci?.[k] || 'assenza'; return html`<tr class="${v === 'presenza' ? 'iss-presenza' : ''}"><td>${n}</td>
+        <td class="c"><span class="iss-box" role="button" tabindex="0" data-inf="${sc.mese}|${k}|assenza" aria-pressed="${v === 'assenza'}">${v === 'assenza' ? '☒' : '☐'}</span></td>
+        <td class="c"><span class="iss-box" role="button" tabindex="0" data-inf="${sc.mese}|${k}|presenza" aria-pressed="${v === 'presenza'}">${v === 'presenza' ? '☒' : '☐'}</span></td></tr>`; })}</tbody></table>
+    <p class="iss-firma">Controllato da: <select class="s6-lotto" data-inf-chi="${sc.mese}">${opzioniOperatori(operatori, sc.chi).map(n => html`<option ${n === sc.chi ? 'selected' : ''}>${n}</option>`)}</select>
+      <span class="iss-note">Note / azioni: <input class="s6-lotto" data-inf-note="${sc.mese}" value="${sc.note || ''}" placeholder="${presenze(sc) ? 'scrivi cosa hai trovato e cosa hai fatto' : ''}"></span></p>
+  </div>`;
+  u.$app.innerHTML = html`
+    <div class="barra"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Insetti e roditori</h1><span class="spazio"></span>
+      <button class="primario" id="stampa">Stampa / Salva PDF</button></div>
+    <div class="barra non-stampa">${segAnnate(lista, inf.annata)}</div>
+    <p class="totale non-stampa">Ogni mese, dal ${meseLungo(INIZIO_SCHEDE)}, la scheda si compila da sola con tutto "Assenza" e il primo operatore di <a href="#/impostazioni">Impostazioni</a>. Tocca "Presenza" se trovi qualcosa e scrivi cosa hai fatto. In stampa escono tutti i mesi dell'annata, uno per foglio.</p>
+    ${schede.length > 1 ? html`<div class="barra non-stampa s6-pagine"><button id="inf-prec" ${i > 0 ? '' : 'disabled'} aria-label="Mese prima">◀</button>
+      <span><b>${meseLungo(inf.mese)}</b>${schede[i].auto ? html` <span class="pl-auto">auto</span>` : ''}${presenze(schede[i]) ? html` <span class="rt-manca">${presenze(schede[i])} presenze</span>` : ''}</span>
+      <button id="inf-succ" ${i < schede.length - 1 ? '' : 'disabled'} aria-label="Mese dopo">▶</button></div>` : ''}
+    ${schede.length ? schede.map(sc => foglio(sc, sc.mese === inf.mese)) : html`<p class="vuoto">Nessuna scheda in questa annata.</p>`}`;
+  const salvaScheda = async (mese, campi) => {
+    const sc = schede.find(x => x.mese === mese);
+    const { aggiornato: _a, auto: _b, ...rec } = sc;
+    await u.db.salva({ ...rec, ...campi });
+    vistaInfestanti();
+  };
+  u.$app.onclick = async e => {
+    const t = e.target;
+    const a = t.closest('[data-annata]');
+    if (a) { inf.annata = Number(a.dataset.annata); inf.mese = ''; return vistaInfestanti(); }
+    if (t.id === 'inf-prec') { inf.mese = schede[i - 1].mese; return vistaInfestanti(); }
+    if (t.id === 'inf-succ') { inf.mese = schede[i + 1].mese; return vistaInfestanti(); }
+    if (t.id === 'stampa') return stampa(`Monitoraggio insetti e roditori ${inf.annata}-${inf.annata + 1}`);
+    const b = t.closest('[data-inf]');
+    if (b && !document.body.classList.contains('lettore')) {
+      const [mese, k, v] = b.dataset.inf.split('|');
+      const sc = schede.find(x => x.mese === mese);
+      return salvaScheda(mese, { voci: { ...sc.voci, [k]: v } });
+    }
+  };
+  u.$app.onchange = e => {
+    const t = e.target;
+    if (t.dataset.infChi) return salvaScheda(t.dataset.infChi, { chi: t.value });
+    if (t.dataset.infNote !== undefined) return salvaScheda(t.dataset.infNote, { note: t.value.trim() });
+  };
+}
+
+const pamb = { annata: null };
+export async function vistaPulizieAmbienti() {
+  const { html } = u;
+  const oggi = u.oggiISO();
+  const [salvate, opRec] = await Promise.all([u.db.tutti('puliziaambiente'), u.db.leggi(ID_OPERATORI)]);
+  const operatori = operatoriDa(opRec);
+  const lista = annate(oggi, salvate.map(x => x.data).filter(Boolean));
+  if (!lista.includes(pamb.annata)) pamb.annata = annataHaccp(oggi);
+  const mesi = mesiAnnata(pamb.annata);
+  const perMese = new Map(mesi.map(m => [m, pulizieAmbientiMese(m, salvate, operatori[0], oggi)]));
+  const fatte = [...perMese.values()].reduce((t, x) => t + x.size, 0);
+  u.$app.innerHTML = html`
+    <div class="barra"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Esecuzione pulizie</h1><span class="spazio"></span>
+      <button class="primario" id="stampa">Stampa / Salva PDF</button></div>
+    <div class="barra non-stampa">${segAnnate(lista, pamb.annata)}</div>
+    <p class="totale non-stampa">Dal ${meseLungo(INIZIO_SCHEDE)} si compila da sola: "sì" e la sigla del primo operatore di <a href="#/impostazioni">Impostazioni</a> il giorno ${GIORNI_PULIZIA_AMBIENTI.join(' e ')} di ogni mese (sabato e domenica vanno al venerdì). Tocca un giorno per aggiungere una pulizia, tocca un "sì" per toglierlo. ${fatte} pulizie nell'annata.</p>
+    <div class="s6 iss-foglio">
+      ${issTesta()}
+      <h2 class="iss-titolo">ESECUZIONE PULIZIE (${pamb.annata}/${pamb.annata + 1})<br><small>*Inserire sì e firma</small></h2>
+      <div class="scroll-x"><table class="iss-tab iss-griglia">
+        <thead><tr><th>DATA</th>${mesi.map(m => html`<th class="c">${meseCorto(m)}</th>`)}</tr></thead>
+        <tbody>${Array.from({ length: 31 }, (_, g) => html`<tr><td class="c"><b>${g + 1}</b></td>${mesi.map(m => {
+          if (g + 1 > giorniDelMese(m)) return html`<td class="iss-no"></td>`;
+          const d = `${m}-${String(g + 1).padStart(2, '0')}`;
+          const x = perMese.get(m).get(d);
+          return html`<td class="c ${x ? 'iss-si' : ''}" data-pamb="${d}" title="${x ? `Pulizia del ${u.dataIT(d)}${x.auto ? ' (automatica)' : ''}: tocca per togliere` : `Tocca per segnare la pulizia del ${u.dataIT(d)}`}">${x ? `sì ${sigla(x.chi)}` : ''}</td>`;
+        })}</tr>`)}</tbody></table></div>
+    </div>`;
+  u.$app.onclick = async e => {
+    const t = e.target;
+    const a = t.closest('[data-annata]');
+    if (a) { pamb.annata = Number(a.dataset.annata); return vistaPulizieAmbienti(); }
+    if (t.id === 'stampa') return stampa(`Esecuzione pulizie ${pamb.annata}-${pamb.annata + 1}`);
+    const c = t.closest('[data-pamb]');
+    if (!c || document.body.classList.contains('lettore')) return;
+    const d = c.dataset.pamb;
+    const x = perMese.get(d.slice(0, 7)).get(d);
+    await u.db.salva({ id: `pamb-${d}`, tipo: 'puliziaambiente', data: d, fatta: !x, chi: x ? x.chi : operatori[0] });
+    vistaPulizieAmbienti();
+  };
 }
