@@ -6,7 +6,7 @@ import { token } from './auth.js';
 import { sincronizza } from './sync.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
 import { chiediAi, fotoBase64 } from './ai.js';
@@ -47,6 +47,12 @@ export async function vistaMagazzino() {
     && !(nascondiZero && aZero(x.giacenza) && aZero(x.impegnato)));
   const sotto = [...g.values()].filter(x => x.sottoScorta || x.disponibile < 0);
   const scadenze = [...g.values()].filter(x => x.statoScadenza);
+  // inventari con numeri da grammi su articoli in kg/L (6300 contati = 6300 kg di luppolo): da correggere ÷1000
+  // (e lo stesso per bolle e carichi manuali): da correggere ÷1000 sulla riga d'origine
+  const sospetti = [...g.values()].flatMap(x => {
+    const soglia = sogliaGrammi(x.articolo);
+    return soglia ? x.movimenti.filter(m => !m.futuro && m.tipo !== 'scarico' && m.dove && m.qta >= soglia).map(m => ({ articolo: x.articolo, mov: m })) : [];
+  });
   const scollegati = daCollegare(dati.cotte, dati.articoli, inizioControllo(dati.inventari)).slice(0, 40);
   const bolle = [...dati.bolle].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 8);
   // fatture dei fornitori arrivate con l'import automatico notturno (netlify/lib/automazioni.mjs)
@@ -69,6 +75,13 @@ export async function vistaMagazzino() {
       <a class="btn primario" href="#/bolla/nuova">+ Bolla di carico</a>
       <button class="solo-editori" id="importa-fic" title="Scarica adesso le fatture dei fornitori (e le vendite) da Fatture in Cloud, senza aspettare l'import della notte">⟳ Importa da Fatture in Cloud</button>
     </div>
+    ${sospetti.length ? html`<div class="scheda avviso solo-editori" id="sospetti"><h2>⚠ Quantità da controllare</h2>
+      <p class="totale">In queste righe il numero sembra in grammi ma l'articolo è in kg (o in ml con l'articolo in L). Se è così tocca "÷ 1000": cambia solo quella riga (di inventario, bolla o carico).</p>
+      <div class="scroll-x"><table class="tab-mag"><tbody>${sospetti.map((x, i) => html`<tr>
+        <td><a href="#/materia/${encodeURIComponent(x.articolo.id)}">${x.articolo.nome}</a></td>
+        <td>${x.mov.tipo === 'inventario' ? 'inventario' : x.mov.rif} del ${u.dataIT(x.mov.data)}</td>
+        <td class="n">${fmt(x.mov.qta, x.articolo.unita)}</td>
+        <td class="az"><button class="piccolo" data-diviso="${i}">÷ 1000 → ${fmt(x.mov.qta / 1000, x.articolo.unita)}</button></td></tr>`)}</tbody></table></div></div>` : ''}
     ${acquisti.length ? html`<div class="scheda solo-editori" id="acquisti"><h2>📥 Acquisti da Fatture in Cloud <span class="totale">${acquisti.length} da controllare</span></h2>
       <p class="totale">Fatture dei fornitori importate di notte. "Carica" apre la bolla già compilata con righe e prezzi: controlli e salvi. "Scarta" per spese, servizi e tutto quello che non è materia prima.</p>
       <ul class="w-lista">${acquisti.map(x => html`<li class="acq-riga"><span class="w-testo"><b>${x.doc.fornitore || 'Fornitore'}</b> · ${x.doc.numero || ''} · ${u.dataIT(x.doc.data)}<small>${x.doc.righe.slice(0, 4).map(r => r.descrizione).join(' · ')}${x.doc.righe.length > 4 ? ` e altre ${x.doc.righe.length - 4}` : ''}</small></span>
@@ -170,7 +183,19 @@ export async function vistaMagazzino() {
     await u.db.salva({ ...a, alias: [...new Set([...(a.alias || []), scollegati[i].nome])] });
     u.toast(`"${scollegati[i].nome}" collegato a ${a.nome}`);
   };
-  u.$app.onclick = e => {
+  u.$app.onclick = async e => {
+    const div = e.target.dataset.diviso;
+    if (div !== undefined) {
+      const x = sospetti[div];
+      const rec = await u.db.leggi(x.mov.dove.id);
+      const i = Number(x.mov.dove.path.split('.')[1]);
+      if (!rec?.righe?.[i] || rec.righe[i].articoloId !== x.articolo.id) return u.toast('Riga non trovata');
+      rec.righe[i] = { ...rec.righe[i], qta: Number(rec.righe[i].qta) / 1000 };
+      const { aggiornato: _a, ...daSalvare } = rec;
+      await u.db.salva(daSalvare);
+      u.toast(`${x.articolo.nome}: quantità corretta`);
+      return vistaMagazzino();
+    }
     const i = e.target.dataset.crea;
     if (i === undefined) return;
     const s = scollegati[i];
@@ -360,11 +385,17 @@ export async function vistaArticolo(id) {
   document.getElementById('f-art').onsubmit = async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    await u.db.salva({
-      ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'), unita: fd.get('unita'),
+    const rec = {
+      ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'),
       scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, densita: Number(fd.get('densita')) || null, prezzo: Number(fd.get('prezzo')) || null,
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
-    });
+    };
+    // unità cambiata (g ↔ kg, ml ↔ L): si convertono anche inventari, scorta minima, peso per pezzo e prezzo
+    const cambio = cambiaUnita(rec, fd.get('unita'), dati.inventari);
+    if (cambio) {
+      if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${fd.get('unita')}? Le quantità contate negli inventari, la scorta minima e il prezzo vengono convertiti.`, 'Converti'))) return;
+      await u.db.salvaMolti([cambio.art, ...cambio.inventari].map(({ aggiornato: _a, ...x }) => x));
+    } else await u.db.salva({ ...rec, unita: fd.get('unita') });
     u.toast('Articolo salvato');
     vistaArticolo(id);
   };
@@ -662,7 +693,7 @@ export async function vistaInventario() {
     if (!data.v) return u.toast('Manca la data');
     // luppoli, lieviti, sali… in kg contati in grammi (10.000 kg di Citra): si chiede se dividere per 1000
     const sospetti = [...contati].map(([id, q]) => ({ id, q, a: dati.articoli.find(x => x.id === id) }))
-      .filter(x => x.a && ['kg', 'L'].includes(x.a.unita) && !['malto', 'zucchero'].includes(x.a.categoria) && x.q >= 1000);
+      .filter(x => x.a && sogliaGrammi(x.a) && x.q >= sogliaGrammi(x.a));
     if (sospetti.length) {
       const elenco = sospetti.map(x => `${x.a.nome} ${u.numIT(x.q)} ${x.a.unita}`).join(', ');
       if (await u.chiedi(`${elenco}: forse li hai contati in grammi (o ml). Li divido per 1000? Con Annulla restano come li hai scritti.`, 'Sì, dividi per 1000')) {

@@ -18,6 +18,12 @@ export const CATEGORIE = {
   sale: 'Sali', aggiunta: 'Aggiunte', coadiuvante: 'Coadiuvanti',
 };
 export const GIORNI_IN_SCADENZA = 30;
+// sopra questa quantità un articolo in kg/L è quasi certamente stato scritto in grammi/ml
+// (6300 kg di luppolo, 750 kg di Yeastvit); malti e zuccheri esclusi
+export function sogliaGrammi(art) {
+  if (!['kg', 'L'].includes(art?.unita) || ['malto', 'zucchero'].includes(art.categoria)) return null;
+  return art.categoria === 'luppolo' ? 1000 : 200;
+}
 export const UNITA = ['kg', 'g', 'L', 'ml', 'pz'];
 const FATTORE = { kg: 1000, g: 1, L: 1000, ml: 1, pz: 1 };
 const FAMIGLIA = { kg: 'peso', g: 'peso', L: 'volume', ml: 'volume', pz: 'pezzi' };
@@ -29,6 +35,21 @@ export function converti(qta, da, a) {
   if (!da || da === a) return q;
   if (!FAMIGLIA[da] || FAMIGLIA[da] !== FAMIGLIA[a]) return null;
   return (q * FATTORE[da]) / FATTORE[a];
+}
+
+// Cambio di unità di un articolo (es. luppolo da g a kg): le righe degli inventari non hanno unità e valgono
+// nell'unità dell'articolo, quindi vanno convertite con lui, come scorta minima, peso per pezzo e prezzo.
+// Senza conversione 6300 g contati diventavano 6300 kg (Romain 2026-10-20). null se le unità non si convertono.
+export function cambiaUnita(art, nuova, inventari) {
+  const f = converti(1, art.unita, nuova);
+  if (!art.unita || art.unita === nuova || f === null) return null;
+  const per = v => (v === null || v === undefined || v === '' ? v : Math.round(Number(v) * f * 1e6) / 1e6);
+  const modificati = inventari.filter(inv => (inv.righe || []).some(r => r.articoloId === art.id))
+    .map(inv => ({ ...inv, righe: inv.righe.map(r => (r.articoloId === art.id ? { ...r, qta: per(r.qta) } : r)) }));
+  return {
+    art: { ...art, unita: nuova, scortaMin: per(art.scortaMin) || 0, pesoPezzo: per(art.pesoPezzo) || null, prezzo: art.prezzo ? Math.round(art.prezzo / f * 1e6) / 1e6 : art.prezzo },
+    inventari: modificati,
+  };
 }
 
 // Come converti, ma i pezzi (sacchi, confezioni) valgono il peso per pezzo dell'articolo, se c'è:
