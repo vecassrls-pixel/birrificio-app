@@ -1,13 +1,13 @@
 # Sonda di temperatura per le celle frigo e il frigo luppoli: scheda ESP32 (DevKit) + sonda DS18B20 impermeabile.
 # Solo lettura: non comanda niente, il frigo resta regolato dal suo termostato. Pacchetto comune: le differenze
-# stanno in cella1.yaml / cella2.yaml / frigo-luppoli.yaml.
+# stanno in frigo-luppoli.yaml (le celle invece si leggono dai regolatori Pego, vedi GUIDA-TEMPERATURE.md 5bis).
 #
 # Collegamento della sonda DS18B20 (3 fili):   rosso → 3V3   nero → GND   giallo → ${pin_sonda}
 #                                              resistenza 4,7 kΩ tra 3V3 e ${pin_sonda} (pull-up)
 # La scheda sta FUORI dalla cella (il Wi-Fi non passa le pareti coibentate): dentro entra solo il cavo della sonda,
 # dalla guarnizione della porta o da un foro sigillato con silicone.
 #
-# Primo caricamento via USB (la DevKit ha già la presa USB, non serve l'adattatore):  esphome run cella1.yaml
+# Primo caricamento via USB (la DevKit ha già la presa USB, non serve l'adattatore):  esphome run frigo-luppoli.yaml
 
 esphome:
   name: ${nome}

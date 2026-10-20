@@ -8,7 +8,8 @@ I punti segnati **DA VERIFICARE** sono valori di partenza che vanno controllati 
 FV1-FV5  Autonics TK4S ──RS485──► Waveshare RS485 TO WIFI/ETH ─┐
 FV6-FV7  ESP32 + relè (ESPHome) ──Wi-Fi──────────────────────────┼──► Lenovo (gateway) ──internet──► Supabase ──► App
 FV8-FV11 PLC S7-200 SMART ──cavo di rete──► switch ──────────────┤    buffer se manca internet
-Celle + frigo luppoli  ESP32 + DS18B20 ──Wi-Fi───────────────────┘
+Cella 1-2  Pego ECP200 ──RS485──► adattatore USB-RS485 ───────────┤
+Frigo luppoli  ESP32 + DS18B20 ──Wi-Fi────────────────────────────┘
 ```
 
 Ordine consigliato: **1.** database Supabase → **2.** Lenovo (prima con Windows, poi Linux) → **3.** PLC (FV8-FV10) → **4.** ESP32 (FV6-FV7) → **5.** TK4S (FV1-FV5) → **6.** taratura e prove.
@@ -239,24 +240,52 @@ Il setpoint si cambia dalla pagina web della scheda (campo **setpoint**) e resta
 
 ---
 
-## 5bis. Celle frigo e frigo luppoli: ESP32 + sonda DS18B20 (solo lettura)
+## 5bis. Celle frigo (Pego) e frigo luppoli (ESP32), solo lettura
 
 Unghia **Celle** della pagina Cantina e registro **HACCP → Temperature celle frigo** (giornaliero, automatico, da stampare).
-La sonda è in più: il frigo resta regolato dal suo termostato, la scheda legge e basta.
+I frigo restano regolati dai loro termostati: il gateway legge e basta.
 
-Materiale per ogni cella (3 in tutto: Cella 1, Cella 2, Frigo luppoli):
-- scheda **ESP32 DevKit** (ESP32-WROOM-32, con presa USB) + alimentatore USB 5 V;
-- sonda **DS18B20 impermeabile** (capsula inox, cavo 1-3 m);
-- resistenza **4,7 kΩ** (nel kit Elegoo) tra 3V3 e il filo dati.
+### Cella 1 e Cella 2: regolatori Pego ECP200 Expert via RS485
+
+I due Pego hanno la porta **RS485 TeleNET** e parlano **Modbus RTU** (software reL 7). Il gateway legge temperatura della
+cella, setpoint, compressore acceso/spento, sbrinamento e allarmi del Pego. Non scrive mai niente sul Pego (solo funzione 03).
+
+Materiale:
+- cavo schermato a coppie intrecciate (es. LiYCY 2x2x0,25 o cavo bus RS485), circa **30 m**: Pego 1 → Pego 2 (8 m) → armadio del mini PC (20 m);
+- adattatore **USB-RS485** (es. DSD TECH SH-U11) nella presa USB del Lenovo;
+- resistenza **120 Ω** tra A e B sul Pego in fondo al cavo (l'adattatore di solito ha già la sua dall'altro capo).
+
+Collegamento (a Pego **spenti**, elettricista): un unico cavo che passa da un Pego all'altro e arriva all'adattatore
+(niente diramazioni a stella). Una coppia per **A (+)** e **B (−)**, un filo dell'altra coppia per **GND**;
+lo schermo collegato a terra **solo** dal lato armadio. Stessa lettera su tutti gli apparecchi; se poi nessuno risponde, si prova a invertire A e B.
+
+Impostazioni sul Pego (2° livello: tenere premuti **▲ + ▼ per 3 s**, il Pego va in stand-by; per uscire di nuovo ▲ + ▼ 3 s, poi tasto stand-by):
+- **AU = 7** (Modbus-RTU). Attenzione: oggi AU = 0 (relè di allarme); con AU = 7 il relè ausiliario del Pego non scatta più,
+  gli allarmi arrivano dall'app. Prima controllare che a quel relè non sia collegato niente (sirena, lampada).
+- **Ad = 1** sulla Cella 1, **Ad = 2** sulla Cella 2.
+
+Nel gateway: blocco `pego` di `config.json` (porta dell'adattatore, `CELLA1` indirizzo 1, `CELLA2` indirizzo 2). Poi:
+```bash
+ls /dev/serial/by-id/                         # nome dell'adattatore, da copiare in "porta"
+node gateway.mjs --cerca-pego 1               # trova velocità e parità del Pego (sola lettura)
+node gateway.mjs --test                       # temperatura e setpoint devono essere uguali al display dei Pego
+```
+La mappa dei registri (0x0100 temperatura, 0x0300 setpoint, 0x0500-0x0502 uscite, ingressi, allarmi) viene dal documento Pego
+"MODBUS-RTU protocol specifications" della serie ECP200 Expert: **DA VERIFICARE** con `--test`.
+
+### Frigo luppoli: ESP32 + sonda DS18B20
+
+Il frigo luppoli è comandato da un Inkbird ITC-308 (setpoint 0 °C) che non ha uscita dati: accanto si mette una sonda in più.
+
+Materiale: scheda **ESP32 DevKit** (ESP32-WROOM-32, con presa USB) + alimentatore USB 5 V; sonda **DS18B20 impermeabile**;
+resistenza **4,7 kΩ** (nel kit Elegoo) tra 3V3 e il filo dati.
 
 Collegamento: rosso → **3V3**, nero → **GND**, giallo → **GPIO4** + resistenza 4,7 kΩ tra GPIO4 e 3V3.
-La scheda va **fuori** dalla cella (il Wi-Fi non passa le pareti coibentate); dentro entra solo la capsula, a metà altezza, lontano
-dall'evaporatore e dalla porta. Il cavo passa dalla guarnizione della porta o da un foro sigillato con silicone.
+La scheda va **fuori** dal frigo; dentro entra solo la capsula, vicino alla sonda dell'Inkbird. Il cavo passa dalla guarnizione.
 
-Firmware: `tools/esphome/cella1.yaml`, `cella2.yaml`, `frigo-luppoli.yaml` (stesso `secrets.yaml` delle schede FV6-FV7).
-Si carica con la scheda collegata in USB al Lenovo: `esphome run cella1.yaml`. Poi `http://cella1.local` mostra la temperatura.
-
-Nel gateway: le tre schede sono già nell'esempio di `config.json`, blocco `esp32` (`CELLA1`, `CELLA2`, `FRIGO-LUPPOLI`).
+Firmware: `tools/esphome/frigo-luppoli.yaml` (stesso `secrets.yaml` delle schede FV6-FV7).
+Si carica con la scheda collegata in USB al Lenovo: `esphome run frigo-luppoli.yaml`. Poi `http://frigo-luppoli.local` mostra la temperatura.
+Nel gateway è già nell'esempio di `config.json`, blocco `esp32` (`FRIGO-LUPPOLI`).
 
 Limiti di allarme (tabella `sensori`, già inseriti dalla migrazione, **DA VERIFICARE**): celle 0 … 8 °C, frigo luppoli max 4 °C.
 Per cambiarli, per esempio se il frigo luppoli è un congelatore:
@@ -282,7 +311,7 @@ Registro HACCP: per ogni giorno minima, massima e media; il giorno è **non conf
 - [ ] Dopo 5-10 minuti: nella scheda di una cotta in corso, sezione Fermentazione, compare la curva "Temperatura misurata in FV…" (e nel PDF "Salva PDF").
 - [ ] Prova senza internet: staccare internet al Lenovo per 15 minuti e riattaccarlo; nel log compare "Inviate N letture dal buffer offline" e la curva non ha buchi.
 - [ ] Soglie di allarme (`sensori`) sistemate per ogni FV se 1,5 °C e 10 minuti non vanno bene.
-- [ ] **Celle**: temperatura di ogni sonda confrontata con un termometro → `correzione_temp`; limiti min/max giusti per ogni cella; il giorno dopo, HACCP → Temperature celle frigo mostra la riga di ieri.
+- [ ] **Celle**: Pego con AU = 7 e Ad 1/2, `--test` uguale ai display dei Pego (altrimenti `offset` nel blocco `pego`); frigo luppoli confrontato con un termometro → `correzione_temp`; limiti min/max giusti per ogni cella; il giorno dopo, HACCP → Temperature celle frigo mostra la riga di ieri.
 
 ### Se qualcosa non va
 | Sintomo | Dove guardare |

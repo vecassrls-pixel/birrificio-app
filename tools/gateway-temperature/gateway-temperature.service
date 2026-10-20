@@ -4,7 +4,7 @@
 #   journalctl -u gateway-temperature -f            log in diretta
 #   sudo systemctl restart gateway-temperature      riavvio dopo aver cambiato config.json
 [Unit]
-Description=Gateway temperature fermentatori (Modbus, ESP32, PLC -> Supabase)
+Description=Gateway temperature fermentatori e celle (Modbus, Pego, ESP32, PLC -> Supabase)
 Wants=network-online.target time-sync.target
 After=network-online.target time-sync.target
 
@@ -12,6 +12,8 @@ After=network-online.target time-sync.target
 Type=simple
 User=gateway
 Group=gateway
+# porta seriale dell'adattatore USB-RS485 (celle Pego)
+SupplementaryGroups=dialout
 WorkingDirectory=/opt/gateway-temperature
 ExecStart=/usr/bin/node /opt/gateway-temperature/gateway.mjs --config /etc/gateway-temperature/config.json
 Restart=always

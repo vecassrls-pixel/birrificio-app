@@ -2,6 +2,7 @@
 // Gateway temperature dei fermentatori: legge le sonde in birrificio e le manda a Supabase.
 //
 //   FV1-FV5   Autonics TK4S   → Modbus TCP (gateway Waveshare RS485)
+//   Celle     Pego ECP200     → Modbus RTU (adattatore USB-RS485), SOLO LETTURA
 //   FV6-FV7   ESP32 ESPHome   → web server REST della scheda
 //   FV8-FV11  PLC S7-200 SMART → protocollo S7, SOLO LETTURA
 //
@@ -15,6 +16,7 @@
 //   node gateway.mjs --simula --secco        letture finte solo stampate, nessun invio
 //   node gateway.mjs --simula --storico 30   in più carica 30 giorni di storico finto (per vedere le curve delle cotte)
 //   node gateway.mjs --cerca-plc 192.168.1.0/24   cerca il PLC (porta 102 aperta) nella rete
+//   node gateway.mjs --cerca-pego 1          prova velocità e parità finché il Pego con indirizzo 1 risponde (sola lettura)
 //   node gateway.mjs --cerca-v 0 400         cerca nella memoria V (VB0..VB400) valori che sembrano temperature (sola lettura)
 //   --config /percorso/config.json           file di configurazione (predefinito: config.json accanto a questo file)
 
@@ -27,6 +29,8 @@ import { SorgenteSimulata } from './lib/simulazione.mjs';
 import { Supabase } from './lib/supabase.mjs';
 import { BufferOffline } from './lib/buffer.mjs';
 import { AREE, intero16, reale32 } from './lib/s7.mjs';
+import { ModbusRtu } from './lib/modbus-rtu.mjs';
+import { PEGO } from './lib/sorgenti.mjs';
 
 const qui = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -63,7 +67,7 @@ const minutiStorico = config.intervalli?.storico_min || 5;
 // ---------- --test: una lettura di tutto, a schermo ----------
 async function modoTest() {
   const sorgenti = creaSorgenti(config, { ...log, livello: 'debug', debug: m => console.log(`  · ${m}`) });
-  if (!sorgenti.length) console.log('Nessuna sorgente attiva in config.json (modbus/esp32/plc "attivo": true).');
+  if (!sorgenti.length) console.log('Nessuna sorgente attiva in config.json (modbus/pego/esp32/plc "attivo": true).');
   for (const s of sorgenti) {
     console.log(`\n=== ${s.fonte.toUpperCase()} ===`);
     const letture = (await s.leggi()).map(l => ({ ...l }));
@@ -104,6 +108,29 @@ async function cercaPlc(rete) {
     blocco.forEach((ip, k) => { if (esiti[k]) trovati.push(ip); });
   }
   console.log(trovati.length ? `Trovati: ${trovati.join(', ')} (probabile PLC Siemens)` : 'Nessuno trovato.');
+}
+
+// ---------- --cerca-pego: con che velocità e parità risponde il Pego (sola lettura) ----------
+async function cercaPego(unita) {
+  const porta = config.pego?.porta || '/dev/ttyUSB0';
+  if (!(unita >= 1 && unita <= 247)) { console.log('Uso: --cerca-pego 1   (1 = parametro Ad del Pego)'); return; }
+  console.log(`Cerco il Pego con indirizzo ${unita} su ${porta} (sola lettura)…`);
+  for (const baud of [9600, 19200, 38400, 4800, 2400, 14400, 1200]) {
+    for (const parita of ['none', 'even', 'odd']) {
+      const c = new ModbusRtu({ porta, baud, parita, timeoutMs: 600 });
+      try {
+        const [t] = await c.leggiRegistri(unita, PEGO.temperatura, 1);
+        console.log(`TROVATO: baud ${baud}, parità ${parita}, temperatura ${(t > 0x7fff ? t - 0x10000 : t) / 10} °C. Scrivere questi valori nella sezione "pego" di config.json.`);
+        c.chiudi();
+        return;
+      } catch (e) {
+        console.log(`  ${baud} ${parita}: ${e.message}`);
+        if (/non trovata|permesso negato/.test(e.message)) { c.chiudi(); return; }
+      }
+      c.chiudi();
+    }
+  }
+  console.log('Nessuna risposta. Controllare: AU = 7 e Ad sul Pego, fili A/B (provare a invertirli), 120 Ω, adattatore.');
 }
 
 // ---------- --cerca-v: valori della memoria V che sembrano temperature (sola lettura) ----------
@@ -238,6 +265,7 @@ async function servizio({ simula = false, secco = false } = {}) {
 
 if (opz('--test')) await modoTest();
 else if (opz('--cerca-plc')) await cercaPlc(val('--cerca-plc'));
+else if (opz('--cerca-pego')) await cercaPego(Number(val('--cerca-pego', 1)));
 else if (opz('--cerca-v')) {
   const i = argv.indexOf('--cerca-v');
   await cercaV(Number(argv[i + 1] ?? 0), Number(argv[i + 2] ?? 400));

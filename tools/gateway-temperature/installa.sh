@@ -26,6 +26,8 @@ if [[ ! -x /usr/bin/node ]]; then ln -sf "$(command -v node)" /usr/bin/node; fi
 
 echo "== 2. Utente di servizio 'gateway' (senza login) =="
 id gateway >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin gateway
+# porta seriale dell'adattatore USB-RS485 (celle Pego)
+usermod -aG dialout gateway
 
 echo "== 3. Programma in $DEST =="
 mkdir -p "$DEST/lib"
