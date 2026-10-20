@@ -152,6 +152,7 @@ export function confezione(desc) {
 // nome pulito per un articolo nuovo: "Cryo Hops® pellets Simcoe® kg 5" → "Cryo Simcoe"
 export function nomeDaDescrizione(desc) {
   return String(desc || '').replace(/®|™/g, ' ')
+    .replace(/\s+(rif\.?|riferimento|contratto|ordine|vs\.?\s*ord)\b.*$/i, ' ') // "Dingemans Pilsner Rif. contratto n. 39/M26…"
     .replace(/(\d+(?:[.,]\d+)?)\s*(kg|gr|g|lt|l|ml)\b/gi, ' ').replace(/\b(kg|gr|g|lt|l|ml)\s*\d+(?:[.,]\d+)?\b/gi, ' ')
     .replace(/\bconf(ezione)?\.?(\s+da)?\b/gi, ' ')
     .replace(/\b(luppolo|hops|pellets?|t90|t45|malto|monoidratato|in grani)\b/gi, ' ')
@@ -172,6 +173,14 @@ export function categoriaDaDescrizione(desc) {
 }
 
 const compatta = n => chiaveNome(n).split(' ').sort().join('');
+// prime due parole uguali a quelle di un solo articolo: "Dingemans Pilsner …" = "Dingemans Pilsner" (Romain 2026-10-20)
+const primeDue = n => { const w = chiaveNome(n).split(' ').filter(Boolean); return w.length >= 2 ? `${w[0]} ${w[1]}` : ''; };
+function perPrimeDue(articoli, nome) {
+  const k = primeDue(nome);
+  if (!k) return null;
+  const trovati = articoli.filter(a => [a.nome, ...(a.alias || [])].some(x => primeDue(x) === k));
+  return trovati.length === 1 ? trovati[0] : null;
+}
 
 export function proponiRighe(ddt, articoli) {
   return ddt.righe.map(r => {
@@ -184,9 +193,12 @@ export function proponiRighe(ddt, articoli) {
     const art = articoli.find(a => (a.alias || []).some(x => compatta(x) === compatta(r.descrizione)))
       || trovaArticolo(articoli, nomeDaDescrizione(r.descrizione))
       // nome corto dentro la descrizione: articolo "LN3" per "ATECREM ALE LN3 Conf. da Kg 1"
-      || articoli.find(a => { const p = chiaveNome(a.nome).split(' ').filter(Boolean); return p.join('').length >= 3 && p.every(x => parole.has(x)) && /\d/.test(a.nome); });
+      || articoli.find(a => { const p = chiaveNome(a.nome).split(' ').filter(Boolean); return p.join('').length >= 3 && p.every(x => parole.has(x)) && /\d/.test(a.nome); })
+      || perPrimeDue(articoli, nomeDaDescrizione(r.descrizione));
     // senza peso nella descrizione: il peso per pezzo dell'articolo (lolla di riso: 1 sacco = 20 kg)
     if (pezzi && !conf && art?.pesoPezzo > 0) { qta = r.qta * art.pesoPezzo; unita = art.unita; }
+    // fattura senza unità di misura (1175 per il Pilsner sfuso): vale l'unità dell'articolo, non "pz"
+    else if (!r.um && !conf && art?.unita && art.unita !== 'pz') unita = art.unita;
     const categoria = art?.categoria || categoriaDaDescrizione(r.descrizione);
     return {
       nome: art?.nome || nomeDaDescrizione(r.descrizione),
