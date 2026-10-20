@@ -7,10 +7,10 @@
 
 import {
   CATEGORIE_CONT, MOTIVI_CARICO, MOTIVI_SCARICO, categoriaDaFormato, contenitoriProposti, formatiDi, formatiUsati,
-  caricoDaFattura, chiaveRiga, giacenzeContenitori, nomeFormato, nomeMotivoCont, righeVuoti, usiConfezionamento,
+  caricoDaFattura, chiaveRiga, fabbisognoContenitori, giacenzeContenitori, nomeFormato, nomeMotivoCont, perCottaDi, righeVuoti, usiConfezionamento,
 } from './contenitori.js';
 
-let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO }
+let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO }  stato.beerfirm = elenco dei beerfirm
 export function init(strumenti) { u = strumenti; }
 
 const ICONA = { lattina: '🥫', fusto: '🛢️', altro: '📦' };
@@ -39,9 +39,11 @@ export async function vistaContenitori() {
   const d = await dati();
   const oggi = u.oggiISO();
   const g = giacenzeContenitori(d, oggi);
-  const lista = d.contenitori.map(k => g.get(k.id));
+  // vuoti che servono per le cotte da confezionare nei prossimi 20 giorni
+  const fab = fabbisognoContenitori({ ...d, durate: u.stato.durate, beerfirm: u.stato.beerfirm }, oggi);
+  const lista = d.contenitori.map(k => ({ ...g.get(k.id), servono: fab.servono.get(k.id) || 0 })).map(x => ({ ...x, mancano: Math.max(0, x.servono - Math.max(0, x.giacenza)) }));
   const tot = cat => lista.filter(x => x.contenitore.categoria === cat).reduce((t, x) => t + Math.max(0, x.giacenza), 0);
-  const sotto = lista.filter(x => x.sottoScorta);
+  const sotto = lista.filter(x => x.mancano > 0);
   // ultimi movimenti: a mano e confezionamenti delle cotte, insieme
   // solo quelli che contano (dal giorno in cui il contenitore è stato creato)
   const creato = new Map(d.contenitori.map(k => [k.id, k.creato || '']));
@@ -70,8 +72,13 @@ export async function vistaContenitori() {
     ${d.contenitori.length ? html`<div class="st-kpi">
       <div class="st-tile"><span>Lattine vuote</span><b>${u.numIT(tot('lattina'), 0)}</b><small>in magazzino</small></div>
       <div class="st-tile"><span>Fusti vuoti</span><b>${u.numIT(tot('fusto'), 0)}</b><small>in magazzino</small></div>
-      <div class="st-tile ${sotto.length ? 'allerta' : ''}"><span>Sotto scorta</span><b>${sotto.length}</b><small>${sotto.length ? sotto.map(x => x.contenitore.nome).join(', ') : 'tutto a posto'}</small></div>
-    </div>` : html`<div class="scheda avviso solo-editori"><h2>Per iniziare</h2>
+      <div class="st-tile ${sotto.length ? 'allerta' : ''}"><span>Da ordinare per i prossimi ${fab.giorni} giorni</span><b>${sotto.length}</b><small>${sotto.length ? sotto.map(x => `${x.contenitore.nome}: mancano ${u.numIT(x.mancano, 0)}`).join(' · ') : 'bastano per le cotte in arrivo'}</small></div>
+    </div>
+    <details class="scheda cn-fab"><summary><b>${fab.cotte.length ? `${fab.cotte.length} ${fab.cotte.length === 1 ? 'cotta' : 'cotte'} da confezionare entro il ${u.dataIT(fab.cotte.at(-1).fine)}` : `Nessuna cotta da confezionare nei prossimi ${fab.giorni} giorni`}</b></summary>
+      ${fab.cotte.length ? html`<ul class="w-lista">${fab.cotte.map(x => html`<li><a href="#/cotta/${encodeURIComponent(x.cotta.id)}"><span class="w-testo"><b>${x.cotta.birra} ${x.cotta.lotto || ''}</b>${x.cotta.beerfirm ? html` <span class="bf-chip">${x.cotta.beerfirm}</span>` : ''}
+        <small>fine in FV ${u.dataIT(x.fine)} · ${x.sacca ? 'polykeg con sacca' : 'polykeg e lattine'}</small></span></a></li>`)}</ul>` : ''}
+      <p class="totale">Per ogni cotta che finisce in FV nei prossimi ${fab.giorni} giorni (o negli ultimi 7 senza confezionamento): ${d.contenitori.map(k => { const p = perCottaDi(k); return [p.normale && `${p.normale} ${k.nome}`, p.sacca && `${p.sacca} ${k.nome} per Nitro e beerfirm con sacca`].filter(Boolean).join(', '); }).filter(Boolean).join(' · ') || 'nessun numero impostato'}. Si cambia nella scheda di ogni contenitore.</p>
+    </details>` : html`<div class="scheda avviso solo-editori"><h2>Per iniziare</h2>
       <p>Crea un contenitore per ogni cosa da contare (lattine, polykeg, ma anche coperchi o cartoni se vuoi). Ogni contenitore si collega ai formati del Confezionamento: quando confezioni una cotta in quel formato, i vuoti si scalano da soli. Per i polykeg 24 L (riempiti a 25 L) con e senza sacca scegli quale hai usato nella riga del Confezionamento.
       Poi fai l'inventario di quello che hai oggi in magazzino.</p>
       <div class="barra" style="margin:0"><button class="primario" id="cn-proponi">Crea i nostri: ${contenitoriProposti().map(x => x.nome).join(', ')}</button></div>
@@ -92,7 +99,7 @@ export async function vistaContenitori() {
           <span class="b-icona" aria-hidden="true">${ICONA[cat]}</span>
           <span class="b-nome">${x.contenitore.nome}
             <span class="b-lotti">${x.lotti.filter(l => l.lotto && l.pezzi > 0).map(l => html`<span class="b-lotto" title="${[l.fornitore, l.documento, l.arrivo && `arrivato il ${u.dataIT(l.arrivo)}`].filter(Boolean).join(' · ')}">${l.lotto} <b>${u.numIT(l.pezzi, 0)}</b></span>`)}<span class="totale">${formatiDi(x.contenitore).length ? `scala con ${formatiDi(x.contenitore).map(f => nomeFormato(f).replace(/^\w/, ch => ch.toLowerCase())).join(', ')}${Number(x.contenitore.ogni) > 1 ? ` (1 ogni ${x.contenitore.ogni})` : ''}` : 'solo movimenti a mano'}${x.consumo ? ` · ${u.numIT(x.consumo, 0)} usati in 90 gg, ${testoCopertura(x)}` : ''}</span></span></span>
-          <span class="b-num"><b>${u.numIT(x.giacenza, 0)}</b><small>pz${testoConfezioni(x)}</small>${x.sottoScorta ? html`<span class="b-scad scaduto">sotto scorta (${u.numIT(x.contenitore.scortaMin, 0)})</span>` : ''}</span>
+          <span class="b-num"><b>${u.numIT(x.giacenza, 0)}</b><small>pz${testoConfezioni(x)}</small>${x.servono ? html`<span class="b-scad ${x.mancano ? 'scaduto' : ''}" title="Servono ${u.numIT(x.servono, 0)} per le cotte dei prossimi ${fab.giorni} giorni">${x.mancano ? `mancano ${u.numIT(x.mancano, 0)}` : `servono ${u.numIT(x.servono, 0)}`}</span>` : ''}</span>
         </a>`)}
       </section>`;
     })}
@@ -125,7 +132,7 @@ export async function vistaContenitori() {
   };
   if ($('cn-nuovo')) $('cn-nuovo').onclick = () => dialogContenitore(d);
   if ($('cn-proponi')) $('cn-proponi').onclick = async () => {
-    const nuovi = contenitoriProposti().map(x => ({ ...x, id: u.db.nuovoId('contenitore'), tipo: 'contenitore', scortaMin: 0, creato: oggi }));
+    const nuovi = contenitoriProposti().map(x => ({ ...x, id: u.db.nuovoId('contenitore'), tipo: 'contenitore', creato: oggi }));
     await u.db.salvaMolti(nuovi);
     u.toast(`${nuovi.length} contenitori creati: ora fai l'inventario`);
     location.hash = '#/contenitori-inventario';
@@ -197,14 +204,15 @@ function campiContenitore(k, formati) {
     <fieldset class="cn-formati" style="grid-column:1/-1"><legend>Si scala con il confezionamento di (nessuno = solo a mano)</legend>
       ${fs.map(f => html`<label class="spunta"><input type="checkbox" name="formati" value="${f}" ${miei.includes(f) ? 'checked' : ''}> ${nomeFormato(f)}</label>`)}</fieldset>
     <label>Uno ogni … pezzi confezionati <input name="ogni" type="number" min="1" step="1" inputmode="numeric" value="${k.ogni || 1}" title="1 per lattine, fusti e coperchi; 12 per i cartoni da 12"></label>
-    <label>Scorta minima (pz) <input name="scortaMin" type="number" min="0" step="1" inputmode="numeric" value="${k.scortaMin || ''}"></label>
+    <label>Servono per cotta <input name="perCotta" type="number" min="0" step="1" inputmode="numeric" value="${perCottaDi(k).normale || ''}" title="Pezzi per ogni cotta da confezionare (es. 30 polykeg, 800 lattine)"></label>
+    <label>Per cotta Nitro / beerfirm con sacca <input name="perCottaSacca" type="number" min="0" step="1" inputmode="numeric" value="${perCottaDi(k).sacca || ''}" title="Es. 40 polykeg con sacca"></label>
     <label>Pezzi per bancale/confezione <input name="pezziConfezione" type="number" min="0" step="1" inputmode="numeric" value="${k.pezziConfezione || ''}" placeholder="facoltativo"></label>
     <label style="grid-column:1/-1">Note <input name="note" value="${k.note || ''}" placeholder="fornitore, codice, colore…"></label>
   </div>`;
 }
 const leggiCampi = f => ({
   nome: f.nome.value.trim(), categoria: f.categoria.value, formati: [...f.querySelectorAll('[name="formati"]:checked')].map(x => x.value), formato: undefined,
-  ogni: Math.max(1, Math.round(Number(f.ogni.value) || 1)), scortaMin: Number(f.scortaMin.value) || 0,
+  ogni: Math.max(1, Math.round(Number(f.ogni.value) || 1)), perCotta: Number(f.perCotta.value) || 0, perCottaSacca: Number(f.perCottaSacca.value) || 0,
   pezziConfezione: Number(f.pezziConfezione.value) || null, note: f.note.value.trim(),
 });
 
@@ -240,6 +248,8 @@ export async function vistaContenitore(id) {
   const k = d.contenitori.find(x => x.id === id);
   if (!k) { u.$app.innerHTML = html`<p class="vuoto">Contenitore non trovato. <a href="#/contenitori">Torna ai contenitori</a></p>`; return; }
   const g = giacenzeContenitori(d, u.oggiISO()).get(k.id);
+  const fab = fabbisognoContenitori({ ...d, durate: u.stato.durate, beerfirm: u.stato.beerfirm }, u.oggiISO());
+  const servono = fab.servono.get(k.id) || 0, mancano = Math.max(0, servono - Math.max(0, g.giacenza));
   const righe = g.registro.filter(r => r.conta || r.data > u.oggiISO()).reverse();
   u.$app.innerHTML = html`
     <div class="barra"><a href="#/contenitori" class="btn">← Contenitori</a><span class="spazio"></span>
@@ -247,7 +257,7 @@ export async function vistaContenitore(id) {
       <a class="btn solo-editori" href="#/movcontenitore/scarico?c=${encodeURIComponent(k.id)}">− Scarico</a></div>
     <h1>${ICONA[k.categoria] || ''} ${k.nome}</h1>
     <div class="st-kpi">
-      <div class="st-tile ${g.sottoScorta ? 'allerta' : ''}"><span>In magazzino</span><b>${pz(g.giacenza)}</b><small>${g.sottoScorta ? `sotto la scorta minima di ${u.numIT(k.scortaMin, 0)}` : testoConfezioni(g).replace(/^ · /, '') || (g.ultimoInventario ? `inventario del ${u.dataIT(g.ultimoInventario)}` : 'senza inventario')}</small></div>
+      <div class="st-tile ${mancano ? 'allerta' : ''}"><span>In magazzino</span><b>${pz(g.giacenza)}</b><small>${servono ? `servono ${u.numIT(servono, 0)} per ${fab.cotte.length} ${fab.cotte.length === 1 ? 'cotta' : 'cotte'} dei prossimi ${fab.giorni} giorni${mancano ? `: mancano ${u.numIT(mancano, 0)}` : ''}` : testoConfezioni(g).replace(/^ · /, '') || (g.ultimoInventario ? `inventario del ${u.dataIT(g.ultimoInventario)}` : 'senza inventario')}</small></div>
       <div class="st-tile"><span>Usati in 90 giorni</span><b>${u.numIT(g.consumo, 0)}</b><small>${testoCopertura(g) || 'dai confezionamenti'}</small></div>
     </div>
     ${g.lotti.some(l => l.pezzi > 0) ? html`<div class="scheda"><h2 style="margin-top:0">Lotti in magazzino</h2>
