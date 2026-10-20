@@ -547,13 +547,13 @@ function excelTrebbie(righe) {
 }
 
 // ---------- schede HACCP: insetti e roditori, esecuzione pulizie ----------
-const annate = (oggi, salvate) => {
-  const da = annataHaccp(`${INIZIO_SCHEDE}-01`), a = annataHaccp(oggi);
-  const anni = new Set(salvate.map(annataHaccp));
+const annate = (oggi, salvate, mese1 = 3) => {
+  const da = annataHaccp(`${INIZIO_SCHEDE}-01`, mese1), a = annataHaccp(oggi, mese1);
+  const anni = new Set(salvate.map(d => annataHaccp(d, mese1)));
   for (let y = da; y <= a; y++) anni.add(y);
   return [...anni].sort((x, y) => y - x);
 };
-const segAnnate = (lista, scelta) => u.html`<div class="segmenti iss-anni">${lista.map(y => u.html`<button data-annata="${y}" class="${y === scelta ? 'attivo' : ''}">${y}/${y + 1}</button>`)}</div>`;
+const segAnnate = (lista, scelta, solare = false) => u.html`<div class="segmenti iss-anni">${lista.map(y => u.html`<button data-annata="${y}" class="${y === scelta ? 'attivo' : ''}">${solare ? y : `${y}/${y + 1}`}</button>`)}</div>`;
 
 const inf = { annata: null, mese: '' };
 export async function vistaInfestanti() {
@@ -618,18 +618,19 @@ export async function vistaPulizieAmbienti() {
   const oggi = u.oggiISO();
   const [salvate, opRec] = await Promise.all([u.db.tutti('puliziaambiente'), u.db.leggi(ID_OPERATORI)]);
   const operatori = operatoriDa(opRec);
-  const lista = annate(oggi, salvate.map(x => x.data).filter(Boolean));
-  if (!lista.includes(pamb.annata)) pamb.annata = annataHaccp(oggi);
-  const mesi = mesiAnnata(pamb.annata);
+  // anno solare, gennaio-dicembre (Romain 2026-10-20)
+  const lista = annate(oggi, salvate.map(x => x.data).filter(Boolean), 1);
+  if (!lista.includes(pamb.annata)) pamb.annata = annataHaccp(oggi, 1);
+  const mesi = mesiAnnata(pamb.annata, 1);
   const perMese = new Map(mesi.map(m => [m, pulizieAmbientiMese(m, salvate, operatori[0], oggi)]));
   const fatte = [...perMese.values()].reduce((t, x) => t + x.size, 0);
   u.$app.innerHTML = html`
     <div class="barra"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Esecuzione pulizie</h1><span class="spazio"></span>
       <button class="primario" id="stampa">Stampa / Salva PDF</button></div>
-    <div class="barra non-stampa">${segAnnate(lista, pamb.annata)}</div>
-    <p class="totale non-stampa">Dal ${meseLungo(INIZIO_SCHEDE)} si compila da sola: "sì" e la sigla del primo operatore di <a href="#/impostazioni">Impostazioni</a> il giorno ${GIORNI_PULIZIA_AMBIENTI.join(' e ')} di ogni mese (sabato e domenica vanno al venerdì). Tocca un giorno per aggiungere una pulizia, tocca un "sì" per toglierlo. ${fatte} pulizie nell'annata.</p>
+    <div class="barra non-stampa">${segAnnate(lista, pamb.annata, true)}</div>
+    <p class="totale non-stampa">Dal ${meseLungo(INIZIO_SCHEDE)} si compila da sola: "sì" e la sigla del primo operatore di <a href="#/impostazioni">Impostazioni</a> il giorno ${GIORNI_PULIZIA_AMBIENTI.join(' e ')} di ogni mese (sabato e domenica vanno al venerdì). Tocca un giorno per aggiungere una pulizia, tocca un "sì" per toglierlo. ${fatte} pulizie nell'anno.</p>
     <div class="s6 iss-foglio">
-      ${testa('ESECUZIONE PULIZIE', `Annata ${pamb.annata}/${pamb.annata + 1} (marzo-febbraio) · sì e sigla di chi l'ha fatta`)}
+      ${testa('ESECUZIONE PULIZIE', `Anno ${pamb.annata} · sì e sigla di chi l'ha fatta`)}
       <div class="scroll-x"><table class="tab-s6 iss-tab iss-griglia">
         <thead><tr><th>DATA</th>${mesi.map(m => html`<th class="c">${meseCorto(m)}</th>`)}</tr></thead>
         <tbody>${Array.from({ length: 31 }, (_, g) => html`<tr><td class="c"><b>${g + 1}</b></td>${mesi.map(m => {
@@ -643,7 +644,7 @@ export async function vistaPulizieAmbienti() {
     const t = e.target;
     const a = t.closest('[data-annata]');
     if (a) { pamb.annata = Number(a.dataset.annata); return vistaPulizieAmbienti(); }
-    if (t.id === 'stampa') return stampa(`Esecuzione pulizie ${pamb.annata}-${pamb.annata + 1}`);
+    if (t.id === 'stampa') return stampa(`Esecuzione pulizie ${pamb.annata}`);
     const c = t.closest('[data-pamb]');
     if (!c || document.body.classList.contains('lettore')) return;
     const d = c.dataset.pamb;
