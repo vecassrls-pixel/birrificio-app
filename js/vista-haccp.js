@@ -9,7 +9,7 @@ import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { interroga } from './sync.js';
 import { CELLE, fmt } from './temperature.js';
 import { vuotiDelleCotte } from './contenitori.js';
-import { ID_TREBBIE, destinatarioDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
+import { ID_TREBBIE, destinatarioDa, destinatarioIl, destinatariDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
 import { creaXlsx } from './xlsx.js';
 import { VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
 
@@ -480,13 +480,14 @@ export async function vistaTrebbie() {
   const { html } = u;
   const [trebbie, imp] = await Promise.all([u.db.tutti('trebbia'), u.db.leggi(ID_TREBBIE)]);
   const destinatario = destinatarioDa(imp);
-  const tutte = registroTrebbie(u.stato.cotte, trebbie, destinatario, u.oggiISO());
+  const tutte = registroTrebbie(u.stato.cotte, trebbie, d => destinatarioIl(imp, d), u.oggiISO());
   const anni = [...new Set(tutte.map(r => r.data.slice(0, 4)))].sort().reverse();
   if (!trb.anno || !anni.includes(trb.anno)) trb.anno = anni[0] || u.oggiISO().slice(0, 4);
   const righe = tutte.filter(r => r.data.startsWith(trb.anno));
   const tot = totaliTrebbie(righe);
   const pagine = aFogli(righe, trb);
-  const destinatari = [...new Set([destinatario, ...trebbie.map(t => t.destinatario).filter(Boolean)])];
+  const destinatari = destinatariDa(imp);
+  const scelte = r => (destinatari.includes(r.destinatario) ? destinatari : [...destinatari, r.destinatario]);
   const kg = v => (v == null ? '' : `${u.numIT(v, v % 1 ? 1 : 0)} kg`);
   u.$app.innerHTML = html`
     <div class="barra">
@@ -513,13 +514,12 @@ export async function vistaTrebbie() {
           <td class="n"><a href="#/cotta/${encodeURIComponent(r.cotta.id)}">${r.numero}</a></td>
           <td>${r.birra}</td>
           <td class="n"><input class="s6-lotto tr-kg" data-tr="${r.cotta.id}|kg" type="number" min="0" step="any" inputmode="decimal" value="${r.kg ?? ''}" placeholder="manca" title="${r.kgMalti ? `Malti della cotta: ${kg(r.kgMalti)}` : 'Nella scheda cotta non ci sono malti'}"></td>
-          <td><input class="s6-lotto" data-tr="${r.cotta.id}|destinatario" list="tr-dest" value="${r.destinatario}"></td>
+          <td><select class="s6-lotto" data-tr="${r.cotta.id}|destinatario">${scelte(r).map(d => html`<option ${d === r.destinatario ? 'selected' : ''}>${d}</option>`)}</select></td>
           <td><input class="s6-lotto" data-tr="${r.cotta.id}|note" value="${r.note}" placeholder=""></td>
           <td class="az non-stampa">${r.corretta ? html`<button class="piccolo solo-editori" data-tr-auto="${r.cotta.id}" title="Torna ai valori automatici">↺</button>` : ''}</td></tr>`)}
         ${n === pagine.length - 1 ? html`<tr class="c"><td colspan="3"><b>Totale ${trb.anno}</b></td><td class="n"><b>${kg(tot.kg)}</b></td><td colspan="2"></td><td class="non-stampa"></td></tr>` : ''}</tbody></table></div>`
       : html`<p class="vuoto">Nessuna cotta fatta nel ${trb.anno}.</p>`}
-    </div>`)}
-    <datalist id="tr-dest">${destinatari.map(d => html`<option value="${d}">`)}</datalist>`;
+    </div>`)}`;
 
   const riga = id => righe.find(r => r.cotta.id === id);
   u.$app.onchange = async e => {

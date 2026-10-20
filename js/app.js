@@ -16,7 +16,7 @@ import * as preventivi from './vista-preventivi.js';
 import * as backup from './backup.js';
 import * as home from './vista-home.js';
 import { ID_OPERATORI, operatoriDa } from './haccp.js';
-import { ID_TREBBIE, destinatarioDa } from './trebbie.js';
+import { ID_TREBBIE, destinatarioDa, destinatariDa } from './trebbie.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
 import * as cantina from './vista-cantina.js';
@@ -1607,7 +1607,8 @@ async function vistaImpostazioni() {
   const impHome = (await db.leggi(home.ID_HOME)) || {};
   const logoScelto = impHome.eliminato ? 'gb' : impHome.logo || 'gb';
   const operatori = [...operatoriDa(await db.leggi(ID_OPERATORI))];
-  const destTrebbie = destinatarioDa(await db.leggi(ID_TREBBIE));
+  const impTrebbie = await db.leggi(ID_TREBBIE);
+  const destTrebbie = destinatarioDa(impTrebbie), destinatari = destinatariDa(impTrebbie);
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
     <div class="scheda">
@@ -1645,10 +1646,14 @@ async function vistaImpostazioni() {
         <td class="az"><button class="piccolo" data-bf-del="${i}" title="Togli">✕</button></td></tr>`)}</tbody></table>
       <button class="piccolo" id="bf-nuovo">+ Aggiungi beerfirm</button>
     </div>
-    <div class="scheda">
+    <div class="scheda" id="trebbie-dest">
       <h2>Registro trebbie</h2>
-      <label style="max-width:320px">Destinazione di default<input id="trebbie-dest" value="${destTrebbie}" placeholder="es. FABIO VALERIO"></label>
-      <p class="totale">Chi ritira le trebbie: va da solo su ogni cotta del <a href="#/trebbie">registro trebbie</a> (si può cambiare riga per riga).</p>
+      <p class="totale">Chi ritira le trebbie. Il predefinito va da solo su ogni cotta del <a href="#/trebbie">registro trebbie</a>; nel registro, riga per riga, si sceglie un altro di questo elenco.</p>
+      <table class="tab-edit tab-operatori"><thead><tr><th>Predefinito</th><th>Nome</th><th></th></tr></thead><tbody>${destinatari.map((n, i) => html`<tr>
+        <td class="c"><input type="radio" name="tr-def" data-td-def="${i}" ${n === destTrebbie ? 'checked' : ''} title="Predefinito"></td>
+        <td><input data-td="${i}" value="${n}"></td>
+        <td class="az"><button class="piccolo" data-td-del="${i}" ${destinatari.length > 1 ? '' : 'disabled'} title="Togli">✕</button></td></tr>`)}</tbody></table>
+      <button class="piccolo" id="td-nuovo">+ Aggiungi destinatario</button>
     </div>
     <div class="scheda">
       <h2>Fermentatori</h2>
@@ -1730,9 +1735,40 @@ async function vistaImpostazioni() {
   };
   const salvaOperatori = async nomi => { await db.salva({ id: ID_OPERATORI, tipo: 'impostazione', nomi: nomi.map(x => x.trim()).filter(Boolean) }); vistaImpostazioni(); };
   const $op = document.getElementById('operatori');
-  document.getElementById('trebbie-dest').onchange = async e => {
-    await db.salva({ id: ID_TREBBIE, tipo: 'impostazione', destinatario: e.target.value.trim() });
-    toast('Destinazione delle trebbie salvata');
+  // rinomina = stesso destinatario scritto meglio (vale anche per le righe passate);
+  // cambio di predefinito = vale da oggi, le cotte prima restano col predefinito di allora (storico)
+  const salvaDestinatari = async (nomi, def, rinomina) => {
+    const elenco = [...new Set(nomi.map(x => (x || '').trim()).filter(Boolean))];
+    const nuovoDef = elenco.includes(def) ? def : elenco[0] || '';
+    let storico = (impTrebbie?.storico || []).map(s => ({ ...s, prima: rinomina && s.prima === rinomina[0] ? rinomina[1] : s.prima }));
+    const oggi = oggiISO();
+    if (!rinomina && nuovoDef !== destTrebbie && !storico.some(s => s.dal === oggi)) storico = [...storico, { dal: oggi, prima: destTrebbie }];
+    await db.salva({ id: ID_TREBBIE, tipo: 'impostazione', destinatario: nuovoDef, destinatari: elenco, storico });
+    toast('Destinatari delle trebbie salvati');
+    vistaImpostazioni();
+  };
+  const $td = document.getElementById('trebbie-dest');
+  $td.onchange = e => {
+    const t = e.target, nomi = [...destinatari];
+    if (t.dataset.tdDef !== undefined) return salvaDestinatari(nomi, nomi[Number(t.dataset.tdDef)]);
+    if (t.dataset.td === undefined) return;
+    const i = Number(t.dataset.td), vecchio = nomi[i];
+    nomi[i] = t.value;
+    const nuovo = t.value.trim();
+    if (vecchio && nuovo) return salvaDestinatari(nomi, vecchio === destTrebbie ? nuovo : destTrebbie, [vecchio, nuovo]);
+    salvaDestinatari(nomi, destTrebbie);
+  };
+  $td.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    e.stopPropagation();
+    const nomi = [...destinatari];
+    if (b.id === 'td-nuovo') { // riga vuota: si salva quando scrivi il nome
+      const tb = $td.querySelector('tbody');
+      tb.insertAdjacentHTML('beforeend', html`<tr><td></td><td><input data-td="${nomi.length}" placeholder="Nome o azienda"></td><td></td></tr>`.s);
+      return tb.querySelector(`[data-td="${nomi.length}"]`).focus();
+    }
+    if (b.dataset.tdDel) { nomi.splice(Number(b.dataset.tdDel), 1); salvaDestinatari(nomi, destTrebbie); }
   };
   $op.onchange = e => {
     const i = e.target.dataset.op;

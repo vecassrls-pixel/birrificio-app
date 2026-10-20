@@ -1107,8 +1107,8 @@ body.ordina { background: var(--bg); }
 }
 
 /* pulizie automatiche */
-.tab-pulizie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
-@media print { .tab-pulizie select.s6-lotto { border: none; } }
+.tab-pulizie select.s6-lotto, .tab-trebbie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
+@media print { .tab-pulizie select.s6-lotto, .tab-trebbie select.s6-lotto { border: none; appearance: none; } }
 
 /* schede HACCP insetti e roditori, esecuzione pulizie: stesso stile degli altri registri (.s6, .tab-s6) */
 .iss-foglio { margin-bottom: 12px; }
