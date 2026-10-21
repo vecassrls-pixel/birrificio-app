@@ -9,7 +9,7 @@ import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { interroga } from './sync.js';
 import { CELLE, fmt } from './temperature.js';
 import { vuotiDelleCotte } from './contenitori.js';
-import { ID_TREBBIE, destinatarioDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
+import { ID_TREBBIE, destinatarioDa, destinatarioIl, destinatariDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
 import { creaXlsx } from './xlsx.js';
 import { VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
 
@@ -25,6 +25,22 @@ const stampa = titolo => {
 };
 const testa = (titolo, sotto) => u.html`<div class="s6-testa"><img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
   <div><h1>${titolo} /// VECAS SRLS</h1><div>${sotto} · stampato il ${u.dataIT(u.oggiISO())}</div></div></div>`;
+// Stampa come l'S6 (Romain 2026-10-20): fogli da RIGHE_FOGLIO righe, ognuno con intestazione e nomi delle colonne;
+// a video un foglio alla volta con ◀ ▶ (bottoni data-foglio, st.pagina), in stampa tutti
+const RIGHE_FOGLIO = 18;
+const aFogli = (righe, st) => {
+  const pagine = [];
+  for (let i = 0; i < righe.length; i += RIGHE_FOGLIO) pagine.push(righe.slice(i, i + RIGHE_FOGLIO));
+  st.pagina = Math.min(Math.max(0, st.pagina || 0), Math.max(0, pagine.length - 1));
+  return pagine;
+};
+const navFogli = (st, pagine, nRighe) => (pagine.length > 1 ? u.html`<div class="barra non-stampa s6-pagine">
+  <button data-foglio="-1" ${st.pagina ? '' : 'disabled'} aria-label="Pagina precedente">◀</button>
+  <span>Pagina <b>${st.pagina + 1}</b> di ${pagine.length} · ${nRighe} righe</span>
+  <button data-foglio="1" ${st.pagina < pagine.length - 1 ? '' : 'disabled'} aria-label="Pagina successiva">▶</button>
+  <span class="totale">In stampa escono tutte le pagine.</span></div>` : '');
+const classeFoglio = (st, n) => `s6 s6-pag ${n === st.pagina ? '' : 's6-altra'}`;
+const diPagine = (pagine, n) => (pagine.length > 1 ? ` · pagina ${n + 1} di ${pagine.length}` : '');
 
 export async function vistaHaccp() {
   const { html } = u;
@@ -127,7 +143,7 @@ export async function vistaRintracciabilita(id) {
 }
 
 // ---------- controllo materie prime in arrivo ----------
-const reg = { da: '', a: '' };
+const reg = { da: '', a: '', pagina: 0 };
 export async function vistaControlloArrivi() {
   const { html } = u;
   const oggi = u.oggiISO();
@@ -136,6 +152,7 @@ export async function vistaControlloArrivi() {
     .sort((x, y) => x.data.localeCompare(y.data));
   const mancano = bolle.filter(b => !controlloFatto(b)).length;
   const si = v => (v ? '✓' : v === false ? '✗' : '');
+  const pagine = aFogli(bolle, reg);
   u.$app.innerHTML = html`
     <div class="barra">
       <a href="#/haccp" class="btn">← HACCP</a>
@@ -145,11 +162,12 @@ export async function vistaControlloArrivi() {
       <button class="primario" id="stampa">Stampa / Salva PDF</button>
     </div>
     ${mancano ? html`<p class="totale non-stampa">⚠ ${mancano} ${mancano === 1 ? 'bolla senza controllo' : 'bolle senza controllo'}: aprila e compila "Controllo all'arrivo". In stampa restano le caselle vuote da compilare a mano.</p>` : ''}
-    <div class="s6">
-      ${testa('CONTROLLO MERCI IN ARRIVO', `Periodo: dal ${u.dataIT(reg.da)} al ${u.dataIT(reg.a)}`)}
-      ${bolle.length ? html`<table class="tab-s6 tab-arrivi">
+    ${navFogli(reg, pagine, bolle.length)}
+    ${(pagine.length ? pagine : [[]]).map((pag, n) => html`<div class="${classeFoglio(reg, n)}">
+      ${testa('CONTROLLO MERCI IN ARRIVO', `Periodo: dal ${u.dataIT(reg.da)} al ${u.dataIT(reg.a)}${diPagine(pagine, n)}`)}
+      ${pag.length ? html`<table class="tab-s6 tab-arrivi">
         <thead><tr><th>Data</th><th>Fornitore / DDT</th><th>Merce e lotti</th>${CONTROLLI_ARRIVO.map(([, n]) => html`<th class="c">${n}</th>`)}<th>Esito</th><th>Controllato da</th><th>Note</th></tr></thead>
-        <tbody>${bolle.map(b => {
+        <tbody>${pag.map(b => {
           const ck = b.controllo || {};
           return html`<tr>
             <td>${u.dataIT(b.data)}</td>
@@ -160,9 +178,10 @@ export async function vistaControlloArrivi() {
             <td>${ck.chi || ''}</td><td>${ck.note || ''}</td></tr>`;
         })}</tbody></table>`
       : html`<p class="vuoto">Nessuna bolla nel periodo.</p>`}
-    </div>`;
-  document.getElementById('ca-da').onchange = e => { reg.da = e.target.value; vistaControlloArrivi(); };
-  document.getElementById('ca-a').onchange = e => { reg.a = e.target.value; vistaControlloArrivi(); };
+    </div>`)}`;
+  document.getElementById('ca-da').onchange = e => { reg.da = e.target.value; reg.pagina = 0; vistaControlloArrivi(); };
+  document.getElementById('ca-a').onchange = e => { reg.a = e.target.value; reg.pagina = 0; vistaControlloArrivi(); };
+  u.$app.querySelectorAll('[data-foglio]').forEach(b => { b.onclick = () => { reg.pagina += Number(b.dataset.foglio); vistaControlloArrivi(); }; });
   document.getElementById('stampa').onclick = () => stampa(`Controllo merci in arrivo ${reg.da} ${reg.a}`);
 }
 
@@ -241,7 +260,7 @@ export async function vistaScadenzario() {
 // ---------- pulizie e sanificazioni (CIP) ----------
 // con cosa si pulisce: di default soda 3% e sanificante 2%, fasi tutte tranne l'acido (Romain, 2026-10-15);
 // chi la fa: il primo degli operatori in Impostazioni. Tutto si cambia nel modulo.
-const regP = { da: '', a: '' };
+const regP = { da: '', a: '', pagina: 0 };
 export async function vistaPulizie(cosaScelta = '') {
   const { html } = u;
   const oggi = u.oggiISO();
@@ -257,6 +276,7 @@ export async function vistaPulizie(cosaScelta = '') {
   const prodottiUsati = [...new Set(pulizieReg.map(p => p.prodotti).filter(Boolean))];
   const lineeUsate = [...new Set([...LINEE, ...pulizie.map(p => p.cosa)])].filter(x => !u.stato.fv.some(f => f.nome === x));
   const nuova = { data: oggi, cosa: cosaScelta, fasi: FASI_DEFAULT_PULIZIA, prodotti: PRODOTTI_PULIZIE, chi: operatori[0], note: '' };
+  const pagine = aFogli(nel, regP);
   const birraDi = r => r.cotte.map(c => c.birra).filter((x, i, a) => a.indexOf(x) === i).join(' + ');
   u.$app.innerHTML = html`
     <div class="barra non-stampa"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Pulizie e sanificazioni</h1></div>
@@ -295,21 +315,22 @@ export async function vistaPulizie(cosaScelta = '') {
       <button class="primario" id="stampa">Stampa / Salva PDF</button>
     </div>
     <p class="totale non-stampa">Si compila da solo: quando un FV si svuota (fine in FV o travaso) e nei giorni di confezionamento in lattina (inlattinatrice) c'è la pulizia di quel giorno con ${FASI_DEFAULT_PULIZIA.join(', ').toLowerCase()}, ${PRODOTTI_PULIZIE.toLowerCase()} e ${operatori[0]} (primo operatore in <a href="#/impostazioni">Impostazioni</a>).
-      Le righe <span class="pl-auto">auto</span> si correggono scrivendo qui sotto; ✕ su una riga automatica vuol dire che quella pulizia non è stata fatta.</p>
-    <div class="s6">
-      ${testa('REGISTRO PULIZIE E SANIFICAZIONI', `Periodo: dal ${u.dataIT(regP.da)} al ${u.dataIT(regP.a)}`)}
-      ${nel.length ? html`<table class="tab-s6 tab-pulizie">
+      Ogni riga si corregge scrivendo qui sotto; ✕ su una riga automatica vuol dire che quella pulizia non è stata fatta.</p>
+    ${navFogli(regP, pagine, nel.length)}
+    ${(pagine.length ? pagine : [[]]).map((pag, n) => html`<div class="${classeFoglio(regP, n)}">
+      ${testa('REGISTRO PULIZIE E SANIFICAZIONI', `Periodo: dal ${u.dataIT(regP.da)} al ${u.dataIT(regP.a)}${diPagine(pagine, n)}`)}
+      ${pag.length ? html`<table class="tab-s6 tab-pulizie">
         <thead><tr><th>Data</th><th>FV / linea</th><th>Fasi</th><th>Prodotti e concentrazione</th><th>Fatta da</th><th>Note</th><th class="non-stampa"></th></tr></thead>
-        <tbody>${nel.map(p => html`<tr><td>${u.dataIT(p.data)}</td><td>${p.cosa}${p.auto && !p.corretta ? html` <span class="pl-auto non-stampa" title="Pulizia automatica dallo svuotamento del FV${p.birra ? ` (${p.birra})` : ''}">auto</span>` : ''}</td><td>${(p.fasi || []).join(', ')}</td>
+        <tbody>${pag.map(p => html`<tr><td>${u.dataIT(p.data)}</td><td>${p.cosa}</td><td>${(p.fasi || []).join(', ')}</td>
           <td><input class="s6-lotto" data-pl="${p.id}|prodotti" list="pl-prod" value="${p.prodotti || ''}"></td>
           <td><select class="s6-lotto" data-pl="${p.id}|chi">${opzioniOperatori(operatori, p.chi).map(n => html`<option ${n === p.chi ? 'selected' : ''}>${n}</option>`)}</select></td>
           <td><input class="s6-lotto" data-pl="${p.id}|note" value="${p.note || ''}"></td>
           <td class="non-stampa az"><button class="piccolo solo-editori" data-del="${p.id}" title="${p.auto ? 'Non è stata fatta: togli la riga' : 'Elimina'}">✕</button></td></tr>`)}</tbody></table>`
       : html`<p class="vuoto">Nessuna pulizia nel periodo.</p>`}
-    </div>`;
+    </div>`)}`;
   const $ = id => document.getElementById(id);
-  $('pl-da').onchange = e => { regP.da = e.target.value; vistaPulizie(); };
-  $('pl-a').onchange = e => { regP.a = e.target.value; vistaPulizie(); };
+  $('pl-da').onchange = e => { regP.da = e.target.value; regP.pagina = 0; vistaPulizie(); };
+  $('pl-a').onchange = e => { regP.a = e.target.value; regP.pagina = 0; vistaPulizie(); };
   $('stampa').onclick = () => stampa(`Registro pulizie ${regP.da} ${regP.a}`);
   // correzione di una riga: quella automatica diventa un record salvato con lo stesso id
   const salvaPulizia = async (p, campi) => {
@@ -329,6 +350,7 @@ export async function vistaPulizie(cosaScelta = '') {
   u.$app.onclick = async e => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.foglio) { regP.pagina += Number(b.dataset.foglio); return vistaPulizie(); }
     if (b.dataset.pulisci) {
       $('pl-cosa').value = b.dataset.pulisci;
       $('pl-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -453,17 +475,19 @@ export async function vistaTemperatureCelle() {
 }
 
 // ---------- registro trebbie ----------
-const trb = { anno: '' };
+const trb = { anno: '', pagina: 0 };
 export async function vistaTrebbie() {
   const { html } = u;
   const [trebbie, imp] = await Promise.all([u.db.tutti('trebbia'), u.db.leggi(ID_TREBBIE)]);
   const destinatario = destinatarioDa(imp);
-  const tutte = registroTrebbie(u.stato.cotte, trebbie, destinatario, u.oggiISO());
+  const tutte = registroTrebbie(u.stato.cotte, trebbie, d => destinatarioIl(imp, d), u.oggiISO());
   const anni = [...new Set(tutte.map(r => r.data.slice(0, 4)))].sort().reverse();
   if (!trb.anno || !anni.includes(trb.anno)) trb.anno = anni[0] || u.oggiISO().slice(0, 4);
   const righe = tutte.filter(r => r.data.startsWith(trb.anno));
   const tot = totaliTrebbie(righe);
-  const destinatari = [...new Set([destinatario, ...trebbie.map(t => t.destinatario).filter(Boolean)])];
+  const pagine = aFogli(righe, trb);
+  const destinatari = destinatariDa(imp);
+  const scelte = r => (destinatari.includes(r.destinatario) ? destinatari : [...destinatari, r.destinatario]);
   const kg = v => (v == null ? '' : `${u.numIT(v, v % 1 ? 1 : 0)} kg`);
   u.$app.innerHTML = html`
     <div class="barra">
@@ -480,22 +504,22 @@ export async function vistaTrebbie() {
       <div class="w-kpi" style="--w:var(--ok)"><span>Trebbie ${trb.anno}</span><b>${u.numIT(tot.kg, 0)} kg</b><small>${tot.cotte} ${tot.cotte === 1 ? 'cotta' : 'cotte'}</small></div>
       ${tot.perDestinatario.length < 2 ? '' : tot.perDestinatario.map(x => html`<div class="w-kpi" style="--w:var(--s-pianificata)"><span>${x.destinatario}</span><b>${u.numIT(x.kg, 0)} kg</b><small>${x.cotte} ${x.cotte === 1 ? 'cotta' : 'cotte'}</small></div>`)}
     </div>
-    <div class="s6">
-      ${testa('REGISTRO TREBBIE', `Anno ${trb.anno} · totale ${u.numIT(tot.kg, 0)} kg in ${tot.cotte} ${tot.cotte === 1 ? 'cotta' : 'cotte'}`)}
-      ${righe.length ? html`<div class="scroll-x"><table class="tab-s6 tab-trebbie">
+    ${navFogli(trb, pagine, righe.length)}
+    ${(pagine.length ? pagine : [[]]).map((pag, n) => html`<div class="${classeFoglio(trb, n)}">
+      ${testa('REGISTRO TREBBIE', `Anno ${trb.anno} · totale ${u.numIT(tot.kg, 0)} kg in ${tot.cotte} ${tot.cotte === 1 ? 'cotta' : 'cotte'}${diPagine(pagine, n)}`)}
+      ${pag.length ? html`<div class="scroll-x"><table class="tab-s6 tab-trebbie">
         <thead><tr><th>Data</th><th class="n">Numero cotta</th><th>Birra</th><th class="n">Qtà</th><th>Destinazione</th><th>Note</th><th class="non-stampa"></th></tr></thead>
-        <tbody>${righe.map(r => html`<tr>
+        <tbody>${pag.map(r => html`<tr>
           <td>${u.dataIT(r.data)}</td>
           <td class="n"><a href="#/cotta/${encodeURIComponent(r.cotta.id)}">${r.numero}</a></td>
           <td>${r.birra}</td>
           <td class="n"><input class="s6-lotto tr-kg" data-tr="${r.cotta.id}|kg" type="number" min="0" step="any" inputmode="decimal" value="${r.kg ?? ''}" placeholder="manca" title="${r.kgMalti ? `Malti della cotta: ${kg(r.kgMalti)}` : 'Nella scheda cotta non ci sono malti'}"></td>
-          <td><input class="s6-lotto" data-tr="${r.cotta.id}|destinatario" list="tr-dest" value="${r.destinatario}"></td>
+          <td><select class="s6-lotto" data-tr="${r.cotta.id}|destinatario">${scelte(r).map(d => html`<option ${d === r.destinatario ? 'selected' : ''}>${d}</option>`)}</select></td>
           <td><input class="s6-lotto" data-tr="${r.cotta.id}|note" value="${r.note}" placeholder=""></td>
-          <td class="az non-stampa">${r.corretta ? html`<button class="piccolo solo-editori" data-tr-auto="${r.cotta.id}" title="Torna ai valori automatici">↺</button>` : ''}</td></tr>`)}</tbody>
-        <tfoot><tr class="c"><td colspan="3">Totale ${trb.anno}</td><td class="n">${kg(tot.kg)}</td><td colspan="3"></td></tr></tfoot></table></div>`
+          <td class="az non-stampa">${r.corretta ? html`<button class="piccolo solo-editori" data-tr-auto="${r.cotta.id}" title="Torna ai valori automatici">↺</button>` : ''}</td></tr>`)}
+        ${n === pagine.length - 1 ? html`<tr class="c"><td colspan="3"><b>Totale ${trb.anno}</b></td><td class="n"><b>${kg(tot.kg)}</b></td><td colspan="2"></td><td class="non-stampa"></td></tr>` : ''}</tbody></table></div>`
       : html`<p class="vuoto">Nessuna cotta fatta nel ${trb.anno}.</p>`}
-      <datalist id="tr-dest">${destinatari.map(d => html`<option value="${d}">`)}</datalist>
-    </div>`;
+    </div>`)}`;
 
   const riga = id => righe.find(r => r.cotta.id === id);
   u.$app.onchange = async e => {
@@ -515,7 +539,9 @@ export async function vistaTrebbie() {
   u.$app.onclick = async e => {
     const t = e.target;
     const a = t.closest('[data-anno]');
-    if (a) { trb.anno = a.dataset.anno; return vistaTrebbie(); }
+    if (a) { trb.anno = a.dataset.anno; trb.pagina = 0; return vistaTrebbie(); }
+    const f = t.closest('[data-foglio]');
+    if (f) { trb.pagina += Number(f.dataset.foglio); return vistaTrebbie(); }
     const auto = t.closest('[data-tr-auto]');
     if (auto) { await u.db.elimina(idTrebbia(auto.dataset.trAuto)); u.toast('Riga tornata ai valori automatici'); return vistaTrebbie(); }
     if (t.id === 'stampa') return stampa(`Registro trebbie ${trb.anno}`);
@@ -547,13 +573,13 @@ function excelTrebbie(righe) {
 }
 
 // ---------- schede HACCP: insetti e roditori, esecuzione pulizie ----------
-const annate = (oggi, salvate) => {
-  const da = annataHaccp(`${INIZIO_SCHEDE}-01`), a = annataHaccp(oggi);
-  const anni = new Set(salvate.map(annataHaccp));
+const annate = (oggi, salvate, mese1 = 3) => {
+  const da = annataHaccp(`${INIZIO_SCHEDE}-01`, mese1), a = annataHaccp(oggi, mese1);
+  const anni = new Set(salvate.map(d => annataHaccp(d, mese1)));
   for (let y = da; y <= a; y++) anni.add(y);
   return [...anni].sort((x, y) => y - x);
 };
-const segAnnate = (lista, scelta) => u.html`<div class="segmenti iss-anni">${lista.map(y => u.html`<button data-annata="${y}" class="${y === scelta ? 'attivo' : ''}">${y}/${y + 1}</button>`)}</div>`;
+const segAnnate = (lista, scelta, solare = false) => u.html`<div class="segmenti iss-anni">${lista.map(y => u.html`<button data-annata="${y}" class="${y === scelta ? 'attivo' : ''}">${solare ? y : `${y}/${y + 1}`}</button>`)}</div>`;
 
 const inf = { annata: null, mese: '' };
 export async function vistaInfestanti() {
@@ -582,7 +608,7 @@ export async function vistaInfestanti() {
     <div class="barra non-stampa">${segAnnate(lista, inf.annata)}</div>
     <p class="totale non-stampa">Ogni mese, dal ${meseLungo(INIZIO_SCHEDE)}, la scheda si compila da sola con tutto "Assenza" e il primo operatore di <a href="#/impostazioni">Impostazioni</a>. Tocca "Presenza" se trovi qualcosa e scrivi cosa hai fatto. In stampa escono tutti i mesi dell'annata, uno per foglio.</p>
     ${schede.length > 1 ? html`<div class="barra non-stampa s6-pagine"><button id="inf-prec" ${i > 0 ? '' : 'disabled'} aria-label="Mese prima">◀</button>
-      <span><b>${meseLungo(inf.mese)}</b>${schede[i].auto ? html` <span class="pl-auto">auto</span>` : ''}${presenze(schede[i]) ? html` <span class="rt-manca">${presenze(schede[i])} presenze</span>` : ''}</span>
+      <span><b>${meseLungo(inf.mese)}</b>${presenze(schede[i]) ? html` <span class="rt-manca">${presenze(schede[i])} presenze</span>` : ''}</span>
       <button id="inf-succ" ${i < schede.length - 1 ? '' : 'disabled'} aria-label="Mese dopo">▶</button></div>` : ''}
     ${schede.length ? schede.map(sc => foglio(sc, sc.mese === inf.mese)) : html`<p class="vuoto">Nessuna scheda in questa annata.</p>`}`;
   const salvaScheda = async (mese, campi) => {
@@ -618,18 +644,19 @@ export async function vistaPulizieAmbienti() {
   const oggi = u.oggiISO();
   const [salvate, opRec] = await Promise.all([u.db.tutti('puliziaambiente'), u.db.leggi(ID_OPERATORI)]);
   const operatori = operatoriDa(opRec);
-  const lista = annate(oggi, salvate.map(x => x.data).filter(Boolean));
-  if (!lista.includes(pamb.annata)) pamb.annata = annataHaccp(oggi);
-  const mesi = mesiAnnata(pamb.annata);
+  // anno solare, gennaio-dicembre (Romain 2026-10-20)
+  const lista = annate(oggi, salvate.map(x => x.data).filter(Boolean), 1);
+  if (!lista.includes(pamb.annata)) pamb.annata = annataHaccp(oggi, 1);
+  const mesi = mesiAnnata(pamb.annata, 1);
   const perMese = new Map(mesi.map(m => [m, pulizieAmbientiMese(m, salvate, operatori[0], oggi)]));
   const fatte = [...perMese.values()].reduce((t, x) => t + x.size, 0);
   u.$app.innerHTML = html`
     <div class="barra"><a href="#/haccp" class="btn">← HACCP</a><h1 style="margin:0">Esecuzione pulizie</h1><span class="spazio"></span>
       <button class="primario" id="stampa">Stampa / Salva PDF</button></div>
-    <div class="barra non-stampa">${segAnnate(lista, pamb.annata)}</div>
-    <p class="totale non-stampa">Dal ${meseLungo(INIZIO_SCHEDE)} si compila da sola: "sì" e la sigla del primo operatore di <a href="#/impostazioni">Impostazioni</a> il giorno ${GIORNI_PULIZIA_AMBIENTI.join(' e ')} di ogni mese (sabato e domenica vanno al venerdì). Tocca un giorno per aggiungere una pulizia, tocca un "sì" per toglierlo. ${fatte} pulizie nell'annata.</p>
+    <div class="barra non-stampa">${segAnnate(lista, pamb.annata, true)}</div>
+    <p class="totale non-stampa">Dal ${meseLungo(INIZIO_SCHEDE)} si compila da sola: "sì" e la sigla del primo operatore di <a href="#/impostazioni">Impostazioni</a> il giorno ${GIORNI_PULIZIA_AMBIENTI.join(' e ')} di ogni mese (sabato e domenica vanno al venerdì). Tocca un giorno per aggiungere una pulizia, tocca un "sì" per toglierlo. ${fatte} pulizie nell'anno.</p>
     <div class="s6 iss-foglio">
-      ${testa('ESECUZIONE PULIZIE', `Annata ${pamb.annata}/${pamb.annata + 1} (marzo-febbraio) · sì e sigla di chi l'ha fatta`)}
+      ${testa('ESECUZIONE PULIZIE', `Anno ${pamb.annata} · sì e sigla di chi l'ha fatta`)}
       <div class="scroll-x"><table class="tab-s6 iss-tab iss-griglia">
         <thead><tr><th>DATA</th>${mesi.map(m => html`<th class="c">${meseCorto(m)}</th>`)}</tr></thead>
         <tbody>${Array.from({ length: 31 }, (_, g) => html`<tr><td class="c"><b>${g + 1}</b></td>${mesi.map(m => {
@@ -643,7 +670,7 @@ export async function vistaPulizieAmbienti() {
     const t = e.target;
     const a = t.closest('[data-annata]');
     if (a) { pamb.annata = Number(a.dataset.annata); return vistaPulizieAmbienti(); }
-    if (t.id === 'stampa') return stampa(`Esecuzione pulizie ${pamb.annata}-${pamb.annata + 1}`);
+    if (t.id === 'stampa') return stampa(`Esecuzione pulizie ${pamb.annata}`);
     const c = t.closest('[data-pamb]');
     if (!c || document.body.classList.contains('lettore')) return;
     const d = c.dataset.pamb;

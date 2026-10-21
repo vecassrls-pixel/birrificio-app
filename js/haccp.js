@@ -185,9 +185,10 @@ export const VOCI_INFESTANTI = [
 ];
 export const INIZIO_SCHEDE = '2026-03'; // da qui le schede si compilano da sole (prima c'era la carta)
 export const GIORNI_PULIZIA_AMBIENTI = [7, 21]; // circa due volte al mese, come sul foglio
-export const annataHaccp = iso => (Number(iso.slice(5, 7)) >= 3 ? Number(iso.slice(0, 4)) : Number(iso.slice(0, 4)) - 1);
-export const mesiAnnata = anno => Array.from({ length: 12 }, (_, i) => {
-  const m = 3 + i, y = anno + (m > 12 ? 1 : 0);
+// da = primo mese dell'annata: 3 (marzo-febbraio, insetti e roditori) o 1 (anno solare, esecuzione pulizie)
+export const annataHaccp = (iso, da = 3) => (Number(iso.slice(5, 7)) >= da ? Number(iso.slice(0, 4)) : Number(iso.slice(0, 4)) - 1);
+export const mesiAnnata = (anno, da = 3) => Array.from({ length: 12 }, (_, i) => {
+  const m = da + i, y = anno + (m > 12 ? 1 : 0);
   return `${y}-${String(m > 12 ? m - 12 : m).padStart(2, '0')}`;
 });
 const MESI_CORTI = ['GEN', 'FEB', 'MAR', 'APR', 'MAG', 'GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV', 'DIC'];
