@@ -28,13 +28,13 @@ import { addGiorni, fineCotta, gruppoCotta, nomeBirra, numIT } from './dominio.j
 
 export const CATEGORIE_CONT = { lattina: 'Lattine', fusto: 'Fusti', etichetta: 'Etichette lattine', altro: 'Altro (coperchi, cartoni…)' };
 // Etichette (Romain 2026-10-20): un contenitore categoria 'etichetta' per birra (k.birra, come nella cotta),
-// 1 etichetta ogni cartone da 12 lattine (Romain 2026-10-21): si scala solo con il confezionamento in lattina
-// delle cotte di quella birra. Per cotta: 800 lattine / 12 = 67 etichette.
+// 1 etichetta a lattina + 1 per ogni cartone da 12 (k.cartone = 12, Romain 2026-10-21): si scala solo con il
+// confezionamento in lattina delle cotte di quella birra. Per cotta: 800 + 67 = 867 etichette.
 export const etichettaPerBirra = (k, birra) => k.categoria === 'etichetta' && !!k.birra && nomeBirra(k.birra) === nomeBirra(birra);
-export const nuovaEtichetta = birra => ({ nome: `Etichette ${String(birra).trim()}`, categoria: 'etichetta', birra: String(birra).trim(), formati: ['lattina/bottiglia|0.33'], ogni: 12, perCotta: 67, perCottaSacca: 0 });
-// etichette create prima della regola del cartone (1 a lattina, 800 per cotta): si portano a 1 ogni 12
-export const etichettaDaAggiornare = k => k.categoria === 'etichetta' && !k.eliminato && Number(k.ogni || 1) === 1 && [800, 0, undefined, null].includes(k.perCotta);
-export const regolaCartone = k => (etichettaDaAggiornare(k) ? { ...k, ogni: 12, perCotta: 67 } : k);
+export const nuovaEtichetta = birra => ({ nome: `Etichette ${String(birra).trim()}`, categoria: 'etichetta', birra: String(birra).trim(), formati: ['lattina/bottiglia|0.33'], ogni: 1, cartone: 12, perCotta: 867, perCottaSacca: 0 });
+// etichette create prima della regola del cartone (1 a lattina, 800 per cotta): si aggiunge quella del cartone
+export const etichettaDaAggiornare = k => k.categoria === 'etichetta' && !k.eliminato && k.cartone === undefined;
+export const regolaCartone = k => (etichettaDaAggiornare(k) ? { ...k, ogni: 1, cartone: 12, perCotta: [800, 0, undefined, null].includes(k.perCotta) ? 867 : k.perCotta } : k);
 export const MOTIVI_CARICO = { acquisto: 'Acquisto', rientro: 'Rientro vuoti', rettifica: 'Rettifica', altro: 'Altro' };
 export const MOTIVI_SCARICO = { scarto: 'Scarto / danneggiati', ceduti: 'Ceduti', rettifica: 'Rettifica', altro: 'Altro' };
 export const nomeMotivoCont = m => (m.verso === 'carico' ? MOTIVI_CARICO : MOTIVI_SCARICO)[m.motivo] || (m.verso === 'carico' ? 'Carico' : 'Scarico');
@@ -81,7 +81,9 @@ export function usiConfezionamento(cotte, contenitori) {
       const scelto = principali.find(k => k.id === r.contenitore) || principali[0];
       const etichette = contenitori.filter(k => !k.eliminato && etichettaPerBirra(k, c.birra) && formatiDi(k).includes(f));
       for (const k of [...(scelto ? [scelto] : []), ...accessori.filter(k => formatiDi(k).includes(f)), ...etichette]) {
-        out.push({ contenitoreId: k.id, data, pezzi: Math.ceil(pezzi / (Number(k.ogni) > 1 ? Number(k.ogni) : 1)), confezionati: pezzi, cotta: c });
+        // più 1 per ogni cartone (etichette: k.cartone = lattine per cartone)
+        const perCartone = Number(k.cartone) > 0 ? Math.ceil(pezzi / Number(k.cartone)) : 0;
+        out.push({ contenitoreId: k.id, data, pezzi: Math.ceil(pezzi / (Number(k.ogni) > 1 ? Number(k.ogni) : 1)) + perCartone, confezionati: pezzi, cotta: c });
       }
     }
   }
