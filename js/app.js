@@ -106,7 +106,7 @@ cantina.init({ $app, html, raw, stato, dataIT, oggiISO, diffGiorni, conGiorniDh:
 magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 carrello.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, token: () => (auth.configurato() ? auth.token() : null) });
 previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre), linkOrdini: (nome, scheda) => ordiniClienti.dialogLink(nome, scheda) });
-ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT });
+ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT, oggiISO, addGiorni });
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
@@ -247,6 +247,7 @@ const routes = [
   [/^#\/movcontenitore\/(.+)$/, id => contenitori.vistaMovimento(id)],
   [/^#\/contenitori-inventario$/, () => contenitori.vistaInventario()],
   [/^#\/ordini-clienti$/, () => ordiniClienti.vistaOrdini()],
+  [/^#\/giro$/, () => ordiniClienti.vistaGiro()],
   [/^#\/scansiona$/, () => { pulizia = qr.vistaScansiona(); }],
   [/^#\/qr\?/, () => qr.vistaQr()],
   [/^#\/costi$/, () => costi.vistaCosti()],
@@ -263,7 +264,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;

@@ -7,7 +7,9 @@ const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;
 const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ESC[ch]);
 const euro = n => `${Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const dataIT = d => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '');
-const STATI = { nuovo: 'ricevuto', confermato: 'confermato', consegnato: 'consegnato', annullato: 'annullato' };
+const STATI = { nuovo: 'ricevuto', confermato: 'confermato', pronto: 'pronto', spedito: 'spedito', consegnato: 'consegnato', annullato: 'annullato' };
+const MODI = { ritiro: 'Ritiro in birrificio', zona: 'Consegna in zona', corriere: 'Spedizione con corriere' };
+const CAMPI = ['consegna', 'note', 'indirizzo', 'comune', 'telefono'];
 const carrello = new Map(); // chiave → pezzi
 let dati = null;
 
@@ -19,6 +21,7 @@ async function carica() {
     if (!res.ok) throw new Error(b.errore || `Errore ${res.status}`);
     dati = b;
     disegna();
+    mostraIndirizzo();
   } catch (e) { $.innerHTML = `<p class="vuoto">${esc(e.message)}</p>`; }
 }
 
@@ -43,11 +46,18 @@ function disegna(msg = '') {
       <h2>Il tuo ordine</h2>
       ${scelti.length ? `<ul class="or-elenco">${scelti.map(f => `<li>${carrello.get(f.chiave)} × ${esc(f.birra)} · ${esc(f.formato)}</li>`).join('')}</ul>
         ${totale ? `<p><b>Totale indicativo: ${euro(totale)}</b> ${conIva ? 'IVA inclusa' : '+ IVA'}</p>` : ''}` : '<p class="totale">Nessuna birra scelta.</p>'}
-      <label>Consegna desiderata (facoltativa)<input type="date" name="consegna" min="${dati.oggi}"></label>
-      <label>Note<textarea name="note" rows="2" maxlength="1000" placeholder="orari, indirizzo, altro"></textarea></label>
+      <fieldset class="or-modi"><legend>Come la ricevi</legend>
+        ${Object.entries(MODI).map(([k, v]) => `<label class="spunta"><input type="radio" name="modo" value="${k}" ${(dati.recapito?.modo || 'zona') === k ? 'checked' : ''}> ${v}</label>`).join('')}</fieldset>
+      <div class="or-indirizzo">
+        <label>Indirizzo<input name="indirizzo" maxlength="200" autocomplete="street-address" value="${esc(dati.recapito?.indirizzo)}" placeholder="via e numero"></label>
+        <label>Comune<input name="comune" maxlength="80" autocomplete="address-level2" value="${esc(dati.recapito?.comune)}"></label>
+      </div>
+      <label>Telefono<input name="telefono" type="tel" maxlength="30" autocomplete="tel" value="${esc(dati.recapito?.telefono)}" placeholder="per avvisarti della consegna"></label>
+      <label>Data desiderata (facoltativa)<input type="date" name="consegna" min="${dati.oggi}"></label>
+      <label>Note<textarea name="note" rows="2" maxlength="1000" placeholder="orari, citofono, altro"></textarea></label>
       <button class="primario" ${scelti.length ? '' : 'disabled'}>Invia l'ordine</button>
     </form>` : ''}
-    ${dati.ordini.length ? `<section class="scheda"><h2>I tuoi ultimi ordini</h2><ul class="or-elenco">${dati.ordini.map(o => `<li><b>${dataIT(o.data)}</b> · ${esc(STATI[o.stato] || o.stato)}${o.consegna ? ` · consegna ${dataIT(o.consegna)}` : ''}<br><small>${o.righe.map(r => `${r.pezzi} × ${esc(r.nome)}`).join(', ')}</small></li>`).join('')}</ul></section>` : ''}`;
+    ${dati.ordini.length ? `<section class="scheda"><h2>I tuoi ultimi ordini</h2><ul class="or-elenco">${dati.ordini.map(o => `<li><b>${dataIT(o.data)}</b> · ${esc(STATI[o.stato] || o.stato)}${o.consegna ? ` · consegna ${dataIT(o.consegna)}` : ''}${o.tracking ? ` · ${esc(o.corriere)} n. ${esc(o.tracking)}` : ''}<br><small>${o.righe.map(r => `${r.pezzi} × ${esc(r.nome)}`).join(', ')}</small></li>`).join('')}</ul></section>` : ''}`;
 }
 
 $.addEventListener('click', e => {
@@ -58,24 +68,32 @@ $.addEventListener('click', e => {
   const n = Math.max(0, Math.min(max, (carrello.get(k) || 0) + (piu ? 1 : -1)));
   carrello.set(k, n);
   const form = document.getElementById('or-invia');
-  const tieni = form ? { consegna: form.consegna.value, note: form.note.value } : null;
+  const tieni = form ? Object.fromEntries([...CAMPI, 'modo'].map(k => [k, form[k].value])) : null;
   disegna();
-  if (tieni) { const f = document.getElementById('or-invia'); f.consegna.value = tieni.consegna; f.note.value = tieni.note; }
+  if (tieni) { const f = document.getElementById('or-invia'); for (const k of [...CAMPI, 'modo']) f[k].value = tieni[k]; mostraIndirizzo(); }
 });
+// l'indirizzo serve solo per consegna e spedizione
+function mostraIndirizzo() {
+  const f = document.getElementById('or-invia');
+  if (f) f.querySelector('.or-indirizzo').hidden = f.modo.value === 'ritiro';
+}
+$.addEventListener('change', e => { if (e.target.name === 'modo') mostraIndirizzo(); });
 $.addEventListener('submit', async e => {
   e.preventDefault();
-  const f = e.target, b = f.querySelector('button');
+  const f = e.target, b = f.querySelector('button.primario');
+  if (f.modo.value !== 'ritiro' && !f.indirizzo.value.trim()) { alert('Scrivi l\'indirizzo per la consegna'); f.indirizzo.focus(); return; }
   b.disabled = true; b.textContent = 'Invio…';
   try {
     const res = await fetch('/.netlify/functions/ordini', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ t: token, consegna: f.consegna.value, note: f.note.value, righe: [...carrello].filter(([, n]) => n > 0).map(([prodotto, pezzi]) => ({ prodotto, pezzi })) }),
+      body: JSON.stringify({ t: token, modo: f.modo.value, ...Object.fromEntries(CAMPI.map(k => [k, f[k].value])), righe: [...carrello].filter(([, n]) => n > 0).map(([prodotto, pezzi]) => ({ prodotto, pezzi })) }),
     });
     const r = await res.json();
     if (!res.ok) throw new Error(r.errore || `Errore ${res.status}`);
     carrello.clear();
     await carica();
     disegna('<p class="avviso-riga">✓ Ordine inviato, grazie! Ti contattiamo per la conferma.</p>');
+    mostraIndirizzo();
     scrollTo({ top: 0, behavior: 'smooth' });
   } catch (ex) {
     b.disabled = false; b.textContent = 'Invia l\'ordine';

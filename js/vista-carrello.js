@@ -8,6 +8,7 @@ import { ID_ALPHA } from './listini.js';
 import { idCliente } from './previsioni.js';
 import { pezziCartone } from './etichetta.js';
 import { datiBirra, apriScarico } from './vista-birra.js';
+import { salvaDaCarrello, collegaDocumento } from './vista-ordini.js';
 import {
   leggiCarrello, scriviCarrello, svuotaCarrello, passo, prezziListino, prezzoRiga, righeFattura, righeMovimento, TIPO_DRAG, trascinabile, mettiNelCarrello,
 } from './carrello.js';
@@ -62,6 +63,7 @@ export async function vistaCarrello() {
         <p class="totale">Il magazzino è già scaricato. Completala e inviala da Fatture in Cloud (pagamento, fattura elettronica).</p>
         <div class="barra" style="margin:0"><a class="btn primario" target="_blank" rel="noopener" href="https://secure.fattureincloud.it/invoices">Apri Fatture in Cloud</a>
           ${fatto.url ? html`<a class="btn" target="_blank" rel="noopener" href="${fatto.url}">PDF</a>` : ''}<button id="cr-ok">Fatto</button></div></div>` : ''}
+      ${c.ordine ? html`<div class="avviso-riga">📋 Stai preparando l'ordine di <b>${c.cliente}</b>: dopo la fattura o lo scarico l'ordine si segna da solo. <button class="piccolo" id="cr-stacca">Stacca dall'ordine</button></div>` : ''}
       <p class="totale">Trascina le birre nel carrello (sul telefono toccale). Un fusto alla volta, le lattine a cartoni da ${cartone}: i pezzi si correggono nel carrello.</p>
       <div class="cr-layout">
         <section class="cr-dispo">
@@ -103,6 +105,7 @@ export async function vistaCarrello() {
           ${totale ? html`<p class="totale" style="margin:0 0 8px">${iva ? 'IVA inclusa' : '+ IVA'}${senzaPrezzo ? ` · ${senzaPrezzo} ${senzaPrezzo === 1 ? 'riga' : 'righe'} senza prezzo` : ''}</p>` : ''}
           <div class="cr-azioni solo-editori">
             <button class="primario" id="cr-fic">🧾 Fattura in Fatture in Cloud</button>
+            <button id="cr-ordine" title="Per gli ordini presi al telefono o su WhatsApp: la fattura o lo scarico li fai quando lo consegni">📋 ${c.ordine ? 'Aggiorna l\'ordine' : 'Salva come ordine'}</button>
             <span class="totale">oppure scarico di magazzino:</span>
             <div class="cr-motivi">${Object.entries(MOTIVI_SCARICO).map(([k, v]) => html`<button data-motivo="${k}">${v}</button>`)}</div>
           </div>`}
@@ -171,10 +174,20 @@ export async function vistaCarrello() {
     } else if (b.id === 'cr-svuota') {
       if (await u.chiedi('Svuotare il carrello?', 'Svuota')) { svuotaCarrello(); c = leggiCarrello(); disegna(); }
     } else if (b.id === 'cr-ok') { fatto = null; disegna(); }
+    else if (b.id === 'cr-stacca') { c.ordine = ''; ridisegna(); }
+    else if (b.id === 'cr-ordine') {
+      if (!c.cliente.trim()) { u.toast('Scrivi il cliente'); u.$app.querySelector('#cr-cliente')?.focus(); return; }
+      if (!righeMovimento(c).length) return u.toast('Il carrello non ha pezzi');
+      const { prezzi, iva } = prezziListino(listini, c.listino);
+      const da = c;
+      svuotaCarrello();
+      await salvaDaCarrello(da, prezzi, iva);
+    }
     else if (b.dataset.motivo) {
       const righe = righeMovimento(c);
       if (!righe.length) return u.toast('Il carrello non ha pezzi');
-      apriScarico({ motivo: b.dataset.motivo, cliente: c.cliente, righe, dopo: svuotaCarrello });
+      const ordine = c.ordine;
+      apriScarico({ motivo: b.dataset.motivo, cliente: c.cliente, righe, dopo: async mov => { if (ordine) await collegaDocumento(ordine, { movimento: mov.id, righe: mov.righe }); svuotaCarrello(); } });
     } else if (b.id === 'cr-fic') await dialogFattura();
   };
 
@@ -222,10 +235,11 @@ export async function vistaCarrello() {
       try {
         const cl = trova(nome);
         const r = await fic('POST', { azione: 'fattura', data, cliente: { id: cl?.id || null, nome: cl?.nome || nome }, lordo: iva, righe });
-        await u.db.salva({
+        const mov = await u.db.salva({
           tipo: 'movbirra', id: u.db.nuovoId('movbirra'), verso: 'scarico', data, motivo: 'vendita', cliente: cl?.nome || nome, documento: r.numero,
           note: 'dal carrello', origine: 'fic', rifEsterno: `fic:${r.id}`, righe: righeMov,
         });
+        if (c.ordine) await collegaDocumento(c.ordine, { documento: r.numero, movimento: mov.id, righe: righeMov });
         fatto = { ...r, cliente: cl?.nome || nome };
         svuotaCarrello();
         c = leggiCarrello();

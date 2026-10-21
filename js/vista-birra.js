@@ -41,7 +41,7 @@ const leggiPref = () => { try { return localStorage.getItem(NASCONDI) !== '0'; }
 const scriviPref = v => { try { localStorage.setItem(NASCONDI, v ? '1' : '0'); } catch { /* vale solo ora */ } };
 const filtri = { q: '', formato: '', scad: false, marchio: 'kashmir' };
 
-// Scarico già compilato (dal carrello): lo usa il prossimo "Nuovo scarico"; dopo() parte quando si salva
+// Scarico già compilato (dal carrello): lo usa il prossimo "Nuovo scarico"; dopo(movimento) parte quando si salva
 let bozzaScarico = null;
 export function apriScarico(bozza) { bozzaScarico = bozza; location.hash = '#/movbirra/scarico'; }
 
@@ -441,7 +441,7 @@ export async function vistaMovimento(id) {
         });
       } else if (cassaLegata?.origine === 'scarico') await u.db.elimina(cassaLegata.id); // tolta la spunta
       u.toast(carico() ? 'Carico salvato' : incasso > 0 ? 'Scarico salvato, incasso in Cassa' : 'Scarico salvato');
-      if (bozza?.dopo && !carico()) bozza.dopo();
+      if (bozza?.dopo && !carico()) await bozza.dopo(salvato);
       location.hash = '#/birra';
     }
   };
