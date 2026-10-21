@@ -1389,14 +1389,21 @@ function vistaPlanning() {
   const larghezza = plan.giorni * W;
 
   const giorni = Array.from({ length: plan.giorni }, (_, i) => addGiorni(plan.inizio, i));
+  // giorni liberi (Romain 2026-10-21): da oggi in poi, lunedì-venerdì senza cotte né confezionamenti previsti.
+  // Confezionamento = date scritte nel Confezionamento della cotta, altrimenti la fine prevista in FV.
+  const occupati = new Set(stato.cotte.flatMap(c => {
+    const conf = (c.confezionato || []).map(x => x.data).filter(Boolean);
+    return [c.data, ...(conf.length ? conf : c.data ? [fineCotta(c, stato.durate)] : [])];
+  }).filter(Boolean));
+  const libero = d => { const dow = daISO(d).getDay(); return d >= oggi && dow > 0 && dow < 6 && !occupati.has(d); };
   const sfondo = giorni.map((d, i) => {
     const dow = daISO(d).getDay();
-    return html`<div class="g-day ${dow === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dow === 0 || dow === 6 ? 'fest' : ''}" style="left:${i * W}px;width:${W}px"></div>`;
+    return html`<div class="g-day ${dow === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dow === 0 || dow === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''}" style="left:${i * W}px;width:${W}px"></div>`;
   });
   const testa = giorni.map((d, i) => {
     const dd = daISO(d);
     const primo = dd.getDate() === 1 || i === 0;
-    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''}" style="left:${i * W}px;width:${W}px">
+    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''}" style="left:${i * W}px;width:${W}px" ${libero(d) ? 'title="Nessuna cotta né confezionamento previsti"' : ''}>
       <div style="height:18px;font-weight:600;color:var(--text);white-space:nowrap;text-align:left;padding-left:2px">${primo ? dd.toLocaleDateString('it-IT', { month: 'short' }) : ''}</div>
       <div>${dd.getDate()}</div></div>`;
   });
@@ -1437,6 +1444,7 @@ function vistaPlanning() {
       <div class="legenda">
       <span>Tinta più scura = temperatura misurata più alta, sfumata giorno per giorno</span>
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
+      <span><span class="fase-chip" style="background:var(--libero)"></span> Giorno libero: nessuna cotta né confezionamento previsti (da oggi, lun-ven)</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="bf-chip">${stato.beerfirm[0]?.nome || 'Beerfirm'}</span> = cotta per un beerfirm (si sceglie nella cotta, nomi in Impostazioni)</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
