@@ -28,9 +28,13 @@ import { addGiorni, fineCotta, gruppoCotta, nomeBirra, numIT } from './dominio.j
 
 export const CATEGORIE_CONT = { lattina: 'Lattine', fusto: 'Fusti', etichetta: 'Etichette lattine', altro: 'Altro (coperchi, cartoni…)' };
 // Etichette (Romain 2026-10-20): un contenitore categoria 'etichetta' per birra (k.birra, come nella cotta),
-// 1 etichetta a lattina: si scala solo con il confezionamento in lattina delle cotte di quella birra.
+// 1 etichetta ogni cartone da 12 lattine (Romain 2026-10-21): si scala solo con il confezionamento in lattina
+// delle cotte di quella birra. Per cotta: 800 lattine / 12 = 67 etichette.
 export const etichettaPerBirra = (k, birra) => k.categoria === 'etichetta' && !!k.birra && nomeBirra(k.birra) === nomeBirra(birra);
-export const nuovaEtichetta = birra => ({ nome: `Etichette ${String(birra).trim()}`, categoria: 'etichetta', birra: String(birra).trim(), formati: ['lattina/bottiglia|0.33'], ogni: 1, perCotta: 800, perCottaSacca: 0 });
+export const nuovaEtichetta = birra => ({ nome: `Etichette ${String(birra).trim()}`, categoria: 'etichetta', birra: String(birra).trim(), formati: ['lattina/bottiglia|0.33'], ogni: 12, perCotta: 67, perCottaSacca: 0 });
+// etichette create prima della regola del cartone (1 a lattina, 800 per cotta): si portano a 1 ogni 12
+export const etichettaDaAggiornare = k => k.categoria === 'etichetta' && !k.eliminato && Number(k.ogni || 1) === 1 && [800, 0, undefined, null].includes(k.perCotta);
+export const regolaCartone = k => (etichettaDaAggiornare(k) ? { ...k, ogni: 12, perCotta: 67 } : k);
 export const MOTIVI_CARICO = { acquisto: 'Acquisto', rientro: 'Rientro vuoti', rettifica: 'Rettifica', altro: 'Altro' };
 export const MOTIVI_SCARICO = { scarto: 'Scarto / danneggiati', ceduti: 'Ceduti', rettifica: 'Rettifica', altro: 'Altro' };
 export const nomeMotivoCont = m => (m.verso === 'carico' ? MOTIVI_CARICO : MOTIVI_SCARICO)[m.motivo] || (m.verso === 'carico' ? 'Carico' : 'Scarico');

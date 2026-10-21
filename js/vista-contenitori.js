@@ -7,7 +7,7 @@
 
 import {
   CATEGORIE_CONT, MOTIVI_CARICO, MOTIVI_SCARICO, categoriaDaFormato, contenitoriProposti, formatiDi, formatiUsati,
-  caricoDaFattura, chiaveRiga, etichettaPerBirra, fabbisognoContenitori, nuovaEtichetta, giacenzeContenitori, nomeFormato, nomeMotivoCont, perCottaDi, righeVuoti, usiConfezionamento,
+  caricoDaFattura, chiaveRiga, etichettaDaAggiornare, etichettaPerBirra, regolaCartone, fabbisognoContenitori, nuovaEtichetta, giacenzeContenitori, nomeFormato, nomeMotivoCont, perCottaDi, righeVuoti, usiConfezionamento,
 } from './contenitori.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO }  stato.beerfirm = elenco dei beerfirm
@@ -17,7 +17,11 @@ const ICONA = { lattina: '🥫', fusto: '🛢️', etichetta: '🏷️', altro: 
 const pz = n => `${u.numIT(n, 0)} pz`;
 
 async function dati() {
-  const [contenitori, movimenti, inventari, sospesi] = await Promise.all(['contenitore', 'movcontenitore', 'inventariocontenitori', 'importsospeso'].map(t => u.db.tutti(t)));
+  const [tutti, movimenti, inventari, sospesi] = await Promise.all(['contenitore', 'movcontenitore', 'inventariocontenitori', 'importsospeso'].map(t => u.db.tutti(t)));
+  // etichette create con 1 a lattina: ora 1 ogni cartone da 12 (Romain 2026-10-21), si salva una volta
+  const vecchie = tutti.filter(etichettaDaAggiornare);
+  if (vecchie.length) try { await u.db.salvaMolti(vecchie.map(({ aggiornato: _a, ...k }) => regolaCartone(k))); } catch { /* sola lettura */ }
+  const contenitori = tutti.map(regolaCartone);
   contenitori.sort((a, b) => Object.keys(CATEGORIE_CONT).indexOf(a.categoria) - Object.keys(CATEGORIE_CONT).indexOf(b.categoria) || a.nome.localeCompare(b.nome, 'it', { numeric: true }));
   // fatture dei fornitori con righe che sembrano vuoti, non ancora guardate qui
   const fatture = sospesi.filter(x => x.fonte === 'acquisti' && !x.vuotiVisti && x.doc)
@@ -81,7 +85,7 @@ export async function vistaContenitori() {
     <details class="scheda cn-fab"><summary><b>${fab.cotte.length ? `${fab.cotte.length} ${fab.cotte.length === 1 ? 'cotta' : 'cotte'} da confezionare entro il ${u.dataIT(fab.cotte.at(-1).fine)}` : `Nessuna cotta da confezionare nei prossimi ${fab.giorni} giorni`}</b></summary>
       ${fab.cotte.length ? html`<ul class="w-lista">${fab.cotte.map(x => html`<li><a href="#/cotta/${encodeURIComponent(x.cotta.id)}"><span class="w-testo"><b>${x.cotta.birra} ${x.cotta.lotto || ''}</b>${x.cotta.beerfirm ? html` <span class="bf-chip">${x.cotta.beerfirm}</span>` : ''}
         <small>fine in FV ${u.dataIT(x.fine)} · ${x.sacca ? 'polykeg con sacca' : 'polykeg e lattine'}</small></span></a></li>`)}</ul>` : ''}
-      <p class="totale">Per ogni cotta che finisce in FV nei prossimi ${fab.giorni} giorni (o negli ultimi 7 senza confezionamento): ${d.contenitori.filter(k => k.categoria !== 'etichetta').map(k => { const p = perCottaDi(k); return [p.normale && `${p.normale} ${k.nome}`, p.sacca && `${p.sacca} ${k.nome} per Nitro e beerfirm con sacca`].filter(Boolean).join(', '); }).filter(Boolean).join(' · ') || 'nessun numero impostato'}${d.contenitori.some(k => k.categoria === 'etichetta') ? ' · le etichette della sua birra (800, non per Nitro e beerfirm con sacca)' : ''}. Si cambia nella scheda di ogni articolo.</p>
+      <p class="totale">Per ogni cotta che finisce in FV nei prossimi ${fab.giorni} giorni (o negli ultimi 7 senza confezionamento): ${d.contenitori.filter(k => k.categoria !== 'etichetta').map(k => { const p = perCottaDi(k); return [p.normale && `${p.normale} ${k.nome}`, p.sacca && `${p.sacca} ${k.nome} per Nitro e beerfirm con sacca`].filter(Boolean).join(', '); }).filter(Boolean).join(' · ') || 'nessun numero impostato'}${d.contenitori.some(k => k.categoria === 'etichetta') ? ' · le etichette della sua birra (1 ogni cartone da 12: 67, non per Nitro e beerfirm con sacca)' : ''}. Si cambia nella scheda di ogni articolo.</p>
     </details>` : html`<div class="scheda avviso solo-editori"><h2>Per iniziare</h2>
       <p>Crea un contenitore per ogni cosa da contare (lattine, polykeg, ma anche coperchi o cartoni se vuoi). Ogni contenitore si collega ai formati del Confezionamento: quando confezioni una cotta in quel formato, i vuoti si scalano da soli. Per i polykeg 24 L (riempiti a 25 L) con e senza sacca scegli quale hai usato nella riga del Confezionamento.
       Poi fai l'inventario di quello che hai oggi in magazzino.</p>
@@ -260,7 +264,8 @@ function dialogContenitore(d) {
     if (f.categoria.value !== 'etichetta') return;
     const e = nuovaEtichetta(f.birra.value || '');
     f.querySelectorAll('[name="formati"]').forEach(x => { x.checked = e.formati.includes(x.value); });
-    if (!f.perCotta.value) f.perCotta.value = e.perCotta;
+    f.ogni.value = e.ogni;
+    if (!f.perCotta.value || f.perCotta.value === '800') f.perCotta.value = e.perCotta;
     if (f.birra.value && (!f.nome.value || /^Etichette /.test(f.nome.value))) f.nome.value = e.nome;
   };
   f.categoria.addEventListener('change', proponi);
