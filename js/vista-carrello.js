@@ -114,6 +114,7 @@ export async function vistaCarrello() {
   };
   disegna();
   const salva = () => scriviCarrello(c);
+  if (c.apriFattura) { delete c.apriFattura; salva(); setTimeout(() => dialogFattura(), 0); }
   const ridisegna = () => { salva(); disegna(); };
 
   u.$app.ondragstart = e => { if (trascinabile(e)) u.$app.querySelector('#cr-cesto')?.classList.add('pronto'); };
@@ -196,6 +197,10 @@ export async function vistaCarrello() {
     if (!righeMov.length) return u.toast('Il carrello non ha pezzi');
     const { prezzi, iva } = prezziListino(listini, c.listino);
     const righe = righeFattura({ righe: c.righe.filter(r => Number(r.pezzi) > 0) }, dati.prodotti, prezzi);
+    // ordine già scaricato dal magazzino (taproom, spaccio…): la fattura usa quello scarico, non ne fa un altro
+    const ordine = c.ordine ? await u.db.leggi(c.ordine) : null;
+    const scarico = ordine?.movimento ? await u.db.leggi(ordine.movimento) : null;
+    const giaScaricato = scarico && !scarico.eliminato ? scarico : null;
     const d = document.createElement('dialog');
     d.innerHTML = html`<form method="dialog">
       <h2 style="margin-top:0">Fattura in Fatture in Cloud</h2>
@@ -204,7 +209,7 @@ export async function vistaCarrello() {
       <p class="totale" id="fc-stato"></p>
       <label>Data <input type="date" id="fc-data" value="${u.oggiISO()}"></label>
       <ul class="or-elenco">${righe.map(r => html`<li>${u.numIT(r.qta, 0)} × ${r.nome}${r.codice ? html` <span class="totale">(${r.codice})</span>` : ''}${r.descrizione ? html` · ${r.descrizione}` : ''} <span class="totale">${r.prezzo !== null ? euro(r.prezzo) : 'prezzo da scrivere in FIC'}</span></li>`)}</ul>
-      <p class="totale">Prezzi ${iva ? 'IVA inclusa' : 'IVA esclusa'}, aliquota 22%. La fattura si crea in Fatture in Cloud e la completi lì (pagamento, invio). Lo scarico dal magazzino si fa subito, con i lotti scelti, e l'import notturno non lo ripete.</p>
+      <p class="totale">Prezzi ${iva ? 'IVA inclusa' : 'IVA esclusa'}, aliquota 22%. La fattura si crea in Fatture in Cloud e la completi lì (pagamento, invio). ${giaScaricato ? `L'ordine è già scaricato dal magazzino (${u.dataIT(giaScaricato.data)}): la fattura si collega a quello scarico e non scarica di nuovo` : 'Lo scarico dal magazzino si fa subito, con i lotti scelti,'}; l'import notturno non lo ripete.</p>
       <div class="barra"><span class="spazio"></span><button value="no" formnovalidate>Annulla</button><button class="primario" id="fc-crea" value="si">Crea la fattura</button></div>
     </form>`.s;
     document.body.appendChild(d);
@@ -215,6 +220,9 @@ export async function vistaCarrello() {
       elenco = r.clienti || [];
       d.querySelector('#fc-dl').innerHTML = html`${elenco.map(x => html`<option value="${x.nome}">${x.piva}</option>`)}`.s;
       d.querySelector('#fc-cliente').placeholder = 'Scegli o scrivi il cliente';
+      // ordine già collegato a un cliente di Fatture in Cloud (dall'indirizzo): si propone quel nome
+      const daOrdine = ordine?.ficId && elenco.find(x => String(x.id) === String(ordine.ficId));
+      if (daOrdine && !trova(d.querySelector('#fc-cliente').value)) d.querySelector('#fc-cliente').value = daOrdine.nome;
       segnala();
     }).catch(ex => { $stato.textContent = `Clienti di Fatture in Cloud non letti: ${ex.message}`; });
     const trova = nome => elenco.find(x => x.nome.trim().toLowerCase() === nome.trim().toLowerCase());
@@ -235,11 +243,11 @@ export async function vistaCarrello() {
       try {
         const cl = trova(nome);
         const r = await fic('POST', { azione: 'fattura', data, cliente: { id: cl?.id || null, nome: cl?.nome || nome }, lordo: iva, righe });
-        const mov = await u.db.salva({
-          tipo: 'movbirra', id: u.db.nuovoId('movbirra'), verso: 'scarico', data, motivo: 'vendita', cliente: cl?.nome || nome, documento: r.numero,
-          note: 'dal carrello', origine: 'fic', rifEsterno: `fic:${r.id}`, righe: righeMov,
-        });
-        if (c.ordine) await collegaDocumento(c.ordine, { documento: r.numero, movimento: mov.id, righe: righeMov });
+        const doc = { motivo: 'vendita', cliente: cl?.nome || nome, documento: r.numero, origine: 'fic', rifEsterno: `fic:${r.id}` };
+        const mov = giaScaricato
+          ? await u.db.salva({ ...giaScaricato, ...doc, aggiornato: undefined })
+          : await u.db.salva({ tipo: 'movbirra', id: u.db.nuovoId('movbirra'), verso: 'scarico', data, note: 'dal carrello', righe: righeMov, ...doc });
+        if (c.ordine) await collegaDocumento(c.ordine, { documento: r.numero, movimento: mov.id, righe: mov.righe });
         fatto = { ...r, cliente: cl?.nome || nome };
         svuotaCarrello();
         c = leggiCarrello();

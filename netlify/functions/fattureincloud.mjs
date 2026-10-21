@@ -11,7 +11,7 @@
 //                /.netlify/functions/fattureincloud?elenco=prodotti   anagrafica prodotti (serve il permesso Prodotti: lettura)
 //                  → { prodotti: [{ id, nome, codice }] }
 //                /.netlify/functions/fattureincloud?elenco=clienti    anagrafica clienti (permesso Clienti: lettura)
-//                  → { clienti: [{ id, nome, piva }] }
+//                  → { clienti: [{ id, nome, piva, indirizzo, comune, telefono }] }
 //   POST { azione: 'fattura', data, cliente: { id?, nome }, lordo, note, righe: [{ codice, nome, descrizione, qta, prezzo }] }
 //                  crea la fattura (permesso Fatture: lettura e scrittura) → { id, numero, url }
 // Risponde nello stesso formato del proxy Shopify:

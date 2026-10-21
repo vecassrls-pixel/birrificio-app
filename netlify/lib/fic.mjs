@@ -107,11 +107,17 @@ export async function prodotti(fic) {
 export async function clienti(fic) {
   const out = [];
   for (let pagina = 1; pagina <= 20; pagina++) {
-    const r = await fic.chiama('/entities/clients', { fieldset: 'basic', sort: 'name', page: pagina, per_page: 100 });
+    const r = await fic.chiama('/entities/clients', { fieldset: 'detailed', sort: 'name', page: pagina, per_page: 100 });
     out.push(...(r.data || []));
     if (pagina >= (r.last_page || 1)) break;
   }
-  return out.map(c => ({ id: c.id, nome: c.name || '', piva: c.vat_number || c.tax_code || '' }));
+  // indirizzo e telefono dall'anagrafica: servono alle consegne degli ordini
+  const t = v => String(v || '').trim();
+  return out.map(c => ({
+    id: c.id, nome: c.name || '', piva: c.vat_number || c.tax_code || '',
+    indirizzo: t(c.address_street), comune: [t(c.address_postal_code), t(c.address_city), t(c.address_province) ? `(${t(c.address_province)})` : ''].filter(Boolean).join(' '),
+    telefono: t(c.phone),
+  }));
 }
 
 // Crea una fattura con le righe del carrello; la si completa e si invia in Fatture in Cloud.
