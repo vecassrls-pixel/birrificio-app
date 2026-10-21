@@ -1,5 +1,5 @@
 // Prima nota di cassa (#/cassa): contanti in entrata e in uscita, saldo, conte della cassa,
-// soldi in sospeso (sospesi), incassi da registrare per gli scarichi taproom/spaccio/eventi,
+// soldi in sospeso (sospesi), incassi da registrare per gli scarichi spaccio/eventi (non taproom: è il carico del frigo),
 // Excel e import da "Cassa Vecas".
 
 import { CATEGORIE_CASSA, categoriaCassa, cassaDaExcel, importo, registroCassa, saldoCassa, sospesiAperti } from './cassa.js';
@@ -12,7 +12,8 @@ export function init(strumenti) { u = strumenti; }
 
 const filtro = { anno: null, categoria: '' };
 const euro = v => `${(Number(v) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-const MOTIVI_INCASSO = ['taproom', 'spaccio', 'eventi'];
+// Taproom no: lo scarico è il carico del frigo, la vendita viene dopo (Romain 2026-10-21)
+const MOTIVI_INCASSO = ['spaccio', 'eventi'];
 
 export async function vistaCassa() {
   const { html } = u;

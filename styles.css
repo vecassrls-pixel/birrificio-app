@@ -20,7 +20,7 @@
   --s-tank: #d97706;
   --s-confezionata: #15803d;
   --s-chiusa: #78716c;
-  --weekend: #f7dbe3;
+  --weekend: #f7dbe3; --libero: #c9ecc9;
   --f-fermentazione: #fb923c;
   --f-dh: #b39dfa;
   --f-maturazione: #7dd3fc;
@@ -35,7 +35,7 @@
     --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
     --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
     --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
-    --weekend: #3d1c27; --ombra: none;
+    --weekend: #3d1c27; --libero: #1d4223; --ombra: none;
     color-scheme: dark;
   }
 }
@@ -44,7 +44,7 @@
   --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
   --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
   --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
-  --weekend: #3d1c27; --ombra: none;
+  --weekend: #3d1c27; --libero: #1d4223; --ombra: none;
   color-scheme: dark;
 }
 
@@ -212,6 +212,8 @@ label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { cursor: 
 .g-day { position: absolute; top: 0; bottom: 0; border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent); font-size: .68rem; color: var(--muted); text-align: center; }
 .g-day.lun { border-left-color: color-mix(in srgb, var(--muted) 55%, transparent); }
 .g-day.fest { background: var(--weekend); }
+.g-day.libero { background: color-mix(in srgb, var(--libero) 60%, transparent); }
+.g-row.testa .g-day.libero { background: var(--libero); color: var(--text); }
 .g-day.oggi { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .g-row.testa .g-day.oggi { color: var(--accent); font-weight: 700; }
 .g-bar {
@@ -1107,9 +1109,8 @@ body.ordina { background: var(--bg); }
 }
 
 /* pulizie automatiche */
-.pl-auto { display: inline-block; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 0 5px; border-radius: 4px; background: var(--accent-tenue); color: var(--accent); vertical-align: 1px; }
-.tab-pulizie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
-@media print { .tab-pulizie select.s6-lotto { border: none; } }
+.tab-pulizie select.s6-lotto, .tab-trebbie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
+@media print { .tab-pulizie select.s6-lotto, .tab-trebbie select.s6-lotto { border: none; appearance: none; } }
 
 /* schede HACCP insetti e roditori, esecuzione pulizie: stesso stile degli altri registri (.s6, .tab-s6) */
 .iss-foglio { margin-bottom: 12px; }
@@ -1143,3 +1144,12 @@ body.ordina { background: var(--bg); }
   .iss-firma select, .iss-firma input { border: none !important; min-width: 0; }
   .iss-firma input::placeholder { color: transparent; }
 }
+
+/* ordini: dettagli e giro consegne */
+.or-dett .od-modi { display: flex; flex-wrap: wrap; margin: 4px 0 10px; }
+.or-dett [hidden] { display: none !important; }
+.gi-tappe { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 12px; }
+.or-modi { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 0 0 10px; }
+.or-modi legend { padding: 0 4px; font-weight: 600; }
+.or-indirizzo[hidden] { display: none; }
+.or-modi label.spunta { min-height: auto; margin: 6px 0; display: flex; gap: 8px; align-items: center; font-size: .95rem; }

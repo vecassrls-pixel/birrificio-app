@@ -8,7 +8,9 @@ import { ID_IMPOSTAZIONI } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { conPulizieAutomatiche, fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
 import { attivitaGiorno, etichetteDaOrdinare } from './agenda.js';
+import { etichettaPerBirra, giacenzeContenitori, perCottaDi } from './contenitori.js';
 import { coperturaBirre, statoClienti } from './previsioni.js';
+import { tappeGiro } from './consegne.js';
 import {
   SIMBOLI, fasiCotta, fineCotta, gruppoCotta, litriConfezionati, lottoGruppo, periodiCotta, statoCotta,
 } from './dominio.js';
@@ -36,10 +38,13 @@ export { attivitaGiorno };
 export async function vistaHome() {
   const { html, stato, numIT, dataIT, oggiISO, addGiorni, diffGiorni } = u;
   const oggi = oggiISO(), domani = addGiorni(oggi, 1);
-  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze, pulizie, sospesi, clienti, ordiniClienti] = await Promise.all([
+  const [articoli, bolle, inventari, scarichi, movimenti, inventariBirra, prodotti, impBirra, impHome, scadenze, pulizie, sospesi, clienti, ordiniClienti, contenitori, movPack, invPack] = await Promise.all([
     ...['articolo', 'bolla', 'inventario', 'scarico', 'movbirra', 'inventariobirra', 'prodottobirra'].map(t => u.db.tutti(t)),
     u.db.leggi(ID_IMPOSTAZIONI), u.db.leggi(ID_HOME), u.db.tutti('scadenzahaccp'), u.db.tutti('pulizia'), u.db.tutti('importsospeso'), u.db.tutti('cliente'), u.db.tutti('ordinecliente'),
+    ...['contenitore', 'movcontenitore', 'inventariocontenitori'].map(t => u.db.tutti(t)),
   ]);
+  const giroOggi = tappeGiro(ordiniClienti, oggi).length;
+  const daSpedire = ordiniClienti.filter(o => o.modo === 'corriere' && ['confermato', 'pronto'].includes(o.stato) && (!o.consegna || o.consegna <= oggi)).length;
   const scadHaccp = scadenzeDaFare(scadenze, oggi);
   const pulizieTutte = conPulizieAutomatiche(stato.cotte, stato.durate, stato.fv, pulizie, '', oggi);
   const sporchi = fvDaPulire(statoFermentatori(stato.cotte, stato.durate, stato.fv, pulizieTutte, oggi), pulizieTutte, oggi);
@@ -103,6 +108,15 @@ export async function vistaHome() {
   const prossimeLotti = [];
   for (const c of prossime) if (!prossimeLotti.some(g => g.some(x => x.id === c.id))) prossimeLotti.push(gruppoCotta(c, cotte));
   const senzaEtichette = etichetteDaOrdinare(cotte, stato.durate, oggi);
+  // etichette delle lattine in Packaging (una per birra): quante ce ne sono per le cotte senza la spunta
+  const etichette = contenitori.filter(k => !k.eliminato && k.categoria === 'etichetta');
+  const giacEt = etichette.length ? giacenzeContenitori({ contenitori: etichette, movimenti: movPack, inventari: invPack, cotte }, oggi) : new Map();
+  const etichetteDi = g => {
+    const k = etichette.find(x => etichettaPerBirra(x, g[0].birra));
+    if (!k) return null;
+    const pezzi = Math.max(0, giacEt.get(k.id)?.giacenza || 0);
+    return { pezzi, bastano: pezzi >= perCottaDi(k).normale * g.length };
+  };
 
   const att = [[oggi, 'Oggi'], [domani, 'Domani']].map(([d, titolo]) => ({ d, titolo, voci: attivitaGiorno(cotte, d, ctx) }));
   // DH, travasi e crash cooling previsti nei giorni dopo (fino a una settimana)
@@ -129,6 +143,8 @@ export async function vistaHome() {
       </div>
     </section>
     ${ordiniClienti.some(o => o.stato === 'nuovo') ? html`<a class="avviso-riga" href="#/ordini-clienti">🛒 ${ordiniClienti.filter(o => o.stato === 'nuovo').length} ${ordiniClienti.filter(o => o.stato === 'nuovo').length === 1 ? 'ordine nuovo' : 'ordini nuovi'} dai clienti da confermare →</a>` : ''}
+    ${giroOggi ? html`<a class="avviso-riga" href="#/giro">🚐 ${giroOggi} ${giroOggi === 1 ? 'consegna' : 'consegne'} in zona da fare oggi →</a>` : ''}
+    ${daSpedire ? html`<a class="avviso-riga" href="#/ordini-clienti">📦 ${daSpedire} ${daSpedire === 1 ? 'ordine da spedire' : 'ordini da spedire'} con il corriere →</a>` : ''}
     ${daControllare ? html`<a class="avviso-riga" href="#/birra-importa/sospesi">📥 ${daControllare} ${daControllare === 1 ? 'documento importato aspetta' : 'documenti importati aspettano'} una scelta (prodotti non riconosciuti) →</a>` : ''}
     ${acquisti ? html`<a class="avviso-riga" href="#/materie-prime">🧾 ${acquisti} ${acquisti === 1 ? 'fattura di un fornitore da caricare' : 'fatture dei fornitori da caricare'} in magazzino →</a>` : ''}
 
@@ -216,12 +232,12 @@ export async function vistaHome() {
 
       <section class="widget w-etichette">
         <header><h2>${SIMBOLI.etichette} Etichette da ordinare</h2><span class="totale">${senzaEtichette.length ? `${senzaEtichette.length} cotte` : ''}</span></header>
-        ${senzaEtichette.length ? html`<ul class="w-lista">${senzaEtichette.slice(0, 8).map(({ g, fine, inFv }) => { const gg = diffGiorni(oggi, fine); return html`<li><a href="#/cotta/${encodeURIComponent(g[0].id)}">
+        ${senzaEtichette.length ? html`<ul class="w-lista">${senzaEtichette.slice(0, 8).map(({ g, fine, inFv }) => { const gg = diffGiorni(oggi, fine), et = etichetteDi(g), urgente = gg <= 14 && !et?.bastano; return html`<li><a href="#/cotta/${encodeURIComponent(g[0].id)}">
           <span class="w-data"><b>${new Date(`${fine}T12:00:00`).getDate()}</b>${new Date(`${fine}T12:00:00`).toLocaleDateString('it-IT', { month: 'short' })}</span>
-          <span class="w-testo"><b>${g[0].birra}</b> <span class="totale">${g.length > 1 ? lottoGruppo(g) : g[0].lotto}${g[0].fv ? ` · ${g[0].fv}` : ''}</span><small>${inFv ? 'nel fermentatore' : `cotta il ${dataIT(g[0].data)}`} · da confezionare ${gg <= 0 ? 'ora' : `tra ${gg} gg`}</small></span>
-          <span class="w-num ${gg <= 14 ? 'w-urgente' : ''}">${gg <= 14 ? 'urgente' : ''}</span></a></li>`; })}</ul>
+          <span class="w-testo"><b>${g[0].birra}</b> <span class="totale">${g.length > 1 ? lottoGruppo(g) : g[0].lotto}${g[0].fv ? ` · ${g[0].fv}` : ''}</span><small>${inFv ? 'nel fermentatore' : `cotta il ${dataIT(g[0].data)}`} · da confezionare ${gg <= 0 ? 'ora' : `tra ${gg} gg`}${et ? ` · ${et.bastano ? '✓ ' : ''}${numIT(et.pezzi, 0)} in Packaging` : ''}</small></span>
+          <span class="w-num ${urgente ? 'w-urgente' : ''}">${urgente ? 'urgente' : ''}</span></a></li>`; })}</ul>
           ${senzaEtichette.length > 8 ? html`<p class="totale">e altre ${senzaEtichette.length - 8}…</p>` : ''}
-          <p class="totale" style="margin-bottom:0">Quando le hai, spunta "Etichette pronte" nella cotta.</p>`
+          <p class="totale" style="margin-bottom:0">Quando le hai, spunta "Etichette pronte" nella cotta. Le giacenze per birra sono in Packaging.</p>`
           : html`<p class="w-vuoto">✓ Etichette pronte per tutte le cotte pianificate.</p>`}
       </section>
 

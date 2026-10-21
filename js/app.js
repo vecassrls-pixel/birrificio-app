@@ -16,7 +16,7 @@ import * as preventivi from './vista-preventivi.js';
 import * as backup from './backup.js';
 import * as home from './vista-home.js';
 import { ID_OPERATORI, operatoriDa } from './haccp.js';
-import { ID_TREBBIE, destinatarioDa } from './trebbie.js';
+import { ID_TREBBIE, destinatarioDa, destinatariDa } from './trebbie.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import * as haccp from './vista-haccp.js';
 import * as cantina from './vista-cantina.js';
@@ -106,7 +106,7 @@ cantina.init({ $app, html, raw, stato, dataIT, oggiISO, diffGiorni, conGiorniDh:
 magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 carrello.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, token: () => (auth.configurato() ? auth.token() : null) });
 previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre), linkOrdini: (nome, scheda) => ordiniClienti.dialogLink(nome, scheda) });
-ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT });
+ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT, oggiISO, addGiorni });
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
@@ -247,6 +247,7 @@ const routes = [
   [/^#\/movcontenitore\/(.+)$/, id => contenitori.vistaMovimento(id)],
   [/^#\/contenitori-inventario$/, () => contenitori.vistaInventario()],
   [/^#\/ordini-clienti$/, () => ordiniClienti.vistaOrdini()],
+  [/^#\/giro$/, () => ordiniClienti.vistaGiro()],
   [/^#\/scansiona$/, () => { pulizia = qr.vistaScansiona(); }],
   [/^#\/qr\?/, () => qr.vistaQr()],
   [/^#\/costi$/, () => costi.vistaCosti()],
@@ -263,7 +264,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
@@ -1388,14 +1389,21 @@ function vistaPlanning() {
   const larghezza = plan.giorni * W;
 
   const giorni = Array.from({ length: plan.giorni }, (_, i) => addGiorni(plan.inizio, i));
+  // giorni liberi (Romain 2026-10-21): da oggi in poi, lunedì-venerdì senza cotte né confezionamenti previsti.
+  // Confezionamento = date scritte nel Confezionamento della cotta, altrimenti la fine prevista in FV.
+  const occupati = new Set(stato.cotte.flatMap(c => {
+    const conf = (c.confezionato || []).map(x => x.data).filter(Boolean);
+    return [c.data, ...(conf.length ? conf : c.data ? [fineCotta(c, stato.durate)] : [])];
+  }).filter(Boolean));
+  const libero = d => { const dow = daISO(d).getDay(); return d >= oggi && dow > 0 && dow < 6 && !occupati.has(d); };
   const sfondo = giorni.map((d, i) => {
     const dow = daISO(d).getDay();
-    return html`<div class="g-day ${dow === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dow === 0 || dow === 6 ? 'fest' : ''}" style="left:${i * W}px;width:${W}px"></div>`;
+    return html`<div class="g-day ${dow === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dow === 0 || dow === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''}" style="left:${i * W}px;width:${W}px"></div>`;
   });
   const testa = giorni.map((d, i) => {
     const dd = daISO(d);
     const primo = dd.getDate() === 1 || i === 0;
-    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''}" style="left:${i * W}px;width:${W}px">
+    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''}" style="left:${i * W}px;width:${W}px" ${libero(d) ? 'title="Nessuna cotta né confezionamento previsti"' : ''}>
       <div style="height:18px;font-weight:600;color:var(--text);white-space:nowrap;text-align:left;padding-left:2px">${primo ? dd.toLocaleDateString('it-IT', { month: 'short' }) : ''}</div>
       <div>${dd.getDate()}</div></div>`;
   });
@@ -1436,6 +1444,7 @@ function vistaPlanning() {
       <div class="legenda">
       <span>Tinta più scura = temperatura misurata più alta, sfumata giorno per giorno</span>
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
+      <span><span class="fase-chip" style="background:var(--libero)"></span> Giorno libero: nessuna cotta né confezionamento previsti (da oggi, lun-ven)</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="bf-chip">${stato.beerfirm[0]?.nome || 'Beerfirm'}</span> = cotta per un beerfirm (si sceglie nella cotta, nomi in Impostazioni)</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
@@ -1607,7 +1616,8 @@ async function vistaImpostazioni() {
   const impHome = (await db.leggi(home.ID_HOME)) || {};
   const logoScelto = impHome.eliminato ? 'gb' : impHome.logo || 'gb';
   const operatori = [...operatoriDa(await db.leggi(ID_OPERATORI))];
-  const destTrebbie = destinatarioDa(await db.leggi(ID_TREBBIE));
+  const impTrebbie = await db.leggi(ID_TREBBIE);
+  const destTrebbie = destinatarioDa(impTrebbie), destinatari = destinatariDa(impTrebbie);
   $app.innerHTML = html`
     <h1>Impostazioni</h1>
     <div class="scheda">
@@ -1638,17 +1648,21 @@ async function vistaImpostazioni() {
     </div>
     <div class="scheda" id="beerfirm">
       <h2>Beerfirm</h2>
-      <p class="totale">Le cotte fatte per un beerfirm si scelgono nella cotta e si vedono nel planning con il nome. "Polykeg con sacca": per le sue cotte il calcolo dei vuoti in Contenitori usa i polykeg con sacca (come le Nitro).</p>
+      <p class="totale">Le cotte fatte per un beerfirm si scelgono nella cotta e si vedono nel planning con il nome. "Polykeg con sacca": per le sue cotte il calcolo dei vuoti in Packaging usa i polykeg con sacca (come le Nitro).</p>
       <table class="tab-edit"><thead><tr><th>Nome</th><th>Polykeg con sacca</th><th></th></tr></thead><tbody>${stato.beerfirm.map((b, i) => html`<tr>
         <td><input data-bf="${i}" value="${b.nome}"></td>
         <td><input type="checkbox" data-bf-sacca="${i}" ${b.sacca ? 'checked' : ''}></td>
         <td class="az"><button class="piccolo" data-bf-del="${i}" title="Togli">✕</button></td></tr>`)}</tbody></table>
       <button class="piccolo" id="bf-nuovo">+ Aggiungi beerfirm</button>
     </div>
-    <div class="scheda">
+    <div class="scheda" id="trebbie-dest">
       <h2>Registro trebbie</h2>
-      <label style="max-width:320px">Destinazione di default<input id="trebbie-dest" value="${destTrebbie}" placeholder="es. FABIO VALERIO"></label>
-      <p class="totale">Chi ritira le trebbie: va da solo su ogni cotta del <a href="#/trebbie">registro trebbie</a> (si può cambiare riga per riga).</p>
+      <p class="totale">Chi ritira le trebbie. Il predefinito va da solo su ogni cotta del <a href="#/trebbie">registro trebbie</a>; nel registro, riga per riga, si sceglie un altro di questo elenco.</p>
+      <table class="tab-edit tab-operatori"><thead><tr><th>Predefinito</th><th>Nome</th><th></th></tr></thead><tbody>${destinatari.map((n, i) => html`<tr>
+        <td class="c"><input type="radio" name="tr-def" data-td-def="${i}" ${n === destTrebbie ? 'checked' : ''} title="Predefinito"></td>
+        <td><input data-td="${i}" value="${n}"></td>
+        <td class="az"><button class="piccolo" data-td-del="${i}" ${destinatari.length > 1 ? '' : 'disabled'} title="Togli">✕</button></td></tr>`)}</tbody></table>
+      <button class="piccolo" id="td-nuovo">+ Aggiungi destinatario</button>
     </div>
     <div class="scheda">
       <h2>Fermentatori</h2>
@@ -1730,9 +1744,40 @@ async function vistaImpostazioni() {
   };
   const salvaOperatori = async nomi => { await db.salva({ id: ID_OPERATORI, tipo: 'impostazione', nomi: nomi.map(x => x.trim()).filter(Boolean) }); vistaImpostazioni(); };
   const $op = document.getElementById('operatori');
-  document.getElementById('trebbie-dest').onchange = async e => {
-    await db.salva({ id: ID_TREBBIE, tipo: 'impostazione', destinatario: e.target.value.trim() });
-    toast('Destinazione delle trebbie salvata');
+  // rinomina = stesso destinatario scritto meglio (vale anche per le righe passate);
+  // cambio di predefinito = vale da oggi, le cotte prima restano col predefinito di allora (storico)
+  const salvaDestinatari = async (nomi, def, rinomina) => {
+    const elenco = [...new Set(nomi.map(x => (x || '').trim()).filter(Boolean))];
+    const nuovoDef = elenco.includes(def) ? def : elenco[0] || '';
+    let storico = (impTrebbie?.storico || []).map(s => ({ ...s, prima: rinomina && s.prima === rinomina[0] ? rinomina[1] : s.prima }));
+    const oggi = oggiISO();
+    if (!rinomina && nuovoDef !== destTrebbie && !storico.some(s => s.dal === oggi)) storico = [...storico, { dal: oggi, prima: destTrebbie }];
+    await db.salva({ id: ID_TREBBIE, tipo: 'impostazione', destinatario: nuovoDef, destinatari: elenco, storico });
+    toast('Destinatari delle trebbie salvati');
+    vistaImpostazioni();
+  };
+  const $td = document.getElementById('trebbie-dest');
+  $td.onchange = e => {
+    const t = e.target, nomi = [...destinatari];
+    if (t.dataset.tdDef !== undefined) return salvaDestinatari(nomi, nomi[Number(t.dataset.tdDef)]);
+    if (t.dataset.td === undefined) return;
+    const i = Number(t.dataset.td), vecchio = nomi[i];
+    nomi[i] = t.value;
+    const nuovo = t.value.trim();
+    if (vecchio && nuovo) return salvaDestinatari(nomi, vecchio === destTrebbie ? nuovo : destTrebbie, [vecchio, nuovo]);
+    salvaDestinatari(nomi, destTrebbie);
+  };
+  $td.onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    e.stopPropagation();
+    const nomi = [...destinatari];
+    if (b.id === 'td-nuovo') { // riga vuota: si salva quando scrivi il nome
+      const tb = $td.querySelector('tbody');
+      tb.insertAdjacentHTML('beforeend', html`<tr><td></td><td><input data-td="${nomi.length}" placeholder="Nome o azienda"></td><td></td></tr>`.s);
+      return tb.querySelector(`[data-td="${nomi.length}"]`).focus();
+    }
+    if (b.dataset.tdDel) { nomi.splice(Number(b.dataset.tdDel), 1); salvaDestinatari(nomi, destTrebbie); }
   };
   $op.onchange = e => {
     const i = e.target.dataset.op;
@@ -1973,7 +2018,7 @@ function aggiornaRete(s = statoRete) {
 
 // ---------- profili: il lettore vede tutto ma non modifica nulla ----------
 // Restano attivi solo filtri, navigazione, stampa/esportazione e il calcolatore HLT.
-const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #s6-prec, #s6-succ, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button, .tr-anni button, #tr-excel, .iss-anni button, #inf-prec, #inf-succ';
+const LIBERI = '.st-libero, .copia-lotto, #b-q, #inv-q, #b-formato, #b-zero, #br-da, #br-a, #br-origine, #stati button, #ferm-tutte, #st-gruppo, #st-anno, #st-tutto, #q, #anno, #stato, #altre, #cat, #s6-da, #s6-a, #s6-cat, #s6-prec, #s6-succ, #prec, #succ, #oggi, #esporta, #stampa, #hlt-da, #hlt-litri, #sync-ora, #esci, #cs-cat, .cs-anni button, .tr-anni button, #tr-excel, .iss-anni button, #inf-prec, #inf-succ, [data-foglio]';
 let lettore = false;
 function bloccaModifiche() {
   if (!lettore) return;

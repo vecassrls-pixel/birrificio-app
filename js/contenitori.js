@@ -24,9 +24,13 @@
 // sa da quali lotti di vuoti viene. Un inventario con il lotto dice che i pezzi contati sono tutti di quel lotto;
 // senza lotto restano i lotti arrivati per ultimi, fino al numero contato.
 
-import { addGiorni, fineCotta, gruppoCotta, numIT } from './dominio.js';
+import { addGiorni, fineCotta, gruppoCotta, nomeBirra, numIT } from './dominio.js';
 
-export const CATEGORIE_CONT = { lattina: 'Lattine', fusto: 'Fusti', altro: 'Altro (coperchi, cartoni…)' };
+export const CATEGORIE_CONT = { lattina: 'Lattine', fusto: 'Fusti', etichetta: 'Etichette lattine', altro: 'Altro (coperchi, cartoni…)' };
+// Etichette (Romain 2026-10-20): un contenitore categoria 'etichetta' per birra (k.birra, come nella cotta),
+// 1 etichetta a lattina: si scala solo con il confezionamento in lattina delle cotte di quella birra.
+export const etichettaPerBirra = (k, birra) => k.categoria === 'etichetta' && !!k.birra && nomeBirra(k.birra) === nomeBirra(birra);
+export const nuovaEtichetta = birra => ({ nome: `Etichette ${String(birra).trim()}`, categoria: 'etichetta', birra: String(birra).trim(), formati: ['lattina/bottiglia|0.33'], ogni: 1, perCotta: 800, perCottaSacca: 0 });
 export const MOTIVI_CARICO = { acquisto: 'Acquisto', rientro: 'Rientro vuoti', rettifica: 'Rettifica', altro: 'Altro' };
 export const MOTIVI_SCARICO = { scarto: 'Scarto / danneggiati', ceduti: 'Ceduti', rettifica: 'Rettifica', altro: 'Altro' };
 export const nomeMotivoCont = m => (m.verso === 'carico' ? MOTIVI_CARICO : MOTIVI_SCARICO)[m.motivo] || (m.verso === 'carico' ? 'Carico' : 'Scarico');
@@ -45,7 +49,7 @@ const ordine = (a, b) => String(a.creato || '').localeCompare(String(b.creato ||
 // lattine/fusti che si possono usare per una riga del Confezionamento (più di uno: si sceglie nella riga)
 export function contenitoriPerRiga(contenitori, tipo, litri) {
   const f = chiaveFormato(tipo, litri);
-  return contenitori.filter(k => !k.eliminato && k.categoria !== 'altro' && formatiDi(k).includes(f)).sort(ordine);
+  return contenitori.filter(k => !k.eliminato && !['altro', 'etichetta'].includes(k.categoria) && formatiDi(k).includes(f)).sort(ordine);
 }
 
 // Formati usati nei confezionamenti delle cotte, più quelli di base
@@ -71,7 +75,8 @@ export function usiConfezionamento(cotte, contenitori) {
       const f = chiaveFormato(r.tipo, r.litri);
       const principali = contenitoriPerRiga(contenitori, r.tipo, r.litri);
       const scelto = principali.find(k => k.id === r.contenitore) || principali[0];
-      for (const k of [...(scelto ? [scelto] : []), ...accessori.filter(k => formatiDi(k).includes(f))]) {
+      const etichette = contenitori.filter(k => !k.eliminato && etichettaPerBirra(k, c.birra) && formatiDi(k).includes(f));
+      for (const k of [...(scelto ? [scelto] : []), ...accessori.filter(k => formatiDi(k).includes(f)), ...etichette]) {
         out.push({ contenitoreId: k.id, data, pezzi: Math.ceil(pezzi / (Number(k.ogni) > 1 ? Number(k.ogni) : 1)), confezionati: pezzi, cotta: c });
       }
     }
@@ -199,6 +204,12 @@ export function trovaContenitore(riga, contenitori) {
     const k = vivi.find(x => x.categoria === 'altro' && /coperch|lid|end/i.test(x.nome));
     return k ? conX(k) : null;
   }
+  if (/ (etichett|label)/.test(d)) {
+    // la birra dal nome nella descrizione; se non c'è si propone la prima e si corregge nella conferma
+    const et = vivi.filter(x => x.categoria === 'etichetta');
+    const k = et.find(x => x.birra && d.includes(` ${nomeBirra(x.birra).toLowerCase().replace(/[^a-z0-9,.]+/g, ' ')}`)) || et[0];
+    return k ? conX(k) : null;
+  }
   if (/ (lattin|can |cans |lattine)/.test(d) && !/ candi/.test(d)) {
     const cl = d.match(/(?:^|[^0-9])(\d{2})\s*cl\b/) || d.match(/0[,.](\d{2})\b/);
     const litri = cl ? Number(cl[1]) / 100 : 0.33;
@@ -285,7 +296,8 @@ export function fabbisognoContenitori({ contenitori, cotte, durate, beerfirm = [
   for (const k of contenitori) {
     if (k.eliminato) continue;
     const p = perCottaDi(k);
-    const tot = daConfezionare.reduce((t, x) => t + (x.sacca ? p.sacca : p.normale), 0);
+    // le etichette servono solo per le cotte della loro birra
+    const tot = daConfezionare.filter(x => k.categoria !== 'etichetta' || etichettaPerBirra(k, x.cotta.birra)).reduce((t, x) => t + (x.sacca ? p.sacca : p.normale), 0);
     if (tot) servono.set(k.id, tot);
   }
   return { cotte: daConfezionare, servono, giorni };
