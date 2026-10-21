@@ -66,4 +66,16 @@ export function righeOrdine(catalogo, richieste) {
   return { righe, errori };
 }
 
+// Birra impegnata: pezzi per prodotto negli ordini aperti non ancora fatturati né scaricati (la giacenza non è ancora scesa).
+// tranne = id di un ordine da non contare (quello che si sta preparando nel carrello)
+export const ORDINI_APERTI = ['nuovo', 'confermato', 'pronto', 'spedito'];
+export function impegnatiOrdini(ordini, tranne = '') {
+  const per = new Map();
+  for (const o of ordini || []) {
+    if (o.eliminato || o.id === tranne || !ORDINI_APERTI.includes(o.stato) || o.documento || o.movimento) continue;
+    for (const r of o.righe || []) per.set(r.prodotto, (per.get(r.prodotto) || 0) + (Number(r.pezzi) || 0));
+  }
+  return per;
+}
+
 export const totaleOrdine = righe => righe.reduce((t, r) => t + (Number(r.prezzo) || 0) * r.pezzi, 0);

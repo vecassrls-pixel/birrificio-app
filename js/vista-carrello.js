@@ -5,6 +5,7 @@
 
 import { MOTIVI_SCARICO, giacenzeBirra, listaDisponibili, nomeProdotto, nomeFormato, maiuscole } from './birra.js';
 import { ID_ALPHA } from './listini.js';
+import { impegnatiOrdini } from './portale.js';
 import { idCliente } from './previsioni.js';
 import { pezziCartone } from './etichetta.js';
 import { datiBirra, apriScarico } from './vista-birra.js';
@@ -36,6 +37,8 @@ export async function vistaCarrello() {
   const { html } = u;
   const [dati, listini, clienti] = await Promise.all([datiBirra(), u.db.tutti('listino'), u.db.tutti('cliente')]);
   const oggi = u.oggiISO();
+  // la birra degli altri ordini aperti è già promessa; quella dell'ordine che si sta preparando no
+  dati.impegnati = impegnatiOrdini(dati.ordini, leggiCarrello().ordine);
   const disponibili = listaDisponibili(dati, oggi);
   const g = giacenzeBirra(dati, oggi);
   const venduti = listini.filter(l => !l.eliminato).sort((a, b) => (a.id === ID_ALPHA ? -1 : b.id === ID_ALPHA ? 1 : a.nome.localeCompare(b.nome, 'it')));
@@ -72,7 +75,7 @@ export async function vistaCarrello() {
             <div class="cr-chips">${b.formati.map(f => {
               const resta = f.pezzi - (nel.get(f.chiave) || 0);
               return html`<button class="cr-art ${resta <= 0 ? 'finito' : ''}" draggable="true" data-k="${f.chiave}" title="Trascina nel carrello o tocca per aggiungere">
-                <span aria-hidden="true">${ICONA[f.tipo] || '🍺'}</span><span>${nomeFormato(f.tipo, f.litri)}</span><small>${u.numIT(resta, 0)} ${f.tipo === 'fusto' ? 'fusti' : 'pz'}</small>
+                <span aria-hidden="true">${ICONA[f.tipo] || '🍺'}</span><span>${nomeFormato(f.tipo, f.litri)}</span><small>${u.numIT(resta, 0)} ${f.tipo === 'fusto' ? 'fusti' : 'pz'}${dati.impegnati.get(f.chiave) ? ` · ${u.numIT(dati.impegnati.get(f.chiave), 0)} impegnati` : ''}</small>
                 ${prezzi.get(f.chiave) ? html`<small>${euro(prezzi.get(f.chiave))}</small>` : ''}<b aria-hidden="true">+</b></button>`;
             })}</div></div>`) : html`<p class="vuoto">${q ? 'Nessuna birra con questo nome.' : 'Nessuna birra disponibile in magazzino.'}</p>`}
         </section>
