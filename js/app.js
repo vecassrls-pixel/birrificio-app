@@ -514,6 +514,21 @@ function dialogNuovaCotta(pre = {}) {
 // Lista dei malti da macinare: su WhatsApp (si preme Invia a mano) o negli appunti.
 // Il numero di chi macina si chiede la prima volta e resta in questo dispositivo.
 const PREF_MACINA = 'gb-whatsapp-macina';
+// Luppoli del dry hop da copiare, raggruppati per giorno (1 = giorno di cotta)
+function testoDryHop(c) {
+  const dh = (c.luppoli || []).filter(r => r.nome && r.uso === 'dry hop');
+  const giorni = [...new Set(dh.map(r => Number(r.giorno) || 0))].sort((a, b) => a - b);
+  const multi = giorni.length > 1;
+  return [
+    `Dry hop cotta ${c.lotto || ''} ${c.birra || ''}${c.fv ? ' in ' + c.fv : ''}`.replace(/\s+/g, ' ').trim(),
+    ...giorni.flatMap(g => {
+      const r = dh.filter(x => (Number(x.giorno) || 0) === g);
+      const quando = g > 0 ? `giorno ${g}${c.data ? ' (' + dataIT(addGiorni(c.data, g - 1)) + ')' : ''}` : '';
+      return ['', ...(multi || quando ? [`DH ${multi ? giorni.indexOf(g) + 1 + ' · ' : ''}${quando}`.trim()] : []),
+        ...r.map(x => `- ${x.nome}: ${x.qta != null && x.qta !== '' ? numIT(+x.qta, 0) + ' ' + (x.unita || 'g') : '—'}`)];
+    }),
+  ].join('\n');
+}
 function testoMalti(c) {
   const righe = (c.malti || []).filter(r => r.nome);
   const kg = righe.reduce((t, r) => t + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
@@ -728,6 +743,7 @@ async function vistaCotta(id) {
       ${totaleIngr(righe)}
       ${k === 'malti' && righe.length ? html`<button class="piccolo" id="whatsapp-malti" title="Apre WhatsApp con la lista dei malti da macinare già scritta">📲 Malti da macinare su WhatsApp</button>
         <button class="piccolo" id="copia-malti" title="Copia la lista dei malti da macinare per incollarla dove vuoi">📋 Copia malti</button>` : ''}
+      ${k === 'luppoli' && righe.some(r => r.nome && r.uso === 'dry hop') ? html`<button class="piccolo" id="copia-dh" title="Copia i luppoli del dry hop, divisi per giorno, per incollarli dove vuoi">📋 Copia luppoli DH</button>` : ''}
     </div>`;
   }
   function totaleIngr(righe) {
@@ -1232,6 +1248,8 @@ async function vistaCotta(id) {
       inviaMaltiWhatsApp(c);
     } else if (t.id === 'copia-malti') {
       copia(testoMalti(c), 'Malti copiati');
+    } else if (t.id === 'copia-dh') {
+      copia(testoDryHop(c), 'Luppoli DH copiati');
     } else if (t.id === 'stampa') {
       // il titolo diventa il nome proposto per il file PDF
       const titolo = document.title;
