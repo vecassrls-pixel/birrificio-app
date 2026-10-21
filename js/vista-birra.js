@@ -321,6 +321,11 @@ export async function vistaMovimento(id) {
   const prodotti = elencoProdotti(dati);
   const ordinati = () => [...prodotti].sort((a, b) => (carico() ? 0 : ((g.get(b)?.giacenza > 0) - (g.get(a)?.giacenza > 0))) || a.localeCompare(b, 'it'));
   const clienti = [...new Set(dati.movimenti.map(x => x.cliente).filter(Boolean))].sort();
+  // pagato in contanti (Romain 2026-10-21): l'entrata in Cassa si crea e si aggiorna con lo scarico (movcassa.rifMovBirra)
+  const cassaLegata = m.id ? (await u.db.tutti('movcassa')).find(x => !x.eliminato && x.rifMovBirra === m.id) : null;
+  let contanti = cassaLegata ? { si: true, importo: Number(cassaLegata.entrata) || null } : { si: false, importo: null };
+  // non per Taproom (è il carico del frigo, si vende dopo) né per Autoconsumo (Romain 2026-10-21)
+  const conContanti = () => !carico() && !['taproom', 'autoconsumo'].includes(m.motivo) && (!m.origine || m.origine === 'manuale');
 
   function disegna() {
     u.$app.innerHTML = html`
@@ -344,6 +349,9 @@ export async function vistaMovimento(id) {
           ${carico() || (m.origine && m.origine !== 'manuale') ? '' : html`<div class="scontrino"><span>Scontrino</span>
             <label class="spunta"><input type="radio" name="scontrinato" value="si" ${m.scontrinato ? 'checked' : ''}> Scontrinato</label>
             <label class="spunta"><input type="radio" name="scontrinato" value="no" ${m.scontrinato ? '' : 'checked'}> Non scontrinato</label></div>`}
+          ${conContanti() ? html`<div class="scontrino solo-editori"><label class="spunta"><input type="checkbox" id="contanti" ${contanti.si ? 'checked' : ''}> 💶 Pagato in contanti</label>
+            <label ${contanti.si ? '' : 'hidden'}>Incassato (€) <input id="contanti-importo" type="number" min="0" step="0.01" inputmode="decimal" value="${contanti.importo ?? ''}" placeholder="0,00"></label>
+            <small class="totale" ${contanti.si ? '' : 'hidden'}>entra in Cassa da solo quando salvi</small></div>` : ''}
           <label style="grid-column:span 2">Cliente <input data-m="cliente" list="dl-cli" value="${m.cliente || ''}"></label>
           <label>Documento (fattura, DDT, ordine) <input data-m="documento" value="${m.documento || ''}"></label>
           <label style="grid-column:span 2">Note <input data-m="note" value="${m.note || ''}"></label>
@@ -385,6 +393,9 @@ export async function vistaMovimento(id) {
       return;
     }
     if (t.name === 'scontrinato') m.scontrinato = t.value === 'si';
+    if (t.id === 'contanti') { contanti.si = t.checked; disegna(); if (t.checked) document.getElementById('contanti-importo').focus(); return; }
+    if (t.id === 'contanti-importo') contanti.importo = t.value === '' ? null : Number(t.value);
+    if (t.dataset.m === 'motivo' && e.type === 'change') { m.motivo = t.value; disegna(); return; }
     if (t.dataset.m) m[t.dataset.m] = t.value;
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
@@ -405,8 +416,9 @@ export async function vistaMovimento(id) {
       const msg = m.origine && m.origine !== 'manuale'
         ? `Eliminare questo movimento? I pezzi tornano in magazzino e il documento di ${ORIGINI[m.origine]} si potrà importare di nuovo.`
         : carico() ? 'Eliminare questo carico? I pezzi escono dalla giacenza.' : 'Eliminare questo scarico? I pezzi tornano in giacenza.';
-      if (!(await u.chiedi(msg, 'Elimina'))) return;
+      if (!(await u.chiedi(`${msg}${cassaLegata?.origine === 'scarico' ? ' Si toglie anche l\'incasso in contanti dalla Cassa.' : ''}`, 'Elimina'))) return;
       await u.db.elimina(esistente.id);
+      if (cassaLegata?.origine === 'scarico') await u.db.elimina(cassaLegata.id);
       location.hash = '#/birra';
     } else if (t.id === 'salva') {
       const righe = m.righe.filter(r => r.prodotto && Number(r.pezzi) > 0)
@@ -416,9 +428,19 @@ export async function vistaMovimento(id) {
         const troppo = righe.find(r => r.pezzi > (g.get(r.prodotto)?.giacenza || 0));
         if (troppo && !(await u.chiedi(`${nomeProdotto(troppo.prodotto)}: in magazzino risultano ${g.get(troppo.prodotto)?.giacenza || 0} pezzi, ne stai scaricando ${troppo.pezzi}. Salvare lo stesso?`, 'Salva'))) return;
       }
+      const incasso = conContanti() && contanti.si ? Math.round((Number(contanti.importo) || 0) * 100) / 100 : 0;
+      if (conContanti() && contanti.si && !(incasso > 0)) return u.toast('Scrivi quanto hai incassato in contanti');
       const { aggiornato: _a, ...rec } = m;
-      await u.db.salva({ ...rec, id: m.id || u.db.nuovoId('movbirra'), righe });
-      u.toast(carico() ? 'Carico salvato' : 'Scarico salvato');
+      const salvato = await u.db.salva({ ...rec, id: m.id || u.db.nuovoId('movbirra'), righe });
+      if (incasso > 0) {
+        const { aggiornato: _b, ...vecchio } = cassaLegata || {};
+        await u.db.salva({
+          ...(cassaLegata ? vecchio : { id: u.db.nuovoId('movcassa'), tipo: 'movcassa', origine: 'scarico', note: 'dallo scarico di birra', creato: new Date().toISOString() }),
+          data: m.data, descrizione: `${nomeMotivo(m)}${m.cliente ? ` ${m.cliente}` : ''}`, entrata: incasso, uscita: null,
+          categoria: m.motivo === 'taproom' ? 'taproom' : 'vendite', rifMovBirra: salvato.id,
+        });
+      } else if (cassaLegata?.origine === 'scarico') await u.db.elimina(cassaLegata.id); // tolta la spunta
+      u.toast(carico() ? 'Carico salvato' : incasso > 0 ? 'Scarico salvato, incasso in Cassa' : 'Scarico salvato');
       if (bozza?.dopo && !carico()) bozza.dopo();
       location.hash = '#/birra';
     }
