@@ -38,7 +38,7 @@ import { conGiorniDh } from './agenda.js';
 import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
-import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi } from './magazzino.js';
+import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi, unitaStandard, rigaStandard, cottaInUnitaStandard, uniformaUnita, decimaliUnita } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
   CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, numeriCronologici, problemiNumeri, statoCotta,
@@ -136,6 +136,21 @@ async function correggiRegula() {
   }));
   try { await db.salvaMolti(corrette); return true; }
   catch { return false; /* sola lettura: lo sistemerà chi può modificare */ }
+}
+// Unità uniformi (Romain 2026-10-22): kg per malti, zuccheri e luppoli, g per sali e coadiuvanti.
+// Converte articoli, inventari, bolle, movimenti e schede cotta senza perdere quantità. Con il cloud parte solo
+// dopo una sincronizzazione riuscita, così un dispositivo rimasto indietro non riscrive dati vecchi.
+let unitaControllate = false;
+async function uniformaUnitaArchivio() {
+  if (unitaControllate || lettore) return;
+  unitaControllate = true;
+  const [articoli, bolle, inventari, scarichi, cotte] = await Promise.all(['articolo', 'bolla', 'inventario', 'scarico', 'cotta'].map(t => db.tutti(t)));
+  const da = uniformaUnita({ articoli, bolle, inventari, scarichi, cotte });
+  if (!da.length) return;
+  try {
+    await db.salvaMolti(da.map(({ aggiornato, daSincronizzare, ...r }) => r));
+    toast(`Unità uniformate: luppoli, malti e zuccheri in kg, sali e coadiuvanti in g (${da.length} schede aggiornate)`);
+  } catch { unitaControllate = false; /* sola lettura: lo sistemerà chi può modificare */ }
 }
 // Lotti delle cotte pianificate in ordine di data (vedi numeriCronologici)
 async function allineaNumeri() {
@@ -439,7 +454,7 @@ function dialogNuovaCotta(pre = {}) {
         .then(([articoli, bolle, inventari, scarichi]) => ({ articoli, bolle, inventari, scarichi }));
       const { mancano } = materiePrimeMancanti({ ...datiMag, cotte: stato.cotte }, copiaDa(src, { data: f.data.value, numero: 0, anno: 0, fv: '' }), oggiISO());
       out.innerHTML = !datiMag.articoli.length ? ''
-        : mancano.length ? html`<span style="color:var(--warn)">Materie prime che mancherebbero il ${dataIT(f.data.value)}:</span> ${mancano.map(m => `${m.articolo.nome} ${numIT(m.manca, m.unita === 'kg' ? 1 : 0)} ${m.unita}`).join(', ')} · <a href="#/ordine">Da ordinare →</a>`.s
+        : mancano.length ? html`<span style="color:var(--warn)">Materie prime che mancherebbero il ${dataIT(f.data.value)}:</span> ${mancano.map(m => `${m.articolo.nome} ${numIT(m.manca, decimaliUnita(m.unita))} ${m.unita}`).join(', ')} · <a href="#/ordine">Da ordinare →</a>`.s
           : `✓ Materie prime: con le giacenze e gli ordini registrati c'è tutto per il ${dataIT(f.data.value)}.`;
     }, 300);
   };
@@ -584,7 +599,7 @@ function testoDryHop(c) {
       const r = dh.filter(x => (Number(x.giorno) || 0) === g);
       const quando = g > 0 ? `giorno ${g}${c.data ? ' (' + dataIT(addGiorni(c.data, g - 1)) + ')' : ''}` : '';
       return ['', ...(multi || quando ? [`DH ${multi ? giorni.indexOf(g) + 1 + ' · ' : ''}${quando}`.trim()] : []),
-        ...r.map(x => `- ${x.nome}: ${x.qta != null && x.qta !== '' ? numIT(+x.qta, 0) + ' ' + (x.unita || 'g') : '—'}`)];
+        ...r.map(x => `- ${x.nome}: ${x.qta != null && x.qta !== '' ? numIT(+x.qta, decimaliUnita(x.unita || 'g')) + ' ' + (x.unita || 'g') : '—'}`)];
     }),
   ].join('\n');
 }
@@ -594,7 +609,7 @@ function testoMalti(c) {
   return [
     `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
     '',
-    ...righe.map(r => `- ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
+    ...righe.map(r => `- ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, decimaliUnita(r.unita) || 2) + ' ' + (r.unita || '') : '—'}`.trim()),
     ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
   ].join('\n');
 }
@@ -620,7 +635,7 @@ async function inviaMaltiWhatsApp(c) {
 
 const SEZIONI_INGR = [
   ['malti', 'Malti e zuccheri', 'kg'],
-  ['luppoli', 'Luppoli', 'g'],
+  ['luppoli', 'Luppoli', 'kg'],
   ['lievito', 'Lievito', 'g'],
   ['sali', 'Sali e additivi', 'g'],
 ];
@@ -639,6 +654,7 @@ async function vistaCotta(id) {
   c.acquaDip = c.acquaDip || {};
   // ingredienti scelti dalle voci del magazzino (anche a zero)
   let articoli = await magazzino.articoliRicetta();
+  c = cottaInUnitaStandard(c, articoli) || c; // luppoli in kg, sali e coadiuvanti in g (si salva alla prima modifica)
   const datiCosto = await costi.datiCosti();
   // fusti vuoti: con due polykeg per lo stesso formato (con e senza sacca) la riga dice quale
   const vuoti = await db.tutti('contenitore');
@@ -773,7 +789,7 @@ async function vistaCotta(id) {
       || Number(e.temp ?? NaN) !== Number(prima?.temp ?? NaN) && (pieno(e.temp) || pieno(prima?.temp));
   }
   const CAT_SEZIONE = { malti: ['malto', 'zucchero'], luppoli: ['luppolo'], lievito: ['lievito'], sali: ['sale', 'coadiuvante', 'aggiunta', 'spezia'] };
-  const fmtGiac = a => `${CATEGORIE[a.categoria] || ''} · in magazzino ${numIT(a.giacenza, a.unita === 'kg' || a.unita === 'L' ? 1 : 0)} ${a.unita}`;
+  const fmtGiac = a => `${CATEGORIE[a.categoria] || ''} · in magazzino ${numIT(a.giacenza, decimaliUnita(a.unita))} ${a.unita}`;
   function tabIngredienti(k, titolo, unitaDef) {
     const righe = c[k];
     const extra = k === 'luppoli';
@@ -835,7 +851,7 @@ async function vistaCotta(id) {
       return blocco(titolo, html`<table class="fc-tab"><tbody>${righe.map(r => html`<tr>
         <td>${r.nome}${r.recuperato ? html` <small>(recuperato)</small>` : ''}</td>
         ${conUso ? html`<td>${[r.uso, r.uso === 'dry hop' ? pieno(r.giorno) && `giorno ${r.giorno}` : pieno(r.minuti) && `${n(r.minuti, 0)} min`].filter(Boolean).join(' · ')}</td>` : ''}
-        <td class="n">${pieno(r.qta) ? `${n(r.qta, 2)} ${r.unita || ''}` : ''}</td></tr>`)}</tbody>
+        <td class="n">${pieno(r.qta) ? `${n(r.qta, decimaliUnita(r.unita) || 2)} ${r.unita || ''}` : ''}</td></tr>`)}</tbody>
         ${righe.length > 1 && kg ? html`<tfoot><tr><td${conUso ? raw(' colspan="2"') : ''}>Totale</td><td class="n">${numIT(kg, 2)} kg</td></tr></tfoot>` : ''}</table>`);
     };
     // registro: le righe utili (come a video), solo le colonne usate
@@ -1199,6 +1215,21 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     // spunte: alcuni Safari (iPad meno recenti) non mandano "input" sulle checkbox, solo "change"
     if (p && e.target.type === 'checkbox') { set(c, p, e.target.checked); salvaPresto(); }
+    // luppoli, malti e zuccheri in kg, sali e coadiuvanti in g: "150" in g diventa 0,15 kg
+    const ingr = p && /^(malti|luppoli|sali)\.(\d+)\.(nome|qta|unita)$/.exec(p);
+    if (ingr) {
+      const [, k, i] = ingr;
+      const r = c[k][Number(i)];
+      const art = r?.nome ? trovaArticolo(articoli, r.nome) : null;
+      const n = r && rigaStandard(r, art?.categoria || categoriaDa(k, r.nome), art?.unita);
+      if (n && n !== r) {
+        c[k][Number(i)] = n;
+        salvaPresto();
+        if (r.qta !== null && r.qta !== undefined && r.qta !== '') toast(`${numIT(Number(r.qta), decimaliUnita(r.unita))} ${r.unita} → ${numIT(n.qta, decimaliUnita(n.unita))} ${n.unita}`);
+        const y = scrollY; disegna(); scrollTo(0, y);
+        return;
+      }
+    }
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
     if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|scadenza|mesiScadenza|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
@@ -1245,7 +1276,8 @@ async function vistaCotta(id) {
     } else if (t.dataset.crea) {
       const [k, i] = t.dataset.crea.split('.');
       const r = c[k][Number(i)];
-      const rec = await magazzino.nuovoArticolo({ nome: r.nome, categoria: categoriaDa(k, r.nome), unita: r.unita === 'g' && k !== 'malti' ? 'g' : unitaDa(k) });
+      const categoria = categoriaDa(k, r.nome);
+      const rec = await magazzino.nuovoArticolo({ nome: r.nome, categoria, unita: unitaStandard(categoria, r.unita || unitaDa(k)) });
       if (!rec) return;
       r.nome = rec.nome;
       articoli = await magazzino.articoliRicetta();
@@ -2268,6 +2300,8 @@ misuraTop();
   window.addEventListener('online', () => aggiornaRete());
   window.addEventListener('offline', () => aggiornaRete());
   sync.onStato(aggiornaRete);
+  if (auth.configurato()) sync.onStato(s => { if (s.ultimo && !s.errore) uniformaUnitaArchivio(); });
+  else uniformaUnitaArchivio();
   sync.avvia();
   // allegati aggiunti senza rete: si inviano appena c'è internet
   const allegatiInSospeso = () => { if (!lettore) allegati.inviaInSospeso(stato.cotte.filter(x => (x.allegati || []).some(a => !a.inviato))).then(cs => cs.length && db.salvaMolti(cs)).catch(() => {}); };

@@ -6,7 +6,7 @@ import { token } from './auth.js';
 import { sincronizza } from './sync.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi, converti,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi, converti, unitaStandard, rigaStandard, decimaliUnita, UNITA_CATEGORIA,
 } from './magazzino.js';
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione, incrociaBolla } from './bolla-pdf.js';
 import { trovaContenitore } from './contenitori.js';
@@ -32,7 +32,7 @@ function scad(data) {
 }
 // lotti da cui è uscito uno scarico (solo quelli con un nome)
 const lottiUsati = m => ((m.lotti || []).some(l => l.lotto) ? ` · lotto ${m.lotti.map(l => l.lotto || '—').join(' + ')}` : '');
-const fmt = (n, unita) => `${u.numIT(n, unita === 'kg' || unita === 'L' ? 1 : 0)} ${unita}`;
+const fmt = (n, unita) => `${u.numIT(n, decimaliUnita(unita))} ${unita}`;
 // da quando cercare ingredienti non collegati: primo inventario, altrimenti 3 mesi fa
 const inizioControllo = inventari => [...inventari].map(i => i.data).filter(Boolean).sort()[0] || u.addGiorni(u.oggiISO(), -90);
 
@@ -225,6 +225,14 @@ export function apriBozzaBolla(ddt) {
   if (location.hash === '#/bolla/nuova') vistaBolla('nuova'); else location.hash = '#/bolla/nuova';
 }
 
+// scelta la categoria, l'unità diventa quella standard (kg malti, zuccheri, luppoli; g sali e coadiuvanti)
+function unitaDaCategoria(form) {
+  form.categoria.addEventListener('change', () => {
+    const std = UNITA_CATEGORIA[form.categoria.value];
+    if (std && ['kg', 'g'].includes(form.unita.value)) form.unita.value = std;
+  });
+}
+
 // ---------- dialogo nuovo articolo ----------
 // vai = false: resta dove si è (es. scheda cotta) e restituisce l'articolo creato
 function dialogArticolo(pre, vai = true) {
@@ -235,13 +243,14 @@ function dialogArticolo(pre, vai = true) {
     <div class="griglia">
       <label style="grid-column:1/-1">Nome <input name="nome" required value="${pre.nome || ''}"></label>
       <label>Categoria <select name="categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (pre.categoria || 'malto') ? 'selected' : ''}>${v}</option>`)}</select></label>
-      <label>Unità <select name="unita">${UNITA.map(x => html`<option ${x === (pre.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></label>
+      <label>Unità <select name="unita">${UNITA.map(x => html`<option ${x === unitaStandard(pre.categoria || 'malto', pre.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></label>
       <label>Scorta minima <input name="scortaMin" type="number" step="any" inputmode="decimal"></label>
     </div>
     <div class="barra" style="margin-top:14px"><span class="spazio"></span>
       <button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">Crea</button></div>
   </form>`.s;
   document.body.appendChild(d);
+  unitaDaCategoria(d.querySelector('form'));
   const fatto = new Promise(ok => d.addEventListener('close', async () => {
     d.remove();
     if (d.returnValue !== 'ok') return ok(null);
@@ -249,7 +258,7 @@ function dialogArticolo(pre, vai = true) {
     const nome = String(fd.get('nome') || '').trim();
     if (!nome) return ok(null);
     const rec = await u.db.salva({
-      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: fd.get('categoria'), unita: fd.get('unita'),
+      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: fd.get('categoria'), unita: unitaStandard(fd.get('categoria'), fd.get('unita')),
       scortaMin: Number(fd.get('scortaMin')) || 0, alias: pre.alias || [], creato: u.oggiISO(),
     });
     if (vai) location.hash = `#/materia/${encodeURIComponent(rec.id)}`;
@@ -293,7 +302,7 @@ async function eseguiUnione(voci, i) {
   if (!tieni) {
     const cat = t.categoria || 'malto';
     tieni = await u.db.salva({
-      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome: t.nome, categoria: cat, unita: ['malto', 'zucchero'].includes(cat) ? 'kg' : 'g',
+      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome: t.nome, categoria: cat, unita: unitaStandard(cat, 'g'),
       scortaMin: 0, alias: [...new Set(t.nomi || [])], creato: u.oggiISO(),
     });
   }
@@ -383,6 +392,7 @@ export async function vistaArticolo(id) {
           <td class="n">${m.tipo === 'inventario' ? '= ' : m.qta > 0 ? '+' : ''}${fmt(m.qta, a.unita)}</td>
         </tr>`)}</tbody></table></div>` : html`<p class="totale">Nessun movimento: fai l'inventario o carica una bolla.</p>`}
     </div>`;
+  unitaDaCategoria(document.getElementById('f-art'));
   document.getElementById('f-art').onsubmit = async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -392,10 +402,14 @@ export async function vistaArticolo(id) {
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
     };
     // unità cambiata (g ↔ kg, ml ↔ L): si convertono anche inventari, scorta minima, peso per pezzo e prezzo
-    const cambio = cambiaUnita(rec, fd.get('unita'), dati.inventari);
+    // malti, zuccheri e luppoli sempre in kg, sali e coadiuvanti in g (anche se si cambia categoria)
+    const unitaScelta = unitaStandard(rec.categoria, fd.get('unita'));
+    if (unitaScelta !== fd.get('unita')) u.toast(`${CATEGORIE[rec.categoria]} sempre in ${unitaScelta}`);
+    fd.set('unita', unitaScelta);
+    const cambio = cambiaUnita(rec, fd.get('unita'), dati.inventari, [...dati.bolle, ...dati.scarichi]);
     if (cambio) {
       if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${fd.get('unita')}? Le quantità contate negli inventari, la scorta minima e il prezzo vengono convertiti.`, 'Converti'))) return;
-      await u.db.salvaMolti([cambio.art, ...cambio.inventari].map(({ aggiornato: _a, ...x }) => x));
+      await u.db.salvaMolti([cambio.art, ...cambio.inventari, ...cambio.documenti].map(({ aggiornato: _a, ...x }) => x));
     } else if (a.unita && a.unita !== fd.get('unita') && converti(1, a.unita, fd.get('unita')) === null) {
       // pz ↔ kg non si converte: era solo l'unità sbagliata (fattura senza unità). Le righe di bolle e carichi
       // scritte nella vecchia unità passano alla nuova con gli stessi numeri, così tornano nella giacenza.
@@ -608,7 +622,8 @@ export async function vistaBolla(id) {
         const nome = String(r.nome).trim();
         let art = dati.articoli.find(a => a.nome.toLowerCase() === nome.toLowerCase()) || nuovi.find(a => a.nome.toLowerCase() === nome.toLowerCase());
         if (!art) {
-          art = { tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: r.categoria || 'malto', unita: r.unita || 'kg', scortaMin: 0, alias: [], creato: [b.data, u.oggiISO()].sort()[0] };
+          const categoria = r.categoria || 'malto';
+          art = { tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria, unita: unitaStandard(categoria, r.unita || 'kg'), scortaMin: 0, alias: [], creato: [b.data, u.oggiISO()].sort()[0] };
           nuovi.push(art);
         }
         // la descrizione del fornitore diventa un alias: la prossima bolla trova l'articolo da sola
@@ -616,7 +631,8 @@ export async function vistaBolla(id) {
           art.alias = [...(art.alias || []), r.descrizione];
           if (!nuovi.includes(art)) aggiornati.set(art.id, art);
         }
-        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', ...(Number(r.prezzo) > 0 ? { prezzo: Number(r.prezzo) } : {}), ...(r.descrizione ? { descrizione: r.descrizione } : {}) };
+        // quantità e prezzo nell'unità standard (luppoli in kg, sali e coadiuvanti in g)
+        return rigaStandard({ articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', ...(Number(r.prezzo) > 0 ? { prezzo: Number(r.prezzo) } : {}), ...(r.descrizione ? { descrizione: r.descrizione } : {}) }, art.categoria, art.unita);
       });
       if (nuovi.length || aggiornati.size) await u.db.salvaMolti([...nuovi, ...aggiornati.values()].map(({ aggiornato: _a, ...a }) => a));
       await u.db.salva({ ...b, id: b.id || u.db.nuovoId('bolla'), righe: out });
@@ -964,12 +980,13 @@ export async function vistaScarico(id) {
       for (const r of ignoti) {
         const nome = String(r.nome).trim();
         if (nuovi.some(a => a.nome.toLowerCase() === nome.toLowerCase())) continue;
-        nuovi.push({ tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: r.categoria || categoriaDaDescrizione(nome) || 'aggiunta', unita: r.unita || 'kg', scortaMin: 0, alias: [], creato: [sc.data, u.oggiISO()].sort()[0] });
+        const categoria = r.categoria || categoriaDaDescrizione(nome) || 'aggiunta';
+        nuovi.push({ tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria, unita: unitaStandard(categoria, r.unita || 'kg'), scortaMin: 0, alias: [], creato: [sc.data, u.oggiISO()].sort()[0] });
       }
       if (nuovi.length) { await u.db.salvaMolti(nuovi); dati.articoli.push(...nuovi); }
       const out = righe.map(r => {
         const art = perNome(r.nome);
-        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: (r.lotto || '').trim(), ...(carico() ? { scadenza: r.scadenza || '' } : {}) };
+        return rigaStandard({ articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: (r.lotto || '').trim(), ...(carico() ? { scadenza: r.scadenza || '' } : {}) }, art.categoria, art.unita);
       });
       await u.db.salva({ ...sc, id: sc.id || u.db.nuovoId('scarico'), righe: out });
       u.toast(carico() ? `Carico salvato${nuovi.length ? ` · ${nuovi.length === 1 ? '1 articolo nuovo' : `${nuovi.length} articoli nuovi`}` : ''}` : 'Scarico salvato');

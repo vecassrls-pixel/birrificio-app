@@ -1,7 +1,7 @@
 // Home: colpo d'occhio sul birrificio. Attività di oggi e domani, birra nei fermentatori e in magazzino,
 // malti, materie prime da ordinare e i numeri principali dell'anno. Ogni widget porta alla pagina di dettaglio.
 
-import { giacenze } from './magazzino.js';
+import { decimaliUnita, giacenze } from './magazzino.js';
 import { fabbisogno } from './ordine.js';
 import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
@@ -129,7 +129,7 @@ export async function vistaHome() {
     const p = (s.v - s.prima) / s.prima * 100;
     return html`<span class="w-delta ${p >= 0 ? 'su' : 'giu'}" title="Stesso periodo ${anno - 1}: ${numIT(s.prima, 0)}${s.unita ? ` ${s.unita}` : ''}">${p >= 0 ? '▲' : '▼'} ${numIT(Math.abs(p), 0)}%</span>`;
   };
-  const fmtOrd = r => `${numIT(r.ordina, r.articolo.unita === 'kg' || r.articolo.unita === 'L' ? 1 : 0)} ${r.articolo.unita || ''}`;
+  const fmtOrd = r => `${numIT(r.ordina, decimaliUnita(r.articolo.unita))} ${r.articolo.unita || ''}`;
 
   u.$app.innerHTML = html`
     <section class="home-hero">

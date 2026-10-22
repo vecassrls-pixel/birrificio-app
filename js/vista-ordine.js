@@ -1,7 +1,7 @@
 // Pagina "Da ordinare": materie prime che servono alle cotte pianificate, divise per fornitore,
 // con il testo dell'ordine da copiare.
 
-import { giacenze } from './magazzino.js';
+import { decimaliUnita, giacenze } from './magazzino.js';
 import { fabbisogno, testoOrdine } from './ordine.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia }
@@ -12,7 +12,7 @@ function leggiPref() {
   try { return { settimane: 6, anticipo: 7, ...JSON.parse(localStorage.getItem(PREF) || '{}') }; } catch { return { settimane: 6, anticipo: 7 }; }
 }
 function scriviPref(p) { try { localStorage.setItem(PREF, JSON.stringify(p)); } catch { /* navigazione privata */ } }
-const fmt = (n, unita) => `${u.numIT(n, unita === 'kg' || unita === 'L' ? 1 : 0)} ${unita}`;
+const fmt = (n, unita) => `${u.numIT(n, decimaliUnita(unita))} ${unita}`;
 
 export async function vistaOrdine() {
   const { html } = u;
@@ -58,7 +58,7 @@ export async function vistaOrdine() {
     ${scollegati.length ? html`<div class="scheda"><h2>Ingredienti non collegati al magazzino</h2>
       <p class="totale">Questi ingredienti delle cotte pianificate non corrispondono a nessun articolo, quindi non sono nel calcolo. Collegali dalla pagina Materie prime.</p>
       <div class="scroll-x"><table class="tab-mag"><thead><tr><th>Nome nella ricetta</th><th class="n">Quantità</th><th>Cotte</th></tr></thead>
-      <tbody>${scollegati.map(s => html`<tr><td>${s.nome}</td><td class="n">${u.numIT(s.qta, 2)} ${s.unita}</td><td>${s.cotte.join(', ')}</td></tr>`)}</tbody></table></div></div>` : ''}
+      <tbody>${scollegati.map(s => html`<tr><td>${s.nome}</td><td class="n">${u.numIT(s.qta, decimaliUnita(s.unita) || 2)} ${s.unita}</td><td>${s.cotte.join(', ')}</td></tr>`)}</tbody></table></div></div>` : ''}
     ${senzaMp.length ? html`<div class="scheda solo-editori"><h2>Dopo aver ordinato</h2>
       <p class="totale">Spunta "Materie prime ordinate o in magazzino" sulle cotte pianificate fino al ${u.dataIT(fino)}: nel planning il numero di cotta diventa verde.</p>
       <button id="ord-segna">Segna ordinate ${senzaMp.length} cotte</button></div>` : ''}`;

@@ -7,7 +7,7 @@
 // "Ordina entro" = giorno in cui si scenderebbe sotto scorta − giorni di consegna.
 
 import { addGiorni, oggiISO } from './dominio.js';
-import { scarichiCotte } from './magazzino.js';
+import { decimaliUnita, scarichiCotte } from './magazzino.js';
 
 export function fabbisogno(giac, { bolle = [], cotte = [], articoli = [] }, { fino, anticipo = 7, oggi = oggiISO() }) {
   const ultimoFornitore = new Map();
@@ -59,7 +59,7 @@ export function fabbisogno(giac, { bolle = [], cotte = [], articoli = [] }, { fi
 export function testoOrdine(righe, numIT) {
   return righe.map(r => {
     const u = r.articolo.unita;
-    const q = `${numIT(r.ordina, u === 'kg' || u === 'L' ? 1 : 0)} ${u}`;
+    const q = `${numIT(r.ordina, decimaliUnita(u))} ${u}`;
     return `- ${r.articolo.nome}: ${q}${r.pezzi ? ` (${r.pezzi} ${r.pezzi === 1 ? 'pezzo' : 'pezzi'} da ${numIT(r.articolo.pesoPezzo)} ${u})` : ''}`;
   }).join('\n');
 }
