@@ -1,8 +1,8 @@
 // Home: colpo d'occhio sul birrificio. Attività di oggi e domani, birra nei fermentatori e in magazzino,
 // malti, materie prime da ordinare e i numeri principali dell'anno. Ogni widget porta alla pagina di dettaglio.
 
-import { giacenze } from './magazzino.js';
-import { fabbisogno } from './ordine.js';
+import { decimaliUnita, giacenze } from './magazzino.js';
+import { fabbisogno, ID_ORDINATI, ordinatiDa } from './ordine.js';
 import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
@@ -55,12 +55,16 @@ export async function vistaHome() {
   // materie prime
   const datiMag = { articoli, bolle, inventari, scarichi, cotte };
   const giac = giacenze(datiMag, oggi);
-  const malti = [...giac.values()].filter(x => x.articolo.categoria === 'malto' && !x.articolo.eliminato && (x.articolo.unita || 'kg') === 'kg');
+  // la lolla di riso è tra i malti in magazzino ma non è un malto: fuori dal totale (Romain 2026-10-22)
+  const lolla = a => [a.nome, ...(a.alias || [])].some(n => /\blol+a\b|rice hulls?/i.test(n || ''));
+  const malti = [...giac.values()].filter(x => x.articolo.categoria === 'malto' && !x.articolo.eliminato && !lolla(x.articolo) && (x.articolo.unita || 'kg') === 'kg');
   const kgMalti = malti.reduce((t, x) => t + Math.max(0, x.giacenza), 0);
   const kgDi = x => (x.articolo.unita === 'g' ? x.giacenza / 1000 : x.giacenza);
   const luppoli = [...giac.values()].filter(x => x.articolo.categoria === 'luppolo' && ['kg', 'g'].includes(x.articolo.unita || 'kg'));
   const kgLuppoli = luppoli.reduce((t, x) => t + Math.max(0, kgDi(x)), 0);
-  const { righe: daOrdinare } = fabbisogno(giac, datiMag, { fino: addGiorni(oggi, 42), anticipo: 7, oggi });
+  const recOrd = await u.db.leggi(ID_ORDINATI);
+  const { righe: tutteDaOrdinare } = fabbisogno(giac, datiMag, { fino: addGiorni(oggi, 42), anticipo: 7, oggi, ordinati: ordinatiDa(recOrd && !recOrd.eliminato ? recOrd : null, bolle) });
+  const daOrdinare = tutteDaOrdinare.filter(r => !r.ordinato); // quelli già spuntati come ordinati non si contano
   const urgenti = daOrdinare.filter(r => r.urgente);
   daOrdinare.sort((a, b) => (b.urgente - a.urgente) || String(a.entro).localeCompare(String(b.entro)));
 
@@ -129,7 +133,7 @@ export async function vistaHome() {
     const p = (s.v - s.prima) / s.prima * 100;
     return html`<span class="w-delta ${p >= 0 ? 'su' : 'giu'}" title="Stesso periodo ${anno - 1}: ${numIT(s.prima, 0)}${s.unita ? ` ${s.unita}` : ''}">${p >= 0 ? '▲' : '▼'} ${numIT(Math.abs(p), 0)}%</span>`;
   };
-  const fmtOrd = r => `${numIT(r.ordina, r.articolo.unita === 'kg' || r.articolo.unita === 'L' ? 1 : 0)} ${r.articolo.unita || ''}`;
+  const fmtOrd = r => `${numIT(r.ordina, decimaliUnita(r.articolo.unita))} ${r.articolo.unita || ''}`;
 
   u.$app.innerHTML = html`
     <section class="home-hero">

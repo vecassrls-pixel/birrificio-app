@@ -332,6 +332,8 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-mag td { padding: 6px; border-bottom: 1px solid var(--border); }
 .tab-mag th.n, .tab-mag td.n, .tab-edit th.n, .tab-edit td.n { text-align: right; white-space: nowrap; }
 .tab-mag tr.neg td { color: var(--warn); }
+.tab-mag tr.ordinato td { opacity: .55; }
+.tab-mag tr.ordinato td:first-child { opacity: 1; }
 .tab-mag tr.basso td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .tab-mag tr.futuro td { color: var(--muted); font-style: italic; }
 .scad.vicino { color: #c2410c; font-weight: 600; }

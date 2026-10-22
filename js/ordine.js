@@ -7,9 +7,23 @@
 // "Ordina entro" = giorno in cui si scenderebbe sotto scorta − giorni di consegna.
 
 import { addGiorni, oggiISO } from './dominio.js';
-import { scarichiCotte } from './magazzino.js';
+import { decimaliUnita, scarichiCotte } from './magazzino.js';
 
-export function fabbisogno(giac, { bolle = [], cotte = [], articoli = [] }, { fino, anticipo = 7, oggi = oggiISO() }) {
+// Articoli spuntati come "ordinato" nella pagina Da ordinare (Romain 2026-10-22).
+// Record { id: ID_ORDINATI, tipo: 'impostazione', segnati: { articoloId: data del segno } }.
+// Il segno vale finché non arriva una bolla di quell'articolo con data uguale o successiva: poi si ricalcola.
+export const ID_ORDINATI = 'impostazione-ordinati';
+export function ordinatiDa(rec, bolle = []) {
+  const out = new Map();
+  for (const [id, data] of Object.entries(rec?.segnati || {})) {
+    if (!data) continue;
+    const arrivato = bolle.some(b => !b.eliminato && b.data && b.data >= data && (b.righe || []).some(r => r.articoloId === id));
+    if (!arrivato) out.set(id, data);
+  }
+  return out;
+}
+
+export function fabbisogno(giac, { bolle = [], cotte = [], articoli = [] }, { fino, anticipo = 7, oggi = oggiISO(), ordinati = new Map() }) {
   const ultimoFornitore = new Map();
   for (const b of [...bolle].filter(x => x.data && x.fornitore).sort((x, y) => x.data.localeCompare(y.data))) {
     for (const r of b.righe || []) ultimoFornitore.set(r.articoloId, b.fornitore);
@@ -37,7 +51,8 @@ export function fabbisogno(giac, { bolle = [], cotte = [], articoli = [] }, { fi
     righe.push({
       articolo: a, giacenza: g.giacenza, negativa: g.giacenza < 0, serve: -futuri.filter(m => m.tipo === 'scarico').reduce((t, m) => t + m.qta, 0),
       inArrivo: futuri.filter(m => m.tipo === 'carico').reduce((t, m) => t + m.qta, 0),
-      manca, pezzi, ordina: pezzi ? pezzi * a.pesoPezzo : manca, quando, entro: entro < oggi ? oggi : entro, urgente: entro <= oggi,
+      manca, pezzi, ordina: pezzi ? pezzi * a.pesoPezzo : manca, quando, entro: entro < oggi ? oggi : entro,
+      ordinato: ordinati.get(a.id) || null, urgente: entro <= oggi && !ordinati.has(a.id),
       fornitore: ultimoFornitore.get(a.id) || '', cotte: [...cotteUsate.values()],
     });
   }
@@ -51,7 +66,7 @@ export function fabbisogno(giac, { bolle = [], cotte = [], articoli = [] }, { fi
     x.cotte.add(`${s.cotta.birra || ''} ${s.cotta.lotto || ''}`.trim());
     scollegati.set(k, x);
   }
-  righe.sort((x, y) => x.entro.localeCompare(y.entro) || x.articolo.nome.localeCompare(y.articolo.nome, 'it'));
+  righe.sort((x, y) => !!x.ordinato - !!y.ordinato || x.entro.localeCompare(y.entro) || x.articolo.nome.localeCompare(y.articolo.nome, 'it'));
   return { righe, scollegati: [...scollegati.values()].map(x => ({ ...x, cotte: [...x.cotte] })) };
 }
 
@@ -59,7 +74,7 @@ export function fabbisogno(giac, { bolle = [], cotte = [], articoli = [] }, { fi
 export function testoOrdine(righe, numIT) {
   return righe.map(r => {
     const u = r.articolo.unita;
-    const q = `${numIT(r.ordina, u === 'kg' || u === 'L' ? 1 : 0)} ${u}`;
+    const q = `${numIT(r.ordina, decimaliUnita(u))} ${u}`;
     return `- ${r.articolo.nome}: ${q}${r.pezzi ? ` (${r.pezzi} ${r.pezzi === 1 ? 'pezzo' : 'pezzi'} da ${numIT(r.articolo.pesoPezzo)} ${u})` : ''}`;
   }).join('\n');
 }

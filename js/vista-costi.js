@@ -2,7 +2,7 @@
 // prezzi delle materie prime e prezzi di vendita. Più il riquadro "Costo" della scheda cotta.
 
 import { ID_PREZZI, prezziDa, storicoPrezzi, prezzoArticolo, contoLotto, chiaveFormato } from './costi.js';
-import { CATEGORIE, scarichiCotte } from './magazzino.js';
+import { CATEGORIE, decimaliUnita, scarichiCotte } from './magazzino.js';
 import { gruppoCotta, lottoGruppo, nomeBirra } from './dominio.js';
 
 let u; // { $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO }
@@ -39,7 +39,7 @@ export function htmlCosto(c, cotte, dati) {
     ${mio.righe.length ? html`<details class="st-tabella"><summary>Dettaglio materie prime${futura ? ' (prezzi di oggi)' : ''}</summary><div class="scroll-x"><table class="tab-mag">
       <thead><tr><th>Articolo</th><th class="n">Quantità</th><th class="n">Prezzo</th><th class="n">Costo</th></tr></thead>
       <tbody>${mio.righe.map(r => html`<tr><td><a href="#/materia/${encodeURIComponent(r.articolo.id)}">${r.nome}</a></td>
-        <td class="n">${u.numIT(r.qta, r.unita === 'kg' || r.unita === 'L' ? 2 : 0)} ${r.unita}</td>
+        <td class="n">${u.numIT(r.qta, decimaliUnita(r.unita))} ${r.unita}</td>
         <td class="n">${euro(r.prezzo, r.prezzo < 0.1 ? 4 : 2)}/${r.unita}${r.fonte === 'articolo' ? html` <span class="totale" title="Prezzo della scheda articolo">*</span>` : ''}</td>
         <td class="n">${euro(r.costo)}</td></tr>`)}
         ${mio.altri ? html`<tr><td>Altri costi per cotta</td><td></td><td></td><td class="n">${euro(mio.altri)}</td></tr>` : ''}</tbody></table></div></details>` : ''}

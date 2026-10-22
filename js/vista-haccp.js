@@ -11,12 +11,13 @@ import { CELLE, fmt } from './temperature.js';
 import { vuotiDelleCotte } from './contenitori.js';
 import { ID_TREBBIE, destinatarioDa, destinatarioIl, destinatariDa, idTrebbia, registroTrebbie, totaliTrebbie } from './trebbie.js';
 import { creaXlsx } from './xlsx.js';
+import { decimaliUnita } from './magazzino.js';
 import { VOCI_INFESTANTI, INIZIO_SCHEDE, annataHaccp, mesiAnnata, meseCorto, meseLungo, giorniDelMese, schedaInfestanti, pulizieAmbientiMese, sigla, GIORNI_PULIZIA_AMBIENTI } from './haccp.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
 
-const fmtQta = (q, unita) => `${u.numIT(q, unita === 'kg' || unita === 'L' ? 2 : 0)} ${unita || ''}`.trim();
+const fmtQta = (q, unita) => `${u.numIT(q, decimaliUnita(unita))} ${unita || ''}`.trim();
 const stampa = titolo => {
   const prima = document.title;
   document.title = titolo;
