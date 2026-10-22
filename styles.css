@@ -20,7 +20,7 @@
   --s-tank: #d97706;
   --s-confezionata: #15803d;
   --s-chiusa: #78716c;
-  --weekend: #f7dbe3; --libero: #c9ecc9;
+  --weekend: #f7dbe3; --libero: #c9ecc9; --ferie: #fbe7a1; --pulizie: #d3d6db;
   --f-fermentazione: #fb923c;
   --f-dh: #b39dfa;
   --f-maturazione: #7dd3fc;
@@ -35,7 +35,7 @@
     --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
     --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
     --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
-    --weekend: #3d1c27; --libero: #1d4223; --ombra: none;
+    --weekend: #3d1c27; --libero: #1d4223; --ferie: #4a3d12; --pulizie: #3a3e45; --ombra: none;
     color-scheme: dark;
   }
 }
@@ -44,7 +44,7 @@
   --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
   --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
   --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
-  --weekend: #3d1c27; --libero: #1d4223; --ombra: none;
+  --weekend: #3d1c27; --libero: #1d4223; --ferie: #4a3d12; --pulizie: #3a3e45; --ombra: none;
   color-scheme: dark;
 }
 
@@ -214,6 +214,10 @@ label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { cursor: 
 .g-day.fest { background: var(--weekend); }
 .g-day.libero { background: color-mix(in srgb, var(--libero) 60%, transparent); }
 .g-row.testa .g-day.libero { background: var(--libero); color: var(--text); }
+.g-day.ferie-chiuso { background: color-mix(in srgb, var(--ferie) 70%, transparent); }
+.g-row.testa .g-day.ferie-chiuso { background: var(--ferie); color: var(--text); }
+.g-day.ferie-pulizie { background: color-mix(in srgb, var(--pulizie) 70%, transparent); }
+.g-row.testa .g-day.ferie-pulizie { background: var(--pulizie); color: var(--text); }
 .g-day.oggi { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .g-row.testa .g-day.oggi { color: var(--accent); font-weight: 700; }
 .g-bar {
@@ -1188,3 +1192,4 @@ body.ordina { background: var(--bg); }
   .fc-note { white-space: pre-wrap; margin: 0; }
   .fc-piede { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e7e5e4; color: #a8a29e; font-size: 9px; }
 }
+#fc-trasporto[hidden] { display: none; }

@@ -27,6 +27,7 @@ import * as cassa from './vista-cassa.js';
 import * as contenitori from './vista-contenitori.js';
 import { contenitoriPerRiga } from './contenitori.js';
 import { ID_BEERFIRM, beerfirmDa } from './beerfirm.js';
+import { ID_FERIE, ferieDa, giorniFerie, TIPI_GIORNO } from './ferie.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
@@ -119,6 +120,7 @@ async function carica() {
   stato.fv = (await db.tutti('fv')).sort((a, b) => a.nome.localeCompare(b.nome, 'it', { numeric: true }));
   stato.durate = durateTipiche(stato.cotte);
   stato.beerfirm = beerfirmDa(await db.leggi(ID_BEERFIRM));
+  stato.ferie = ferieDa(await db.leggi(ID_FERIE));
 }
 // Correzione dello storico importato (ok di Romain, 2026-10-12): nelle cotte di Regula lo Styrian era
 // 1250 kg invece di 1,25 kg e il nome era "SCHEDA COTTA REGULA". Si sistema una volta, poi non trova più nulla.
@@ -372,12 +374,14 @@ function dialogNuovaCotta(pre = {}) {
       <label style="margin-top:12px;display:block">Copia da <select name="copiaDa">
         <option value="">Ultima cotta della stessa birra</option>
         <option value="no">Nessuna: ricetta vuota</option>
+        <optgroup label="Ricetta Brewfather" id="og-bf"><option value="" disabled>carico le ricette…</option></optgroup>
         <optgroup label="Una cotta a scelta">${cotteDaCopiare.map(c => html`<option value="${c.id}" ${c.id === pre.copiaDa ? 'selected' : ''}>${c.lotto || '—'} · ${c.birra} · ${dataIT(c.data)}${c.fv ? ` · ${c.fv}` : ''}</option>`)}</optgroup>
       </select></label>
       <p class="totale" style="margin:4px 0 0">Si copiano ingredienti, litri, OG prevista, acqua, profilo di temperatura, giorni del DH e durata in FV.</p>
       <h3>Fermentatore</h3>
       <div id="fv-scelta" class="griglia" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
       <div class="barra" style="margin:8px 0 0"><button type="button" class="piccolo" id="trova-date" title="Cerca dalla data scritta in poi, senza sabato e domenica">🔎 Prime date con un FV libero</button></div>
+      <p id="origine-fv" class="totale" style="margin:6px 0 0;font-weight:600"></p>
       <div id="proposte" class="proposte-fv"></div>
       <p id="mp-check" class="totale"></p>
       <label style="margin-top:6px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="dh" checked style="width:auto;min-height:auto"> Con dry hop (DH)</label>
@@ -394,7 +398,7 @@ function dialogNuovaCotta(pre = {}) {
   document.body.appendChild(dlg);
   const f = dlg.querySelector('form');
   f.beerfirm.addEventListener('change', () => { f.beerfirm.dataset.toccato = '1'; });
-  const srcScelta = () => (f.copiaDa.value === 'no' ? null : f.copiaDa.value ? stato.cotte.find(c => c.id === f.copiaDa.value) : ultimaCottaDi(f.birra.value));
+  const srcScelta = () => (f.copiaDa.value === 'no' || f.copiaDa.value.startsWith('bf:') ? null : f.copiaDa.value ? stato.cotte.find(c => c.id === f.copiaDa.value) : ultimaCottaDi(f.birra.value));
   const aggiornaFv = () => {
     const birra = f.birra.value;
     // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
@@ -439,27 +443,46 @@ function dialogNuovaCotta(pre = {}) {
           : `✓ Materie prime: con le giacenze e gli ordini registrati c'è tutto per il ${dataIT(f.data.value)}.`;
     }, 300);
   };
-  dlg.querySelector('#trova-date').onclick = () => {
+  const cercaDate = da => {
     const src = srcScelta();
     const durata = Number(f.durata.value) || durataDa(src, stato.durate);
-    const proposte = proponiDate({ fvs: stato.fv, cotte: stato.cotte, durate: stato.durate, durata, da: f.data.value || oggiISO(), giorniTravaso: giorniTravasoDa(src, stato.fv) });
+    const proposte = proponiDate({ fvs: stato.fv, cotte: stato.cotte, durate: stato.durate, durata, da, giorniTravaso: giorniTravasoDa(src, stato.fv), escludi: giorniFerie(stato.ferie) });
     dlg.querySelector('#proposte').innerHTML = proposte.length ? html`${proposte.map(p => html`<div class="proposta"><b>${dataIT(p.data, { weekday: 'short', day: 'numeric', month: 'short' })}</b>
       ${p.opzioni.slice(0, 6).map(o => html`<button type="button" class="piccolo" data-prop="${p.data}|${o.fv}|${o.travaso?.fv || ''}|${o.travaso?.data || ''}">${o.fv}${o.travaso ? ` → ${o.travaso.fv}` : ''}</button>`)}</div>`)}`.s
       : html`<p class="totale">Nessun FV libero per ${durata} giorni nei prossimi 4 mesi.</p>`.s;
+    return proposte;
   };
-  dlg.querySelector('#proposte').onclick = e => {
-    const b = e.target.closest('[data-prop]');
-    if (!b) return;
-    const [d, fv, tfv, td] = b.dataset.prop.split('|');
+  dlg.querySelector('#trova-date').onclick = () => cercaDate(f.data.value || oggiISO());
+  // Romain 2026-10-22: all'apertura propone da solo il primo FV libero da oggi in poi, con la sua data
+  // (travasi dei FV non isobarici compresi); se cambi la birra o i giorni in FV la proposta si rifà,
+  // finché non scegli tu data o fermentatore.
+  let sceltaAMano = !pre.proponi;
+  const proponiPrimo = () => {
+    if (sceltaAMano) return;
+    const prima = cercaDate(oggiISO())[0];
+    if (prima) applicaProposta(prima.data, prima.opzioni[0].fv, prima.opzioni[0].travaso?.fv || '', prima.opzioni[0].travaso?.data || '');
+  };
+  const applicaProposta = (d, fv, tfv, td) => {
     f.data.value = d;
     f.data.dispatchEvent(new Event('change'));
     const r = dlg.querySelector(`input[name=fv][value="${fv}"]`);
     if (r) r.checked = true;
     travasoScelto = tfv ? { fv: tfv, data: td, perData: d, perFv: fv } : null;
-    dlg.querySelectorAll('[data-prop]').forEach(x => x.classList.toggle('attivo', x === b));
+    dlg.querySelectorAll('[data-prop]').forEach(x => x.classList.toggle('attivo', x.dataset.prop === `${d}|${fv}|${tfv}|${td}`));
+    const o = dlg.querySelector('#origine-fv');
+    if (o) o.textContent = `Proposto: ${fv} libero dal ${dataIT(d)}${tfv ? `, travaso in ${tfv} il ${dataIT(td)}` : ''}.`;
   };
-  f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); });
-  f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); });
+  f.data.addEventListener('input', () => { sceltaAMano = true; });
+  dlg.querySelector('#fv-scelta').addEventListener('change', () => { sceltaAMano = true; });
+  dlg.querySelector('#proposte').onclick = e => {
+    const b = e.target.closest('[data-prop]');
+    if (!b) return;
+    sceltaAMano = true;
+    const [d, fv, tfv, td] = b.dataset.prop.split('|');
+    return applicaProposta(d, fv, tfv, td);
+  };
+  f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); proponiPrimo(); });
+  f.birra.addEventListener('change', () => { proponiRicettaBf(); f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
   f.data.addEventListener('change', aggiornaFv);
   // numero e anno proposti dalla data: una cotta futura prende il suo posto in ordine di data
@@ -473,13 +496,41 @@ function dialogNuovaCotta(pre = {}) {
   };
   f.data.addEventListener('change', proponiNumero);
   proponiNumero();
+  // Romain 2026-10-22: anche le ricette di Brewfather, pure quelle mai fatte, nell'elenco birre e in "Copia da".
+  // Una birra senza cotte precedenti prende da sola la sua ricetta Brewfather.
+  let ricetteBf = [];
+  const ricettaPerNome = nome => ricetteBf.find(r => nomeBirra(r.nome) === nomeBirra(nome));
+  let bfAuto = false; // ricetta messa da sola: cambia se cambi la birra
+  const proponiRicettaBf = () => {
+    if (bfAuto) { f.copiaDa.value = ''; bfAuto = false; }
+    if (f.copiaDa.value || ultimaCottaDi(f.birra.value)) return;
+    const r = ricettaPerNome(f.birra.value);
+    if (r) { f.copiaDa.value = `bf:${r.id}`; bfAuto = true; }
+  };
+  (async () => {
+    const og = dlg.querySelector('#og-bf');
+    try {
+      ricetteBf = await bf.elencoRicette((await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT);
+    } catch { og.innerHTML = html`<option value="" disabled>Brewfather non raggiungibile (serve internet)</option>`.s; return; }
+    if (!dlg.isConnected) return;
+    const scelto = f.copiaDa.value;
+    og.innerHTML = html`${ricetteBf.map(r => html`<option value="bf:${r.id}">${r.nome}${r.stile ? ` · ${r.stile}` : ''}</option>`)}`.s;
+    f.copiaDa.value = scelto;
+    const note = new Set(birre);
+    dlg.querySelector('#dl-birre').insertAdjacentHTML('beforeend', html`${ricetteBf.filter(r => !note.has(nomeBirra(r.nome))).map(r => html`<option value="${nomeBirra(r.nome)}">`)}`.s);
+    proponiRicettaBf();
+  })();
   f.copiaDa.addEventListener('change', () => {
-    // cotta scelta senza birra scritta: la birra è quella della cotta
+    bfAuto = false;
+    // cotta o ricetta scelta senza birra scritta: la birra è quella della cotta o della ricetta
     const x = stato.cotte.find(c => c.id === f.copiaDa.value);
     if (x && !f.birra.value) f.birra.value = x.birra;
-    f.durata.dataset.auto = '1'; f.durata.value = ''; delete f.dh.dataset.toccato; aggiornaFv();
+    const rb = f.copiaDa.value.startsWith('bf:') && ricetteBf.find(r => `bf:${r.id}` === f.copiaDa.value);
+    if (rb && !f.birra.value) f.birra.value = nomeBirra(rb.nome);
+    f.durata.dataset.auto = '1'; f.durata.value = ''; delete f.dh.dataset.toccato; aggiornaFv(); proponiPrimo();
   });
   aggiornaFv();
+  proponiPrimo();
   dlg.addEventListener('close', async () => {
     dlg.remove();
     if (dlg.returnValue !== 'ok') return;
@@ -493,10 +544,18 @@ function dialogNuovaCotta(pre = {}) {
       og: null, fg: null, phMash: null, litri: null, sali: conAdditiviDefault(), malti: [], luppoli: [], lievito: [],
       acquaMash: {}, acquaSparge: {}, fermentazione: [], confezionato: [], note: '',
     };
+    // ricetta Brewfather scelta in "Copia da": ingredienti, acqua e profilo dalla ricetta
+    const idBf = String(fd.get('copiaDa') || '').startsWith('bf:') ? String(fd.get('copiaDa')).slice(3) : '';
+    if (idBf) {
+      try {
+        const r = await bf.scaricaRicetta((await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT, idBf);
+        Object.assign(base, nomiDaMagazzino(bf.ricettaPerCotta(base, r), (await db.tutti('articolo')).filter(a => !a.eliminato)));
+      } catch { toast('Ricetta Brewfather non scaricata: importala dalla scheda della cotta'); }
+    }
     const durata = Number(fd.get('durata'));
     if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
     if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
-    base.dh = !!fd.get('dh');
+    if (!idBf || f.dh.dataset.toccato) base.dh = !!fd.get('dh');
     // travaso proposto dal pianificatore, se data e FV sono rimasti quelli della proposta
     if (travasoScelto?.perData === data && travasoScelto.perFv === fv) base.travaso = { fv: travasoScelto.fv, data: travasoScelto.data };
     base.beerfirm = fd.get('beerfirm') || '';
@@ -789,7 +848,7 @@ async function vistaCotta(id) {
       voce('T° ambiente', n(c.acquaMash.tempAmbiente), '°C'), voce('T° acqua mash', n(c.acquaMash.tempAcqua), '°C'), voce('T° mash', n(c.acquaMash.tempMash), '°C'),
       voce('Durata mash', n(c.mashMin, 0), 'min'), voce('pH a 15 min', n(c.acquaMash.ph15, 2)), voce('T° sparge', n(c.acquaSparge.temp), '°C'),
       voce('Whirlpool', n(c.whirlpoolMin, 0), 'min'), voce('Litri mash', n(c.acquaMash.litri, 0), 'L'), voce('Litri sparge', n(c.acquaSparge.litri, 0), 'L'),
-      voce('Litri dip hopping', n(c.acquaDip.litri, 0), 'L'), voce('Tacca iniziale', n(c.acquaMash.taccaInizio), 'cm'),
+      voce('Litri dip hopping', n(c.acquaDip.litri, 0), 'L'),
     ].join('');
     return html`<div class="foglio-cotta">
       <header class="fc-testa">
@@ -1480,15 +1539,16 @@ function vistaPlanning() {
     const conf = (c.confezionato || []).map(x => x.data).filter(Boolean);
     return [c.data, ...(conf.length ? conf : c.data ? [fineCotta(c, stato.durate)] : [])];
   }).filter(Boolean));
-  const libero = d => { const dow = daISO(d).getDay(); return d >= oggi && dow > 0 && dow < 6 && !occupati.has(d); };
+  const ferie = giorniFerie(stato.ferie);
+  const libero = d => { const dow = daISO(d).getDay(); return d >= oggi && dow > 0 && dow < 6 && !occupati.has(d) && !ferie.has(d); };
   const sfondo = giorni.map((d, i) => {
     const dow = daISO(d).getDay();
-    return html`<div class="g-day ${dow === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dow === 0 || dow === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''}" style="left:${i * W}px;width:${W}px"></div>`;
+    return html`<div class="g-day ${dow === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dow === 0 || dow === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''} ${ferie.has(d) ? `ferie-${ferie.get(d)}` : ''}" style="left:${i * W}px;width:${W}px"></div>`;
   });
   const testa = giorni.map((d, i) => {
     const dd = daISO(d);
     const primo = dd.getDate() === 1 || i === 0;
-    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''}" style="left:${i * W}px;width:${W}px" ${libero(d) ? 'title="Nessuna cotta né confezionamento previsti"' : ''}>
+    return html`<div class="g-day ${dd.getDay() === 1 ? 'lun' : ''} ${d === oggi ? 'oggi' : ''} ${dd.getDay() === 0 || dd.getDay() === 6 ? 'fest' : ''} ${libero(d) ? 'libero' : ''} ${ferie.has(d) ? `ferie-${ferie.get(d)}` : ''}" style="left:${i * W}px;width:${W}px" title="${ferie.has(d) ? TIPI_GIORNO[ferie.get(d)] : libero(d) ? 'Nessuna cotta né confezionamento previsti' : ''}">
       <div style="height:18px;font-weight:600;color:var(--text);white-space:nowrap;text-align:left;padding-left:2px">${primo ? dd.toLocaleDateString('it-IT', { month: 'short' }) : ''}</div>
       <div>${dd.getDate()}</div></div>`;
   });
@@ -1522,6 +1582,7 @@ function vistaPlanning() {
       </select>
       <span class="gruppo"><button id="prec" title="4 settimane prima" aria-label="4 settimane prima">◀</button><button id="oggi">Oggi</button><button id="succ" title="4 settimane dopo" aria-label="4 settimane dopo">▶</button></span>
       <button id="esporta" title="Scarica il planning in Excel">⬇<span class="solo-desktop"> Esporta</span> Excel</button>
+      <button id="ferie" title="Giorni non lavorativi (gialli) e di sole pulizie e lavaggi (grigi)">📅<span class="solo-desktop"> Giorni</span></button>
       <button class="primario" id="pianifica">+ Pianifica cotta</button>
     </div>
     <details class="legenda-box">
@@ -1530,6 +1591,7 @@ function vistaPlanning() {
       <span>Tinta più scura = temperatura misurata più alta, sfumata giorno per giorno</span>
       <span>Bordo tratteggiato = pianificata · sbiadita = finita</span>
       <span><span class="fase-chip" style="background:var(--libero)"></span> Giorno libero: nessuna cotta né confezionamento previsti (da oggi, lun-ven)</span>
+      <span><span class="fase-chip" style="background:var(--ferie)"></span> Giorno non lavorativo · <span class="fase-chip" style="background:var(--pulizie)"></span> solo pulizie e lavaggi (si impostano con 📅 Giorni, mai proposti in Pianifica cotta)</span>
       <span>Bordo rosso = conflitto sullo stesso FV</span>
       <span><span class="bf-chip">${stato.beerfirm[0]?.nome || 'Beerfirm'}</span> = cotta per un beerfirm (si sceglie nella cotta, nomi in Impostazioni)</span>
       <span><span class="mp">n° cotta</span> = materie prime ordinate o in magazzino</span>
@@ -1614,14 +1676,57 @@ function vistaPlanning() {
     plan.giorni = diffGiorni(`${y}-01-01`, `${y + 1}-01-01`);
     vistaPlanning();
   };
-  document.getElementById('pianifica').onclick = () => dialogNuovaCotta({ titolo: 'Pianifica cotta', data: addGiorni(oggiISO(), 7) });
+  document.getElementById('pianifica').onclick = () => dialogNuovaCotta({ titolo: 'Pianifica cotta', proponi: true });
   document.getElementById('esporta').onclick = esportaPlanning;
+  document.getElementById('ferie').onclick = dialogFerie;
   scrollOggi();
   function scrollOggi() {
     const wrap = document.querySelector('.gantt-wrap');
     const off = diffGiorni(plan.inizio, oggi);
     if (off >= 0 && off < plan.giorni) wrap.scrollLeft = Math.max(0, off * W - 120);
   }
+}
+
+// Giorni non lavorativi (Romain 2026-10-22, "ferie" nel codice): periodi dal/al, gialli nel planning ed esclusi dalle date proposte
+function dialogFerie() {
+  const dlg = document.createElement('dialog');
+  let periodi = (stato.ferie || []).map(p => ({ ...p })).sort((x, y) => x.da.localeCompare(y.da));
+  const disegna = () => {
+    dlg.innerHTML = html`<form method="dialog">
+      <h2>📅 Giorni non lavorativi e pulizie</h2>
+      <p class="totale">Non lavorativi in giallo, solo pulizie e lavaggi in grigio: "Pianifica cotta" non li propone mai.</p>
+      <table class="tab-edit"><thead><tr><th>Dal</th><th>Al</th><th>Tipo</th><th>Nota</th><th></th></tr></thead>
+      <tbody>${periodi.map((p, i) => html`<tr>
+        <td><input type="date" data-i="${i}" data-k="da" value="${p.da}"></td>
+        <td><input type="date" data-i="${i}" data-k="a" value="${p.a || p.da}"></td>
+        <td><select data-i="${i}" data-k="tipo" style="min-width:150px">${Object.entries(TIPI_GIORNO).map(([k, v]) => html`<option value="${k}" ${(p.tipo || 'chiuso') === k ? 'selected' : ''}>${v}</option>`)}</select></td>
+        <td><input data-i="${i}" data-k="nota" value="${p.nota || ''}" placeholder="es. ferie agosto"></td>
+        <td><button type="button" class="piccolo" data-del="${i}" title="Togli">✕</button></td></tr>`)}</tbody></table>
+      <div class="barra" style="margin:8px 0"><button type="button" class="piccolo" id="ferie-add">+ Periodo</button></div>
+      <div class="barra"><span class="spazio"></span><button value="no">Annulla</button><button class="primario" value="ok">Salva</button></div>
+    </form>`.s;
+  };
+  disegna();
+  dlg.addEventListener('change', e => { const t = e.target; if (t.dataset.k) periodi[Number(t.dataset.i)][t.dataset.k] = t.value; });
+  dlg.addEventListener('input', e => { const t = e.target; if (t.dataset.k) periodi[Number(t.dataset.i)][t.dataset.k] = t.value; });
+  dlg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'ferie-add') { const d = oggiISO(); periodi.push({ da: d, a: d, tipo: 'chiuso', nota: '' }); disegna(); }
+    if (b.dataset.del) { periodi.splice(Number(b.dataset.del), 1); disegna(); }
+  });
+  dlg.addEventListener('close', async () => {
+    dlg.remove();
+    if (dlg.returnValue !== 'ok') return;
+    periodi = periodi.filter(p => p.da).map(p => ({ da: p.da, a: p.a && p.a >= p.da ? p.a : p.da, tipo: p.tipo === 'pulizie' ? 'pulizie' : 'chiuso', nota: (p.nota || '').trim() }));
+    const { aggiornato: _a, eliminato: _e, ...vecchio } = (await db.leggi(ID_FERIE)) || {};
+    const rec = { ...vecchio, id: ID_FERIE, tipo: 'impostazione', periodi };
+    await db.salva(rec);
+    stato.ferie = ferieDa(rec);
+    toast('Giorni salvati');
+    vistaPlanning();
+  });
+  document.body.appendChild(dlg);
+  dlg.showModal();
 }
 
 // ---------- Impostazioni ----------
