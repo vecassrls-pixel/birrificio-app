@@ -848,7 +848,7 @@ async function vistaCotta(id) {
       voce('T° ambiente', n(c.acquaMash.tempAmbiente), '°C'), voce('T° acqua mash', n(c.acquaMash.tempAcqua), '°C'), voce('T° mash', n(c.acquaMash.tempMash), '°C'),
       voce('Durata mash', n(c.mashMin, 0), 'min'), voce('pH a 15 min', n(c.acquaMash.ph15, 2)), voce('T° sparge', n(c.acquaSparge.temp), '°C'),
       voce('Whirlpool', n(c.whirlpoolMin, 0), 'min'), voce('Litri mash', n(c.acquaMash.litri, 0), 'L'), voce('Litri sparge', n(c.acquaSparge.litri, 0), 'L'),
-      voce('Litri dip hopping', n(c.acquaDip.litri, 0), 'L'), voce('Tacca iniziale', n(c.acquaMash.taccaInizio), 'cm'),
+      voce('Litri dip hopping', n(c.acquaDip.litri, 0), 'L'),
     ].join('');
     return html`<div class="foglio-cotta">
       <header class="fc-testa">
