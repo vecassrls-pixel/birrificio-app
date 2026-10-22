@@ -364,7 +364,8 @@ function dialogNuovaCotta(pre = {}) {
     <form method="dialog">
       <h2>${pre.titolo || 'Nuova cotta'}</h2>
       <div class="griglia" style="grid-template-columns:1fr 1fr">
-        <label style="grid-column:1/-1">Birra <input name="birra" list="dl-birre" required value="${pre.birra || ''}" autocomplete="off"></label>
+        <label style="grid-column:1/-1;position:relative">Birra <input name="birra" required value="${pre.birra || ''}" autocomplete="off">
+          <div id="sugg-birre" class="sugg" hidden></div></label>
         <label>Data cotta <input name="data" type="date" required value="${pre.data || oggiISO()}"></label>
         <label>Giorni in FV <input name="durata" type="number" min="1" max="120"></label>
         <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}" title="Le cotte pianificate si numerano da sole in ordine di data"></label>
@@ -394,7 +395,7 @@ function dialogNuovaCotta(pre = {}) {
         <button class="primario" value="ok">Crea cotta</button>
       </div>
     </form>
-    <datalist id="dl-birre">${birre.map(b => html`<option value="${b}">`)}</datalist>`;
+`;
   document.body.appendChild(dlg);
   const f = dlg.querySelector('form');
   f.beerfirm.addEventListener('change', () => { f.beerfirm.dataset.toccato = '1'; });
@@ -498,6 +499,25 @@ function dialogNuovaCotta(pre = {}) {
   proponiNumero();
   // Romain 2026-10-22: anche le ricette di Brewfather, pure quelle mai fatte, nell'elenco birre e in "Copia da".
   // Una birra senza cotte precedenti prende da sola la sua ricetta Brewfather.
+  // Elenco birre a tutta larghezza con il nome intero (Romain 2026-10-22: nel menu del browser i nomi lunghi erano tagliati)
+  const voci = birre.map(b => { const u = ultimaCottaDi(b); return { nome: b, info: u ? `ultima cotta ${u.lotto || ''} del ${dataIT(u.data)}` : '' }; });
+  const $sugg = dlg.querySelector('#sugg-birre');
+  const mostraBirre = (tutte = false) => {
+    const q = tutte ? '' : nomeBirra(f.birra.value);
+    const lista = voci.filter(v => !q || v.nome.includes(q)).slice(0, 80);
+    $sugg.innerHTML = html`${lista.map(v => html`<button type="button" data-birra="${v.nome}"><b>${v.nome}</b>${v.info ? html`<small>${v.info}</small>` : ''}</button>`)}`.s;
+    $sugg.hidden = !lista.length;
+  };
+  f.birra.addEventListener('focus', () => mostraBirre(true));
+  f.birra.addEventListener('input', () => mostraBirre());
+  f.birra.addEventListener('blur', () => setTimeout(() => { $sugg.hidden = true; }, 150));
+  f.birra.addEventListener('keydown', e => { if (e.key === 'Escape' && !$sugg.hidden) { e.preventDefault(); $sugg.hidden = true; } });
+  $sugg.addEventListener('mousedown', e => e.preventDefault());
+  $sugg.addEventListener('click', e => {
+    const b = e.target.closest('[data-birra]'); if (!b) return;
+    f.birra.value = b.dataset.birra; $sugg.hidden = true;
+    f.birra.dispatchEvent(new Event('change'));
+  });
   let ricetteBf = [];
   const ricettaPerNome = nome => ricetteBf.find(r => nomeBirra(r.nome) === nomeBirra(nome));
   let bfAuto = false; // ricetta messa da sola: cambia se cambi la birra
@@ -517,7 +537,8 @@ function dialogNuovaCotta(pre = {}) {
     og.innerHTML = html`${ricetteBf.map(r => html`<option value="bf:${r.id}">${r.nome}${r.stile ? ` · ${r.stile}` : ''}</option>`)}`.s;
     f.copiaDa.value = scelto;
     const note = new Set(birre);
-    dlg.querySelector('#dl-birre').insertAdjacentHTML('beforeend', html`${ricetteBf.filter(r => !note.has(nomeBirra(r.nome))).map(r => html`<option value="${nomeBirra(r.nome)}">`)}`.s);
+    for (const r of ricetteBf) if (!note.has(nomeBirra(r.nome))) { note.add(nomeBirra(r.nome)); voci.push({ nome: nomeBirra(r.nome), info: `ricetta Brewfather${r.stile ? ` · ${r.stile}` : ''}` }); }
+    if (document.activeElement === f.birra) mostraBirre(true);
     proponiRicettaBf();
   })();
   f.copiaDa.addEventListener('change', () => {

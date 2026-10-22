@@ -1193,3 +1193,9 @@ body.ordina { background: var(--bg); }
   .fc-piede { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e7e5e4; color: #a8a29e; font-size: 9px; }
 }
 #fc-trasporto[hidden] { display: none; }
+
+/* elenco birre di Nuova/Pianifica cotta: nome intero, a capo se lungo */
+.sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; max-height: 280px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 4px; }
+.sugg button { display: block; width: 100%; text-align: left; white-space: normal; background: none; border: 0; border-radius: 6px; padding: 7px 10px; font-weight: 400; color: var(--text); }
+.sugg button:hover, .sugg button:focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.sugg small { display: block; color: var(--muted); font-size: 12px; }
