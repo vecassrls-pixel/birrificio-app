@@ -28,6 +28,7 @@ import * as contenitori from './vista-contenitori.js';
 import { contenitoriPerRiga } from './contenitori.js';
 import { ID_BEERFIRM, beerfirmDa } from './beerfirm.js';
 import { ID_FERIE, ferieDa, giorniFerie, TIPI_GIORNO } from './ferie.js';
+import { spostaCotta, cambiaFine, cambiaTravaso, cambiaFv } from './sposta-cotta.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
@@ -1631,7 +1632,7 @@ function vistaPlanning() {
       <div class="g-row testa"><div class="g-label">FV</div><div class="g-days" style="width:${larghezza}px">${testa}</div></div>
       ${nomiFv.map(n => html`<div class="g-row">
         <div class="g-label">${n}<small>${(() => { const f = stato.fv.find(x => x.nome === n); return f && f.capacita ? `${numIT(f.capacita, 0)} L` : ''; })()}</small></div>
-        <div class="g-days" style="width:${larghezza}px">${sfondo}
+        <div class="g-days" data-fv="${n}" style="width:${larghezza}px">${sfondo}
           ${(barrePerFv.get(n) || []).map(b => {
             const c0 = b.cotte[0];
             const s = statoCotta(c0, stato.durate, undefined, stato.cotte);
@@ -1663,14 +1664,18 @@ function vistaPlanning() {
               x1: (diffGiorni(plan.inizio, f.a > a ? a : f.a) + 1) * W - left,
             })).filter(f => f.x1 - f.x0 >= 2 * W && f.x1 >= 110); // non sopra nome e lotto all'inizio della barra
             const bf = c0.beerfirm || '';
+            // trascinabile (Romain 2026-10-22): la barra si sposta, la maniglia a destra cambia la fine (o il travaso)
+            const fineTravaso = !b.travaso && b.cotte.some(c => b.a < fineCotta(c, stato.durate));
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''} ${bf ? 'beerfirm' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
+              data-ids="${b.cotte.map(c => c.id).join(',')}" data-fv="${n}" data-trav="${b.travaso ? '1' : ''}" data-fine-trav="${fineTravaso ? '1' : ''}" data-a="${b.a}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
               title="${c0.birra}${bf ? ` · beerfirm ${bf}` : ''} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)} · ${testoLottoScadenza(c0, stato.cotte, stato.durate)}">
               <b>${bf ? html`<span class="bf-chip">${bf}</span> ` : ''}${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · <span title="${fineTot > b.a ? `In totale, compreso il travaso (${diffGiorni(b.da, b.a) + 1} gg in questo FV)` : ''}">${diffGiorni(b.da, fineTot) + 1} gg</span></span>
               ${giorniFasi.map(f => html`<span class="g-fase" style="right:${Math.max(right - left - f.x1, 0) + 3}px" title="${FASI[f.fase]}: ${f.giorni} giorni">${f.giorni} gg</span>`)}
               ${(c0.fermentazione || []).filter(e => e.data && e.data >= da && e.data <= a && eventiGiorno(e).length).map(e => html`<span class="g-ev" style="left:${diffGiorni(plan.inizio, e.data) * W - left - 1}px;width:${W}px" title="${eventiGiorno(e).join(' + ')} il ${dataIT(e.data)}">${eventiGiorno(e).map(k => SIMBOLI[k]).join('')}</span>`)}
               ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
-                ? html`<span class="g-eta" style="left:${diffGiorni(plan.inizio, oggi) * W - left - 1}px;width:${W}px" title="Cotta del ${dataIT(c0.data)}: giorno ${diffGiorni(c0.data, oggi) + 1}">${diffGiorni(c0.data, oggi) + 1}</span>` : ''}</a>`;
+                ? html`<span class="g-eta" style="left:${diffGiorni(plan.inizio, oggi) * W - left - 1}px;width:${W}px" title="Cotta del ${dataIT(c0.data)}: giorno ${diffGiorni(c0.data, oggi) + 1}">${diffGiorni(c0.data, oggi) + 1}</span>` : ''}
+              ${!lettore && b.a <= fineVista ? html`<span class="g-maniglia" title="Trascina per allungare o accorciare${fineTravaso ? ' (giorno del travaso)' : ''}"></span>` : ''}</a>`;
           })}
         </div></div>`)}
     </div></div>
@@ -1700,12 +1705,121 @@ function vistaPlanning() {
   document.getElementById('pianifica').onclick = () => dialogNuovaCotta({ titolo: 'Pianifica cotta', proponi: true });
   document.getElementById('esporta').onclick = esportaPlanning;
   document.getElementById('ferie').onclick = dialogFerie;
+  if (!lettore) trascinaBarre(document.querySelector('.gantt'));
   scrollOggi();
   function scrollOggi() {
     const wrap = document.querySelector('.gantt-wrap');
     const off = diffGiorni(plan.inizio, oggi);
     if (off >= 0 && off < plan.giorni) wrap.scrollLeft = Math.max(0, off * W - 120);
   }
+}
+
+// Barre del planning trascinabili (Romain 2026-10-22). Col mouse si trascina subito; col dito si tiene premuto
+// mezzo secondo (altrimenti il dito scorre il planning). La maniglia a destra allunga o accorcia.
+function trascinaBarre(gantt) {
+  let t = null;
+  const info = document.createElement('div');
+  info.className = 'drag-info';
+  const fine = () => {
+    clearTimeout(t?.timer);
+    if (t?.attivo) { t.bar.classList.remove('trascina'); t.bar.style.transform = ''; t.bar.style.width = t.w0; info.remove(); gantt.querySelectorAll('.g-days.meta').forEach(x => x.classList.remove('meta')); }
+    t = null;
+  };
+  const cotteDi = bar => bar.dataset.ids.split(',').map(id => stato.cotte.find(c => c.id === id)).filter(Boolean);
+  const calcola = e => {
+    const giorni = Math.round((e.clientX - t.x0) / W);
+    let fv = t.bar.dataset.fv;
+    if (t.modo === 'sposta') {
+      t.bar.style.pointerEvents = 'none';
+      const riga = document.elementFromPoint(e.clientX, e.clientY)?.closest('.g-days[data-fv]');
+      t.bar.style.pointerEvents = '';
+      if (riga) fv = riga.dataset.fv;
+    }
+    return { giorni, fv };
+  };
+  const avvia = () => {
+    t.attivo = true;
+    t.bar.classList.add('trascina');
+    document.body.appendChild(info);
+    navigator.vibrate?.(15);
+  };
+  const muovi = e => {
+    const { giorni, fv } = calcola(e);
+    const c0 = cotteDi(t.bar)[0];
+    if (t.modo === 'sposta') {
+      t.bar.style.transform = `translate(${giorni * W}px, ${e.clientY - t.y0}px)`;
+      gantt.querySelectorAll('.g-days[data-fv]').forEach(x => x.classList.toggle('meta', x.dataset.fv === fv && fv !== t.bar.dataset.fv));
+      info.textContent = `${c0?.birra || ''}: ${giorni ? `${giorni > 0 ? '+' : ''}${giorni} gg, cotta il ${dataIT(addGiorni(c0.data, giorni))}` : 'stessa data'}${fv !== t.bar.dataset.fv ? ` · in ${fv}` : ''}`;
+    } else {
+      t.bar.style.width = `${Math.max(parseFloat(t.w0) + giorni * W, W)}px`;
+      info.textContent = `${t.bar.dataset.fineTrav ? 'Travaso il' : 'Fine il'} ${dataIT(addGiorni(t.bar.dataset.a, giorni + (t.bar.dataset.fineTrav ? 1 : 0)))} (${giorni > 0 ? '+' : ''}${giorni} gg)`;
+    }
+    info.style.left = `${Math.min(e.clientX + 12, innerWidth - 240)}px`;
+    info.style.top = `${Math.max(e.clientY - 44, 8)}px`;
+  };
+  gantt.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    const bar = e.target.closest('.g-bar[data-ids]');
+    if (!bar) return;
+    const modo = e.target.closest('.g-maniglia') ? 'fine' : 'sposta';
+    t = { bar, modo, x0: e.clientX, y0: e.clientY, w0: bar.style.width, mouse: e.pointerType === 'mouse', attivo: false };
+    if (!t.mouse) { if (modo === 'fine') avvia(); else t.timer = setTimeout(() => t && avvia(), 450); }
+  });
+  gantt.addEventListener('pointermove', e => {
+    if (!t) return;
+    if (!t.attivo) {
+      if (t.mouse && Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > 5) { avvia(); t.bar.setPointerCapture?.(e.pointerId); } else if (!t.mouse && Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > 8) { fine(); return; } else return;
+    }
+    muovi(e);
+  });
+  // col dito, a trascinamento partito, il planning non deve scorrere
+  gantt.addEventListener('touchmove', e => { if (t?.attivo) e.preventDefault(); }, { passive: false });
+  gantt.addEventListener('contextmenu', e => { if (t) e.preventDefault(); });
+  gantt.addEventListener('pointercancel', fine);
+  gantt.addEventListener('dragstart', e => e.preventDefault()); // le barre sono link: niente trascinamento nativo del link
+  gantt.addEventListener('pointerup', async e => {
+    if (!t) return;
+    if (!t.attivo) { fine(); return; }
+    // niente click sulla barra (aprirebbe la cotta) dopo il trascinamento
+    gantt.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); }, { capture: true, once: true });
+    const { giorni, fv } = calcola(e);
+    const { modo, bar } = t;
+    fine();
+    await applicaTrascina(cotteDi(bar), modo, giorni, fv, bar.dataset);
+  });
+}
+
+async function applicaTrascina(cotte, modo, giorni, fv, ds) {
+  const oggi = oggiISO();
+  const cambiaFvDi = fv !== ds.fv;
+  if (!cotte.length || (!giorni && !cambiaFvDi)) return;
+  const nuove = [];
+  for (const c of cotte) {
+    let n = c;
+    if (modo === 'sposta') {
+      if (giorni) n = spostaCotta(n, giorni, oggi);
+      if (typeof n !== 'string' && cambiaFvDi) n = cambiaFv(n, fv, !!ds.trav, stato.fv);
+    } else if (ds.fineTrav) {
+      const tr = travasoCotta(c, stato.fv);
+      n = tr ? cambiaTravaso(c, addGiorni(tr.data, giorni), stato.durate, stato.fv) : c;
+    } else {
+      n = cambiaFine(c, addGiorni(fineCotta(c, stato.durate), giorni), stato.durate, stato.fv);
+    }
+    if (typeof n === 'string') { toast(n); return vistaPlanning(); }
+    nuove.push(n);
+  }
+  const c0 = cotte[0], n0 = nuove[0];
+  const nome = `${c0.birra} ${cotte.map(c => c.lotto).filter(Boolean).join(' + ')}`;
+  const msg = modo === 'sposta'
+    ? `${nome}: ${giorni ? `cotta dal ${dataIT(c0.data)} al ${dataIT(n0.data)}` : ''}${giorni && cambiaFvDi ? ', ' : ''}${cambiaFvDi ? `${ds.trav ? 'travaso' : 'fermentatore'} da ${ds.fv} a ${fv}` : ''}?`
+    : ds.fineTrav
+      ? `${nome}: travaso dal ${dataIT(travasoCotta(c0, stato.fv)?.data)} al ${dataIT(n0.travaso.data)}?`
+      : `${nome}: fine in FV dal ${dataIT(fineCotta(c0, stato.durate))} al ${dataIT(n0.fine)} (${diffGiorni(n0.data, n0.fine) + 1} giorni)?`;
+  if (!(await chiedi(msg, 'Cambia'))) return vistaPlanning();
+  for (const n of nuove) await db.salva(n);
+  await carica();
+  toast('Planning aggiornato');
+  vistaPlanning();
 }
 
 // Giorni non lavorativi (Romain 2026-10-22, "ferie" nel codice): periodi dal/al, gialli nel planning ed esclusi dalle date proposte

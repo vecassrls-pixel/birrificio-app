@@ -1199,3 +1199,12 @@ body.ordina { background: var(--bg); }
 .sugg button { display: block; width: 100%; text-align: left; white-space: normal; background: none; border: 0; border-radius: 6px; padding: 7px 10px; font-weight: 400; color: var(--text); }
 .sugg button:hover, .sugg button:focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .sugg small { display: block; color: var(--muted); font-size: 12px; }
+
+/* barre del planning trascinabili */
+.g-bar[data-ids] { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.g-bar.trascina { z-index: 30; opacity: .85; box-shadow: 0 6px 16px rgb(0 0 0 / .3); cursor: grabbing; transition: none; }
+.g-maniglia { position: absolute; top: 0; right: 0; bottom: 0; width: 12px; cursor: ew-resize; touch-action: none; border-radius: 0 6px 6px 0; }
+.g-maniglia::after { content: ''; position: absolute; top: 25%; bottom: 25%; right: 4px; width: 3px; border-radius: 2px; background: rgb(0 0 0 / .35); }
+@media (pointer: coarse) { .g-maniglia { width: 20px; } }
+.g-days.meta { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.drag-info { position: fixed; z-index: 1000; pointer-events: none; background: var(--text); color: var(--bg); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
