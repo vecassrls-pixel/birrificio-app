@@ -751,6 +751,71 @@ async function vistaCotta(id) {
     return kg ? html`<p class="totale">Totale: ${numIT(kg, 2)} kg</p>` : '';
   }
 
+  // Foglio da stampare / salvare in PDF (Romain 2026-10-22): impaginato a parte, solo i dati che ci sono, con il grafico.
+  function htmlStampa() {
+    const pieno = v => v !== null && v !== undefined && v !== '' && !(typeof v === 'number' && Number.isNaN(v));
+    const n = (v, d = 1) => (pieno(v) ? numIT(Number(v), d) : '');
+    const voce = (etichetta, v, unita = '') => (pieno(v) ? html`<div class="fc-voce"><span>${etichetta}</span><b>${v}${unita ? ` ${unita}` : ''}</b></div>` : '');
+    const blocco = (titolo, contenuto) => (String(contenuto).trim() ? html`<section class="fc-blocco"><h2>${titolo}</h2>${contenuto}</section>` : '');
+    const g = gruppo();
+    const ogLotto = g.length > 1 ? ogMedia(g.map(x => (x.id === c.id ? c : x))) : c.og;
+    const ultima = [...c.fermentazione].reverse().find(e => pieno(e.densita));
+    const a = abv(ogLotto, c.fg ?? (ultima ? Number(ultima.densita) : null));
+    const litriConf = litriConfezionati(c);
+    const litriGruppo = g.length > 1 ? g.reduce((t, x) => t + (Number(x.id === c.id ? c.litri : x.litri) || 0), 0) : c.litri;
+    const fine = c.data ? fineCotta(c, stato.durate) : null;
+    const t = travasoCotta(c, stato.fv);
+    const tutte = stato.cotte.map(x => (x.id === c.id ? c : x));
+    const scad = c.data ? testoLottoScadenza(c, tutte, stato.durate) : '';
+    // tabelle degli ingredienti: solo righe con nome, solo colonne con almeno un valore
+    const tabIngr = (k, titolo) => {
+      const righe = c[k].filter(r => pieno(r.nome));
+      if (!righe.length) return '';
+      const conUso = k === 'luppoli' && righe.some(r => r.uso || pieno(r.minuti) || pieno(r.giorno));
+      const kg = righe.reduce((tt, r) => tt + (r.unita === 'kg' ? +r.qta || 0 : r.unita === 'g' ? (+r.qta || 0) / 1000 : 0), 0);
+      return blocco(titolo, html`<table class="fc-tab"><tbody>${righe.map(r => html`<tr>
+        <td>${r.nome}${r.recuperato ? html` <small>(recuperato)</small>` : ''}</td>
+        ${conUso ? html`<td>${[r.uso, r.uso === 'dry hop' ? pieno(r.giorno) && `giorno ${r.giorno}` : pieno(r.minuti) && `${n(r.minuti, 0)} min`].filter(Boolean).join(' · ')}</td>` : ''}
+        <td class="n">${pieno(r.qta) ? `${n(r.qta, 2)} ${r.unita || ''}` : ''}</td></tr>`)}</tbody>
+        ${righe.length > 1 && kg ? html`<tfoot><tr><td${conUso ? raw(' colspan="2"') : ''}>Totale</td><td class="n">${numIT(kg, 2)} kg</td></tr></tfoot>` : ''}</table>`);
+    };
+    // registro: le righe utili (come a video), solo le colonne usate
+    const reg = c.fermentazione.filter((_, i) => rigaFermUtile(i));
+    const COL = [['temp', 'T° °C', 1], ['densita', '°P', 1], ['ph', 'pH', 2], ['psi', 'psi', 1]].filter(([k]) => reg.some(e => pieno(e[k])));
+    const conNote = reg.some(e => e.nota || e.spurgo || e.bubbling);
+    const sondeSvg = document.querySelector('#temp-sonde .graf-temp')?.outerHTML || '';
+    const conf = c.confezionato.filter(r => pieno(r.pezzi));
+    const acqua = [
+      voce('T° ambiente', n(c.acquaMash.tempAmbiente), '°C'), voce('T° acqua mash', n(c.acquaMash.tempAcqua), '°C'), voce('T° mash', n(c.acquaMash.tempMash), '°C'),
+      voce('Durata mash', n(c.mashMin, 0), 'min'), voce('pH a 15 min', n(c.acquaMash.ph15, 2)), voce('T° sparge', n(c.acquaSparge.temp), '°C'),
+      voce('Whirlpool', n(c.whirlpoolMin, 0), 'min'), voce('Litri mash', n(c.acquaMash.litri, 0), 'L'), voce('Litri sparge', n(c.acquaSparge.litri, 0), 'L'),
+      voce('Litri dip hopping', n(c.acquaDip.litri, 0), 'L'), voce('Tacca iniziale', n(c.acquaMash.taccaInizio), 'cm'),
+    ].join('');
+    return html`<div class="foglio-cotta">
+      <header class="fc-testa">
+        <img src="${LOGO_KASHMIR}" alt="">
+        <div><h1>${c.birra || 'Cotta'}</h1>
+          <p>${[c.stile || stileDi(c.birra), c.lotto && `lotto ${c.lotto}`, g.length > 1 && `cotta ${g.length === 2 ? 'doppia' : 'multipla'} ${lottoGruppo(g)}`, c.beerfirm && `beerfirm ${c.beerfirm}`].filter(Boolean).join(' · ')}</p></div>
+        ${scad ? html`<div class="fc-scad">${scad}</div>` : ''}
+      </header>
+      <div class="fc-kpi">
+        ${voce('Data cotta', c.data && dataIT(c.data))}${voce('Fermentatore', c.fv)}${voce('OG', n(c.og), '°P')}${g.length > 1 ? voce('OG media', n(ogLotto), '°P') : ''}
+        ${voce('FG', n(c.fg), '°P')}${voce('ABV', a ? numIT(a, 1) : '', '%')}${voce('Litri cotta', n(c.litri, 0), 'L')}${voce('Litri confezionati', litriConf ? numIT(litriConf, 0) : '', 'L')}
+        ${voce('Resa', litriConf && litriGruppo > 0 ? numIT(litriConf / litriGruppo * 100, 0) : '', '%')}${voce('pH', n(c.phMash, 2))}${voce('T° inoculo', n(c.tempInoculo), '°C')}
+        ${voce('Fine in FV', fine && dataIT(fine))}${voce('Travaso', t ? `${dataIT(t.data)}${t.fv ? ` in ${t.fv}` : ''}` : '')}
+      </div>
+      ${blocco('Acqua e mash', acqua ? html`<div class="fc-voci">${raw(acqua)}</div>` : '')}
+      <div class="fc-colonne">${raw(SEZIONI_INGR.map(([k, titolo]) => tabIngr(k, titolo)).join(''))}</div>
+      ${blocco('Acido lattico', c.acido.some(r => pieno(r.g)) ? html`<table class="fc-tab"><tbody>${c.acido.filter(r => pieno(r.g)).map(r => html`<tr><td>${r.fase}${r.data ? ` · ${dataIT(r.data)}` : ''}</td><td>${pieno(r.phPrima) || pieno(r.phDopo) ? `pH ${n(r.phPrima, 2) || '—'} → ${n(r.phDopo, 2) || '—'}` : ''}${r.nota ? ` · ${r.nota}` : ''}</td><td class="n">${n(r.g, 1)} g</td></tr>`)}</tbody></table>` : '')}
+      ${blocco('Fermentazione', html`${raw(graficoFermentazione(c, diffGiorni, null, { densita: ogLotto, temp: c.tempInoculo, ph: c.phMash }))}${raw(sondeSvg)}
+        ${reg.length && (COL.length || conNote) ? html`<table class="fc-tab fc-reg"><thead><tr><th>G.</th><th>Data</th>${COL.map(([, t2]) => html`<th class="n">${t2}</th>`)}${conNote ? html`<th>Note</th>` : ''}</tr></thead>
+          <tbody>${reg.map(e => html`<tr><td>${c.data && e.data ? diffGiorni(c.data, e.data) + 1 : e.giorno || ''}</td><td>${e.data ? dataIT(e.data) : ''}</td>${COL.map(([k, , d]) => html`<td class="n">${n(e[k], d)}</td>`)}${conNote ? html`<td>${[e.spurgo && 'spurgo', e.bubbling && 'bubbling', e.nota].filter(Boolean).join(' · ')}</td>` : ''}</tr>`)}</tbody></table>` : ''}`)}
+      ${blocco('Confezionamento', conf.length ? html`<table class="fc-tab"><tbody>${conf.map(r => html`<tr><td>${r.tipo === 'fusto' ? `Fusti ${n(r.litri, 0)} L` : `Lattine ${n(r.litri, 2)} L`}</td><td>${r.data ? dataIT(r.data) : ''}</td><td class="n">${n(r.pezzi, 0)} pz</td></tr>`)}</tbody></table>${c.confezionatoNote ? html`<p>${c.confezionatoNote}</p>` : ''}` : '')}
+      ${blocco('Note', c.note ? html`<p class="fc-note">${c.note}</p>` : '')}
+      <footer class="fc-piede">Global Brewing · stampata il ${dataIT(oggiISO())}</footer>
+    </div>`;
+  }
+
   function disegna() {
     const s = statoCotta(c, stato.durate, undefined, stato.cotte);
     const conScelta = c.confezionato.some(r => contenitoriPerRiga(vuoti, r.tipo, r.litri).length > 1);
@@ -1254,7 +1319,9 @@ async function vistaCotta(id) {
       // il titolo diventa il nome proposto per il file PDF
       const titolo = document.title;
       document.title = `Cotta ${c.lotto || ''} ${c.birra || ''}`.replace(/[/\\:]/g, '-').trim();
-      addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
+      $app.insertAdjacentHTML('beforeend', String(htmlStampa()));
+      document.body.classList.add('stampa-cotta');
+      addEventListener('afterprint', () => { document.title = titolo; document.body.classList.remove('stampa-cotta'); $app.querySelector('.foglio-cotta')?.remove(); }, { once: true });
       window.print();
     }
   };
