@@ -386,6 +386,8 @@ function dialogNuovaCotta(pre = {}) {
         <label>Giorni in FV <input name="durata" type="number" min="1" max="120"></label>
         <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}" title="Le cotte pianificate si numerano da sole in ordine di data"></label>
         <label>Anno <input name="anno" type="number" value="${anno}"></label>
+        <label style="grid-column:1/-1">Cotte nello stesso FV, stesso giorno <select name="quante" title="Doppia o tripla: si creano 2 o 3 cotte con lotti consecutivi nello stesso fermentatore">
+          <option value="1">1 (cotta singola)</option><option value="2">2 (cotta doppia)</option><option value="3">3 (cotta tripla)</option></select></label>
         <label style="grid-column:1/-1">Per <select name="beerfirm"><option value="">noi (non beerfirm)</option>${(stato.beerfirm || []).map(b => html`<option value="${b.nome}" ${b.nome === pre.beerfirm ? 'selected' : ''}>beerfirm ${b.nome}</option>`)}</select></label>
       </div>
       <label style="margin-top:12px;display:block">Copia da <select name="copiaDa">
@@ -420,6 +422,8 @@ function dialogNuovaCotta(pre = {}) {
     const birra = f.birra.value;
     // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
     const src0 = srcScelta();
+    // doppia/tripla come l'ultima volta, finché non la cambi a mano (Romain 2026-10-22)
+    if (!f.quante.dataset.toccato) f.quante.value = String(Math.min(3, src0 ? gruppoCotta(src0, stato.cotte).length : 1));
     // beerfirm: quello della cotta copiata, finché non lo cambi a mano
     if (!f.beerfirm.dataset.toccato && pre.beerfirm === undefined) f.beerfirm.value = (stato.beerfirm || []).some(b => b.nome === src0?.beerfirm) ? src0.beerfirm : '';
     const durata = Number(f.durata.value) || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
@@ -501,6 +505,7 @@ function dialogNuovaCotta(pre = {}) {
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); proponiPrimo(); });
   f.birra.addEventListener('change', () => { proponiRicettaBf(); f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
+  f.quante.addEventListener('change', () => { f.quante.dataset.toccato = '1'; });
   f.data.addEventListener('change', aggiornaFv);
   // numero e anno proposti dalla data: una cotta futura prende il suo posto in ordine di data
   const proponiNumero = () => {
@@ -601,6 +606,13 @@ function dialogNuovaCotta(pre = {}) {
     if (fd.get('etichetteOk')) base.etichetteOk = true;
     if (!base.stile && stileDi(birra)) base.stile = stileDi(birra);
     const rec = await db.salva({ ...base, birra, id: db.nuovoId('cotta') });
+    // cotta doppia/tripla: le altre uguali, stesso giorno e FV, lotti seguenti (poi la numerazione per data le rimette in ordine)
+    const quante = Math.min(3, Math.max(1, Number(fd.get('quante')) || 1));
+    for (let i = 1; i < quante; i++) {
+      const n = numero + i;
+      await db.salva({ ...JSON.parse(JSON.stringify(base)), birra, numero: n, lotto: lottoDi(n, annoC), id: db.nuovoId('cotta') });
+    }
+    if (quante > 1) { await carica(); toast(`${quante} cotte create nello stesso FV`); }
     location.hash = `#/cotta/${encodeURIComponent(rec.id)}`;
   });
   dlg.showModal();
@@ -1670,7 +1682,7 @@ function vistaPlanning() {
             const s = statoCotta(c0, stato.durate, undefined, stato.cotte);
             const left = Math.max(0, diffGiorni(plan.inizio, b.da)) * W;
             const right = (Math.min(plan.giorni - 1, diffGiorni(plan.inizio, b.a)) + 1) * W;
-            const lotti = (b.travaso ? '↳ ' : '') + (b.cotte.length > 1 ? b.cotte.map(c => c.numero).join('/') : c0.lotto || '');
+            const lotti = (b.travaso ? '↳ ' : '') + (b.cotte.length > 1 ? b.cotte.map(c => c.numero).sort((x, y) => x - y).join('/') : c0.lotto || '');
             const mp = ['pianificata', 'tank'].includes(s) && b.cotte.some(c => c.materiePrime);
             const conflitto = b.cotte.some(c => inConflitto.has(c.id));
             // giorni totali della cotta: nella prima barra contano anche quelli dopo il travaso (Romain 2026-10-16)
