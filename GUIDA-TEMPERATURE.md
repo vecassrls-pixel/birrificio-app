@@ -54,7 +54,7 @@ Il file del progetto si può mandare a Claude: dal programma si leggono la scala
 
 ### 2.2 Installare Ubuntu Server
 
-1. Sempre da Windows: scaricare **Ubuntu Server 24.04 LTS** (ubuntu.com/download/server) e **Rufus** (rufus.ie); con Rufus scrivere l'immagine su una chiavetta USB da almeno 4 GB (si cancella).
+1. Da un PC qualsiasi: scaricare **Ubuntu Server 26.04 LTS** (ubuntu.com/download/server; sempre la LTS, non le versioni intermedie) e **Rufus** (rufus.ie, Windows) o **balenaEtcher** (Mac); con questo scrivere l'immagine su una chiavetta USB da almeno 4 GB (si cancella).
 2. Riavviare il Lenovo con la chiavetta inserita premendo **F12** (menu di avvio) e scegliere la chiavetta.
 3. Installazione: lingua, tastiera italiana; **rete**: configurare il **Wi-Fi** del birrificio (o il cavo, se è collegato a internet); disco: **usa tutto il disco** (Windows viene cancellato); nome utente e password (scriverli); spuntare **Install OpenSSH server**; nessun pacchetto aggiuntivo.
 4. A fine installazione togliere la chiavetta e riavviare. Entrare con utente e password, poi:
