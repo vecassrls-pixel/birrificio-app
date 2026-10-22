@@ -2,7 +2,7 @@
 // malti, materie prime da ordinare e i numeri principali dell'anno. Ogni widget porta alla pagina di dettaglio.
 
 import { decimaliUnita, giacenze } from './magazzino.js';
-import { fabbisogno } from './ordine.js';
+import { fabbisogno, ID_ORDINATI, ordinatiDa } from './ordine.js';
 import { giacenzeBirra } from './birra.js';
 import { ID_IMPOSTAZIONI } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
@@ -62,7 +62,9 @@ export async function vistaHome() {
   const kgDi = x => (x.articolo.unita === 'g' ? x.giacenza / 1000 : x.giacenza);
   const luppoli = [...giac.values()].filter(x => x.articolo.categoria === 'luppolo' && ['kg', 'g'].includes(x.articolo.unita || 'kg'));
   const kgLuppoli = luppoli.reduce((t, x) => t + Math.max(0, kgDi(x)), 0);
-  const { righe: daOrdinare } = fabbisogno(giac, datiMag, { fino: addGiorni(oggi, 42), anticipo: 7, oggi });
+  const recOrd = await u.db.leggi(ID_ORDINATI);
+  const { righe: tutteDaOrdinare } = fabbisogno(giac, datiMag, { fino: addGiorni(oggi, 42), anticipo: 7, oggi, ordinati: ordinatiDa(recOrd && !recOrd.eliminato ? recOrd : null, bolle) });
+  const daOrdinare = tutteDaOrdinare.filter(r => !r.ordinato); // quelli già spuntati come ordinati non si contano
   const urgenti = daOrdinare.filter(r => r.urgente);
   daOrdinare.sort((a, b) => (b.urgente - a.urgente) || String(a.entro).localeCompare(String(b.entro)));
 
