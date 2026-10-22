@@ -55,7 +55,9 @@ export async function vistaHome() {
   // materie prime
   const datiMag = { articoli, bolle, inventari, scarichi, cotte };
   const giac = giacenze(datiMag, oggi);
-  const malti = [...giac.values()].filter(x => x.articolo.categoria === 'malto' && !x.articolo.eliminato && (x.articolo.unita || 'kg') === 'kg');
+  // la lolla di riso è tra i malti in magazzino ma non è un malto: fuori dal totale (Romain 2026-10-22)
+  const lolla = a => [a.nome, ...(a.alias || [])].some(n => /\blol+a\b|rice hulls?/i.test(n || ''));
+  const malti = [...giac.values()].filter(x => x.articolo.categoria === 'malto' && !x.articolo.eliminato && !lolla(x.articolo) && (x.articolo.unita || 'kg') === 'kg');
   const kgMalti = malti.reduce((t, x) => t + Math.max(0, x.giacenza), 0);
   const kgDi = x => (x.articolo.unita === 'g' ? x.giacenza / 1000 : x.giacenza);
   const luppoli = [...giac.values()].filter(x => x.articolo.categoria === 'luppolo' && ['kg', 'g'].includes(x.articolo.unita || 'kg'));
