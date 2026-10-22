@@ -222,7 +222,7 @@ Il setpoint si cambia dalla pagina web della scheda (campo **setpoint**) e resta
 - Il TK4S ha i morsetti numerati **diversamente** dal TCN4S: cablare seguendo il **manuale del TK4S**. Stessa sonda PT100 a 3 fili, stessa uscita relè.
 - Bus RS485 con il cavo schermato a 2 poli: **A(+) con A(+)**, **B(−) con B(−)** da un regolatore all'altro (in fila, non a stella) fino al Waveshare. Schermo a terra da un solo lato.
 - **Resistenza da 120 Ω** tra A e B sull'**ultimo** regolatore della fila (se il Waveshare ha già la sua resistenza interna, è l'altro capo).
-- Waveshare RS485 TO WIFI/ETH alimentato dai **24 V** del quadro.
+- Waveshare RS485 TO WIFI/ETH alimentato dai **24 V** del quadro (5-36 V in continua, mai 230 V); se il quadro non ha un'uscita 24 V, un alimentatore da guida DIN tipo Mean Well HDR-15-24.
 
 ### 5.2 Impostazioni dei TK4S (dal pannello frontale, gruppo dei parametri di comunicazione: **VERIFICARE SUL MANUALE** i nomi)
 - Ingresso: **DPt100** (come il TCN4S). Setpoint e isteresi: come quelli di oggi.

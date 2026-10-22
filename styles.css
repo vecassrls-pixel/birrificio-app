@@ -1153,3 +1153,38 @@ body.ordina { background: var(--bg); }
 .or-modi legend { padding: 0 4px; font-weight: 600; }
 .or-indirizzo[hidden] { display: none; }
 .or-modi label.spunta { min-height: auto; margin: 6px 0; display: flex; gap: 8px; align-items: center; font-size: .95rem; }
+.b-impegnati { color: var(--accent-forte, #b45309); font-weight: 600; }
+
+/* foglio stampa / PDF della cotta: impaginato a parte, solo i dati presenti (Romain 2026-10-22) */
+.foglio-cotta { display: none; }
+@media print {
+  body.stampa-cotta #app > :not(.foglio-cotta) { display: none !important; }
+  body.stampa-cotta .foglio-cotta { display: block; color: #1c1917; font-size: 10.5px; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .fc-testa { display: flex; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 2px solid #c2410c; margin-bottom: 10px; }
+  .fc-testa img { height: 46px; width: auto; }
+  .fc-testa h1 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
+  .fc-testa p { margin: 2px 0 0; color: #57534e; font-size: 11.5px; }
+  .fc-scad { margin-left: auto; text-align: right; font-weight: 700; font-size: 11.5px; white-space: nowrap; }
+  .fc-kpi { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }
+  .fc-kpi .fc-voce { background: #f5f5f4; border-radius: 6px; padding: 5px 8px; display: flex; flex-direction: column; }
+  .fc-kpi .fc-voce b { font-size: 13px; }
+  .fc-voce span { color: #78716c; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
+  .fc-voci { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 12px; }
+  .fc-voci .fc-voce { display: flex; flex-direction: column; border-bottom: 1px solid #e7e5e4; padding: 2px 0; }
+  .fc-blocco { break-inside: avoid; margin: 0 0 12px; }
+  .fc-blocco h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #c2410c; margin: 0 0 5px; padding-bottom: 3px; border-bottom: 1px solid #e7e5e4; }
+  .fc-colonne { columns: 2; column-gap: 18px; }
+  .fc-colonne .fc-blocco { break-inside: avoid; display: inline-block; width: 100%; }
+  .fc-tab { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .fc-tab td, .fc-tab th { padding: 2px 4px; border-bottom: 1px solid #f0efed; text-align: left; vertical-align: top; }
+  .fc-tab th { font-size: 9px; color: #78716c; text-transform: uppercase; font-weight: 600; }
+  .fc-tab .n { text-align: right; white-space: nowrap; }
+  .fc-tab tfoot td { font-weight: 700; border-bottom: none; border-top: 1px solid #a8a29e; }
+  .fc-tab small { color: #78716c; }
+  .fc-reg { font-size: 9.5px; margin-top: 6px; width: auto; min-width: 55%; }
+  .fc-reg td, .fc-reg th { padding: 2px 12px 2px 4px; }
+  .fc-reg tr { break-inside: avoid; }
+  .fc-blocco .graf-ferm, .fc-blocco svg { max-height: 62mm; margin: 0 0 6px; }
+  .fc-note { white-space: pre-wrap; margin: 0; }
+  .fc-piede { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e7e5e4; color: #a8a29e; font-size: 9px; }
+}

@@ -8,7 +8,7 @@ import { ID_IMPOSTAZIONI } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { conPulizieAutomatiche, fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
 import { attivitaGiorno, etichetteDaOrdinare } from './agenda.js';
-import { etichettaPerBirra, giacenzeContenitori, perCottaDi } from './contenitori.js';
+import { etichettaPerBirra, giacenzeContenitori, perCottaDi, regolaCartone } from './contenitori.js';
 import { coperturaBirre, statoClienti } from './previsioni.js';
 import { tappeGiro } from './consegne.js';
 import {
@@ -109,7 +109,7 @@ export async function vistaHome() {
   for (const c of prossime) if (!prossimeLotti.some(g => g.some(x => x.id === c.id))) prossimeLotti.push(gruppoCotta(c, cotte));
   const senzaEtichette = etichetteDaOrdinare(cotte, stato.durate, oggi);
   // etichette delle lattine in Packaging (una per birra): quante ce ne sono per le cotte senza la spunta
-  const etichette = contenitori.filter(k => !k.eliminato && k.categoria === 'etichetta');
+  const etichette = contenitori.filter(k => !k.eliminato && k.categoria === 'etichetta').map(regolaCartone);
   const giacEt = etichette.length ? giacenzeContenitori({ contenitori: etichette, movimenti: movPack, inventari: invPack, cotte }, oggi) : new Map();
   const etichetteDi = g => {
     const k = etichette.find(x => etichettaPerBirra(x, g[0].birra));

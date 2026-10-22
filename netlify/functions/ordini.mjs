@@ -10,7 +10,7 @@ import { ID_IMP, impostazioni, oraItalia } from '../lib/automazioni.mjs';
 import { durateTipiche, dataIT, numIT } from '../../js/dominio.js';
 import { ID_IMPOSTAZIONI, nomeProdotto } from '../../js/birra.js';
 import { esc } from '../../js/riepilogo.js';
-import { catalogoCliente, righeOrdine, tokenValido, totaleOrdine, datiConsegna, MODI_CONSEGNA } from '../../js/portale.js';
+import { catalogoCliente, righeOrdine, tokenValido, totaleOrdine, datiConsegna, MODI_CONSEGNA, impegnatiOrdini } from '../../js/portale.js';
 
 async function clienteDa(token) {
   if (!tokenValido(token)) return null;
@@ -20,9 +20,9 @@ async function clienteDa(token) {
 }
 
 async function catalogo(cliente, oggi) {
-  const [t, impBirra] = await Promise.all([db.tipi(['cotta', 'movbirra', 'inventariobirra', 'prodottobirra', 'listino']), db.leggi(ID_IMPOSTAZIONI)]);
+  const [t, impBirra] = await Promise.all([db.tipi(['cotta', 'movbirra', 'inventariobirra', 'prodottobirra', 'listino', 'ordinecliente']), db.leggi(ID_IMPOSTAZIONI)]);
   if (!impBirra?.inizio || impBirra.eliminato) return [];
-  const datiBirra = { cotte: t.cotta, durate: durateTipiche(t.cotta), movimenti: t.movbirra, inventari: t.inventariobirra, prodotti: t.prodottobirra, impostazioni: impBirra };
+  const datiBirra = { cotte: t.cotta, durate: durateTipiche(t.cotta), movimenti: t.movbirra, inventari: t.inventariobirra, prodotti: t.prodottobirra, impostazioni: impBirra, impegnati: impegnatiOrdini(t.ordinecliente) };
   return catalogoCliente(datiBirra, t.listino, cliente, oggi);
 }
 
