@@ -6,7 +6,7 @@ import { STATI_ORDINE, MODI_CONSEGNA, linkOrdini, nuovoToken, totaleOrdine } fro
 import { nomeProdotto } from './birra.js';
 import { idCliente, numeroWhatsApp } from './previsioni.js';
 import { ID_ALPHA } from './listini.js';
-import { leggiCarrello, scriviCarrello, prezzoRiga } from './carrello.js';
+import { leggiCarrello, scriviCarrello, prezzoRiga, clienteFic } from './carrello.js';
 import { APERTI, ICONA_MODO, nomeModo, prossimoPasso, indirizzoCompleto, linkMappa, linkPercorso, tappeGiro, caricoGiro, messaggioOrdine, messaggioArrivo } from './consegne.js';
 
 let u; // { $app, html, db, toast, chiedi, copia, dataIT, numIT, oggiISO, addGiorni, token }
@@ -28,12 +28,6 @@ function anagraficaFic() {
     return b.clienti || [];
   })().catch(e => { anagrafica = null; throw e; });
   return anagrafica;
-}
-const pulito = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
-function clienteFic(elenco, nome, ficId) {
-  const n = pulito(nome);
-  return elenco.find(c => ficId && String(c.id) === String(ficId)) || elenco.find(c => pulito(c.nome) === n)
-    || (n.length > 3 ? elenco.filter(c => pulito(c.nome).includes(n) || n.includes(pulito(c.nome))).sort((a, b) => a.nome.length - b.nome.length)[0] : null);
 }
 let daAprire = null; // ordine da aprire nel dettaglio quando si arriva sulla pagina (dal carrello)
 

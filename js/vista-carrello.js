@@ -11,7 +11,7 @@ import { pezziCartone } from './etichetta.js';
 import { datiBirra, apriScarico } from './vista-birra.js';
 import { salvaDaCarrello, collegaDocumento } from './vista-ordini.js';
 import {
-  leggiCarrello, scriviCarrello, svuotaCarrello, passo, prezziListino, prezzoRiga, righeFattura, righeMovimento, TIPO_DRAG, trascinabile, mettiNelCarrello,
+  leggiCarrello, scriviCarrello, svuotaCarrello, passo, prezziListino, prezzoRiga, righeFattura, righeMovimento, lottiRighe, clienteFic, TIPO_DRAG, trascinabile, mettiNelCarrello,
 } from './carrello.js';
 
 let u; // { $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, token }
@@ -196,14 +196,28 @@ export async function vistaCarrello() {
   };
 
   async function dialogFattura() {
-    const righeMov = righeMovimento(c);
-    if (!righeMov.length) return u.toast('Il carrello non ha pezzi');
+    if (!righeMovimento(c).length) return u.toast('Il carrello non ha pezzi');
     const { prezzi, iva } = prezziListino(listini, c.listino);
-    const righe = righeFattura({ righe: c.righe.filter(r => Number(r.pezzi) > 0) }, dati.prodotti, prezzi);
+    const piene = c.righe.filter(r => Number(r.pezzi) > 0);
     // ordine già scaricato dal magazzino (taproom, spaccio…): la fattura usa quello scarico, non ne fa un altro
     const ordine = c.ordine ? await u.db.leggi(c.ordine) : null;
     const scarico = ordine?.movimento ? await u.db.leggi(ordine.movimento) : null;
     const giaScaricato = scarico && !scarico.eliminato ? scarico : null;
+    // lotti in descrizione: quelli già usciti con lo scarico, o quelli che prenderà lo scarico di adesso
+    let lotti;
+    if (giaScaricato) {
+      const usciti = new Map();
+      for (const x of g.values()) for (const m of x.movimenti) if (m.dove?.id === giaScaricato.id) usciti.set(x.chiave, [...(usciti.get(x.chiave) || []), ...(m.lotti || [])]);
+      lotti = piene.map(r => usciti.get(r.prodotto) || []);
+    } else lotti = lottiRighe(piene, g);
+    const righe = righeFattura({ righe: piene }, dati.prodotti, prezzi, lotti);
+    // lo scarico con i lotti già divisi, così magazzino e fattura dicono la stessa cosa
+    const righeMov = piene.flatMap((r, i) => (lotti[i].length ? lotti[i] : [{ lotto: r.lotto || '', pezzi: Number(r.pezzi) }]).map(l => ({ prodotto: r.prodotto, pezzi: l.pezzi, lotto: l.lotto || '' })));
+    // fattura accompagnatoria (di default): colli, destinazione e trasporto dall'ordine
+    const colli = ordine?.colli || piene.reduce((t, r) => t + (g.get(r.prodotto)?.tipo === 'fusto' ? Number(r.pezzi) : 0), 0)
+      + Math.ceil(piene.reduce((t, r) => t + (g.get(r.prodotto)?.tipo === 'fusto' ? 0 : Number(r.pezzi)), 0) / cartone);
+    const destinazione = ordine && ordine.modo !== 'ritiro' ? [ordine.indirizzo, ordine.comune].filter(Boolean).join(', ') : '';
+    const trasportatore = ordine?.modo === 'corriere' ? ordine.corriere || '' : ordine?.modo === 'ritiro' ? 'Destinatario' : 'Mittente';
     const d = document.createElement('dialog');
     d.innerHTML = html`<form method="dialog">
       <h2 style="margin-top:0">Fattura in Fatture in Cloud</h2>
@@ -212,6 +226,15 @@ export async function vistaCarrello() {
       <p class="totale" id="fc-stato"></p>
       <label>Data <input type="date" id="fc-data" value="${u.oggiISO()}"></label>
       <ul class="or-elenco">${righe.map(r => html`<li>${u.numIT(r.qta, 0)} × ${r.nome}${r.codice ? html` <span class="totale">(${r.codice})</span>` : ''}${r.descrizione ? html` · ${r.descrizione}` : ''} <span class="totale">${r.prezzo !== null ? euro(r.prezzo) : 'prezzo da scrivere in FIC'}</span></li>`)}</ul>
+      <label class="spunta"><input type="checkbox" id="fc-acc" checked> Fattura accompagnatoria (con i dati del trasporto)</label>
+      <div class="griglia" id="fc-trasporto">
+        <label>Colli <input id="fc-colli" type="number" min="0" inputmode="numeric" value="${colli || ''}"></label>
+        <label>Peso kg <input id="fc-peso" type="number" min="0" step="0.1" inputmode="decimal" value="${ordine?.peso ?? ''}"></label>
+        <label>Causale <input id="fc-causale" value="Vendita"></label>
+        <label>Trasporto a cura di <input id="fc-trasp" list="fc-dl-trasp" value="${trasportatore}"></label>
+        <datalist id="fc-dl-trasp"><option value="Mittente"><option value="Destinatario"><option value="Vettore"></datalist>
+        <label style="grid-column:1/-1">Destinazione <input id="fc-dest" value="${destinazione}" placeholder="se diversa dalla sede del cliente"></label>
+      </div>
       <p class="totale">Prezzi ${iva ? 'IVA inclusa' : 'IVA esclusa'}, aliquota 22%. La fattura si crea in Fatture in Cloud e la completi lì (pagamento, invio). ${giaScaricato ? `L'ordine è già scaricato dal magazzino (${u.dataIT(giaScaricato.data)}): la fattura si collega a quello scarico e non scarica di nuovo` : 'Lo scarico dal magazzino si fa subito, con i lotti scelti,'}; l'import notturno non lo ripete.</p>
       <div class="barra"><span class="spazio"></span><button value="no" formnovalidate>Annulla</button><button class="primario" id="fc-crea" value="si">Crea la fattura</button></div>
     </form>`.s;
@@ -228,11 +251,13 @@ export async function vistaCarrello() {
       if (daOrdine && !trova(d.querySelector('#fc-cliente').value)) d.querySelector('#fc-cliente').value = daOrdine.nome;
       segnala();
     }).catch(ex => { $stato.textContent = `Clienti di Fatture in Cloud non letti: ${ex.message}`; });
-    const trova = nome => elenco.find(x => x.nome.trim().toLowerCase() === nome.trim().toLowerCase());
+    const trova = nome => clienteFic(elenco, nome, ordine?.ficId && ordine.cliente === nome ? ordine.ficId : '');
+    d.querySelector('#fc-acc').addEventListener('change', e => { d.querySelector('#fc-trasporto').hidden = !e.target.checked; });
     const segnala = () => {
       const nome = d.querySelector('#fc-cliente').value.trim();
       if (!elenco.length || !nome) return;
-      $stato.textContent = trova(nome) ? '✓ Cliente presente in Fatture in Cloud' : 'Cliente non presente in anagrafica: la fattura avrà solo il nome, completa i dati in Fatture in Cloud.';
+      const t = trova(nome);
+      $stato.textContent = t ? `✓ Cliente di Fatture in Cloud: ${t.nome}${t.piva ? ` (${t.piva})` : ''}` : 'Cliente non presente in anagrafica: la fattura avrà solo il nome, completa i dati in Fatture in Cloud.';
     };
     d.querySelector('#fc-cliente').addEventListener('input', segnala);
     d.querySelector('#fc-crea').addEventListener('click', async ev => {
@@ -245,7 +270,9 @@ export async function vistaCarrello() {
       btn.textContent = 'Creo…';
       try {
         const cl = trova(nome);
-        const r = await fic('POST', { azione: 'fattura', data, cliente: { id: cl?.id || null, nome: cl?.nome || nome }, lordo: iva, righe });
+        const v = id => d.querySelector(id).value.trim();
+        const accompagnatoria = d.querySelector('#fc-acc').checked ? { colli: v('#fc-colli'), peso: v('#fc-peso'), causale: v('#fc-causale'), destinazione: v('#fc-dest'), trasportatore: v('#fc-trasp') } : null;
+        const r = await fic('POST', { azione: 'fattura', data, cliente: { id: cl?.id || null, nome: cl?.nome || nome }, lordo: iva, righe, accompagnatoria });
         const doc = { motivo: 'vendita', cliente: cl?.nome || nome, documento: r.numero, origine: 'fic', rifEsterno: `fic:${r.id}` };
         const mov = giaScaricato
           ? await u.db.salva({ ...giaScaricato, ...doc, aggiornato: undefined })
