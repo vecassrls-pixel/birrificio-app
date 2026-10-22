@@ -12,7 +12,8 @@
 //                  → { prodotti: [{ id, nome, codice }] }
 //                /.netlify/functions/fattureincloud?elenco=clienti    anagrafica clienti (permesso Clienti: lettura)
 //                  → { clienti: [{ id, nome, piva, indirizzo, comune, telefono }] }
-//   POST { azione: 'fattura', data, cliente: { id?, nome }, lordo, note, righe: [{ codice, nome, descrizione, qta, prezzo }] }
+//   POST { azione: 'fattura', data, cliente: { id?, nome }, lordo, note, righe: [{ codice, nome, descrizione, qta, prezzo }],
+//          accompagnatoria: { colli, peso, causale, destinazione, trasportatore } | null }
 //                  crea la fattura (permesso Fatture: lettura e scrittura) → { id, numero, url }
 // Risponde nello stesso formato del proxy Shopify:
 //   { documenti: [{ id, numero, data, cliente, stato, righe: [{ codice, nome, qta }] }], altri }
@@ -41,7 +42,11 @@ async function fattura(req) {
   if (righe.some(r => !r.nome || !(r.qta > 0) || (r.prezzo !== null && !(r.prezzo >= 0)))) return json({ errore: 'Righe non valide' }, 400);
   try {
     const c = await fic.client();
-    return json(await fic.creaFattura(c, { data, cliente: { id: Number(b.cliente.id) || null, nome }, righe, lordo: !!b.lordo, note: testo(b.note, 1000) }));
+    const a = b.accompagnatoria;
+    const accompagnatoria = a && typeof a === 'object' ? {
+      colli: testo(a.colli, 20), peso: testo(a.peso, 20), causale: testo(a.causale, 100), destinazione: testo(a.destinazione, 300), trasportatore: testo(a.trasportatore, 100),
+    } : null;
+    return json(await fic.creaFattura(c, { data, cliente: { id: Number(b.cliente.id) || null, nome }, righe, lordo: !!b.lordo, note: testo(b.note, 1000), accompagnatoria }));
   } catch (e) {
     if (e.status === 401 || e.status === 403) return json({ errore: PERMESSO.fattura }, 502);
     return json({ errore: e.message }, e.status === 422 ? 400 : 500);

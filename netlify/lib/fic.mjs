@@ -122,19 +122,42 @@ export async function clienti(fic) {
 
 // Crea una fattura con le righe del carrello; la si completa e si invia in Fatture in Cloud.
 // { data, cliente: { id?, nome }, lordo (prezzi IVA inclusa), aliquota, note,
-//   righe: [{ codice, nome, descrizione, qta, prezzo }] } → { id, numero, url }
-export async function creaFattura(fic, { data, cliente, righe, lordo = false, aliquota = 22, note = '' }) {
+//   righe: [{ codice, nome, descrizione, qta, prezzo }],
+//   accompagnatoria: { colli, peso, causale, destinazione, trasportatore } | null } → { id, numero, url }
+// Il cliente con id prende tutti i dati dell'anagrafica (P.IVA, indirizzo, SDI); le righe con un codice
+// si collegano al prodotto di Fatture in Cloud con quel codice.
+const CAMPI_ENTITA = ['id', 'code', 'name', 'type', 'first_name', 'last_name', 'contact_person', 'vat_number', 'tax_code', 'address_street', 'address_postal_code', 'address_city', 'address_province', 'address_extra', 'country', 'country_iso', 'email', 'certified_email', 'phone', 'e_invoice', 'ei_code'];
+export async function creaFattura(fic, { data, cliente, righe, lordo = false, aliquota = 22, note = '', accompagnatoria = null }) {
   const iva = (await fic.chiama('/info/vat_types')).data || [];
   const vat = iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled && !v.e_invoice) || iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled);
   if (!vat) throw Object.assign(new Error(`Fatture in Cloud: non trovo l'aliquota IVA ${aliquota}%`), { status: 502 });
+  let entity = { name: cliente.nome };
+  if (cliente.id) {
+    const c = (await fic.chiama(`/entities/clients/${encodeURIComponent(cliente.id)}`, { fieldset: 'detailed' })).data || {};
+    entity = Object.fromEntries(CAMPI_ENTITA.filter(k => c[k] !== undefined && c[k] !== null && c[k] !== '').map(k => [k, c[k]]));
+    entity.id = Number(cliente.id);
+    entity.name ||= cliente.nome;
+  }
+  const perCodice = new Map();
+  if (righe.some(r => r.codice)) for (const p of await prodotti(fic).catch(() => [])) if (p.codice) perCodice.set(p.codice.trim().toLowerCase(), p);
   const doc = {
     type: 'invoice',
-    entity: { ...(cliente.id ? { id: Number(cliente.id) } : {}), name: cliente.nome },
+    entity,
     date: data,
     use_gross_prices: !!lordo,
     ...(note ? { notes: note } : {}),
+    ...(accompagnatoria ? {
+      accompanying_invoice: true,
+      ...(accompagnatoria.colli ? { dn_ai_packages_number: String(accompagnatoria.colli) } : {}),
+      ...(accompagnatoria.peso ? { dn_ai_weight: String(accompagnatoria.peso) } : {}),
+      dn_ai_causal: accompagnatoria.causale || 'Vendita',
+      ...(accompagnatoria.destinazione ? { dn_ai_destination: accompagnatoria.destinazione } : {}),
+      ...(accompagnatoria.trasportatore ? { dn_ai_transporter: accompagnatoria.trasportatore } : {}),
+    } : {}),
     items_list: righe.map(r => ({
-      ...(r.codice ? { code: r.codice } : {}), name: r.nome, ...(r.descrizione ? { description: r.descrizione } : {}),
+      ...(r.codice && perCodice.get(r.codice.toLowerCase()) ? { product_id: Number(perCodice.get(r.codice.toLowerCase()).id) } : {}),
+      ...(r.codice ? { code: perCodice.get(r.codice.toLowerCase())?.codice || r.codice } : {}),
+      name: perCodice.get(r.codice?.toLowerCase())?.nome || r.nome, ...(r.descrizione ? { description: r.descrizione } : {}),
       qty: r.qta, ...(r.prezzo !== null && r.prezzo !== undefined ? { [lordo ? 'gross_price' : 'net_price']: r.prezzo } : {}),
       vat: { id: vat.id },
     })),
