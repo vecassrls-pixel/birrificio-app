@@ -386,6 +386,9 @@ function dialogNuovaCotta(pre = {}) {
         <label>Giorni in FV <input name="durata" type="number" min="1" max="120"></label>
         <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}" title="Le cotte pianificate si numerano da sole in ordine di data"></label>
         <label>Anno <input name="anno" type="number" value="${anno}"></label>
+        <label>Cotte nello stesso FV <select name="quante" title="Doppia o tripla: si creano 2 o 3 cotte con lotti consecutivi nello stesso fermentatore">
+          <option value="1">1 (singola)</option><option value="2">2 (doppia)</option><option value="3">3 (tripla)</option></select></label>
+        <label>Quando <select name="passo"><option value="0">lo stesso giorno</option><option value="1">in giorni consecutivi</option></select></label>
         <label style="grid-column:1/-1">Per <select name="beerfirm"><option value="">noi (non beerfirm)</option>${(stato.beerfirm || []).map(b => html`<option value="${b.nome}" ${b.nome === pre.beerfirm ? 'selected' : ''}>beerfirm ${b.nome}</option>`)}</select></label>
       </div>
       <label style="margin-top:12px;display:block">Copia da <select name="copiaDa">
@@ -415,17 +418,24 @@ function dialogNuovaCotta(pre = {}) {
   document.body.appendChild(dlg);
   const f = dlg.querySelector('form');
   f.beerfirm.addEventListener('change', () => { f.beerfirm.dataset.toccato = '1'; });
+  // doppia in giorni consecutivi: il FV serve dal primo giorno fino alla fine dell'ultima cotta
+  const extraDoppia = () => (Number(f.quante.value) - 1) * Number(f.passo.value);
   const srcScelta = () => (f.copiaDa.value === 'no' || f.copiaDa.value.startsWith('bf:') ? null : f.copiaDa.value ? stato.cotte.find(c => c.id === f.copiaDa.value) : ultimaCottaDi(f.birra.value));
   const aggiornaFv = () => {
     const birra = f.birra.value;
     // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
     const src0 = srcScelta();
+    // doppia/tripla come l'ultima volta, finché non la cambi a mano (Romain 2026-10-22)
+    const gruppo0 = src0 ? gruppoCotta(src0, stato.cotte) : [];
+    if (!f.quante.dataset.toccato) f.quante.value = String(Math.min(3, gruppo0.length || 1));
+    if (!f.passo.dataset.toccato) f.passo.value = gruppo0.length > 1 && gruppo0[0].data !== gruppo0[1].data ? '1' : '0';
+    f.passo.disabled = f.quante.value === '1';
     // beerfirm: quello della cotta copiata, finché non lo cambi a mano
     if (!f.beerfirm.dataset.toccato && pre.beerfirm === undefined) f.beerfirm.value = (stato.beerfirm || []).some(b => b.nome === src0?.beerfirm) ? src0.beerfirm : '';
     const durata = Number(f.durata.value) || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
     if (!f.durata.value || f.durata.dataset.auto) { f.durata.value = durata; f.durata.dataset.auto = '1'; }
     const da = f.data.value || oggiISO();
-    const a = addGiorni(da, durata - 1);
+    const a = addGiorni(da, durata - 1 + extraDoppia());
     const scelto = f.querySelector('input[name=fv]:checked')?.value || pre.fv;
     const righe = fvLiberi(stato.fv, stato.cotte, da, a, stato.durate);
     let primoLibero = null;
@@ -462,8 +472,8 @@ function dialogNuovaCotta(pre = {}) {
   };
   const cercaDate = da => {
     const src = srcScelta();
-    const durata = Number(f.durata.value) || durataDa(src, stato.durate);
-    const proposte = proponiDate({ fvs: stato.fv, cotte: stato.cotte, durate: stato.durate, durata, da, giorniTravaso: giorniTravasoDa(src, stato.fv), escludi: giorniFerie(stato.ferie) });
+    const durata = (Number(f.durata.value) || durataDa(src, stato.durate)) + extraDoppia();
+    const proposte = proponiDate({ fvs: stato.fv, cotte: stato.cotte, durate: stato.durate, durata, da, giorniTravaso: giorniTravasoDa(src, stato.fv), escludi: giorniFerie(stato.ferie), giorniCotta: extraDoppia() + 1 });
     dlg.querySelector('#proposte').innerHTML = proposte.length ? html`${proposte.map(p => html`<div class="proposta"><b>${dataIT(p.data, { weekday: 'short', day: 'numeric', month: 'short' })}</b>
       ${p.opzioni.slice(0, 6).map(o => html`<button type="button" class="piccolo" data-prop="${p.data}|${o.fv}|${o.travaso?.fv || ''}|${o.travaso?.data || ''}">${o.fv}${o.travaso ? ` → ${o.travaso.fv}` : ''}</button>`)}</div>`)}`.s
       : html`<p class="totale">Nessun FV libero per ${durata} giorni nei prossimi 4 mesi.</p>`.s;
@@ -501,6 +511,8 @@ function dialogNuovaCotta(pre = {}) {
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); proponiPrimo(); });
   f.birra.addEventListener('change', () => { proponiRicettaBf(); f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
+  f.quante.addEventListener('change', () => { f.quante.dataset.toccato = '1'; f.passo.disabled = f.quante.value === '1'; aggiornaFv(); proponiPrimo(); });
+  f.passo.addEventListener('change', () => { f.passo.dataset.toccato = '1'; aggiornaFv(); proponiPrimo(); });
   f.data.addEventListener('change', aggiornaFv);
   // numero e anno proposti dalla data: una cotta futura prende il suo posto in ordine di data
   const proponiNumero = () => {
@@ -601,6 +613,16 @@ function dialogNuovaCotta(pre = {}) {
     if (fd.get('etichetteOk')) base.etichetteOk = true;
     if (!base.stile && stileDi(birra)) base.stile = stileDi(birra);
     const rec = await db.salva({ ...base, birra, id: db.nuovoId('cotta') });
+    // cotta doppia/tripla: le altre uguali, stesso giorno e FV, lotti seguenti (poi la numerazione per data le rimette in ordine)
+    const quante = Math.min(3, Math.max(1, Number(fd.get('quante')) || 1));
+    const passo = Number(f.passo.value) || 0;
+    for (let i = 1; i < quante; i++) {
+      const n = numero + i;
+      const altra = { ...JSON.parse(JSON.stringify(base)), birra, numero: n, lotto: lottoDi(n, annoC), id: db.nuovoId('cotta') };
+      // giorni consecutivi: stessa cotta spostata di i giorni (profilo, fine e travaso compresi)
+      await db.salva(passo ? spostaCotta(altra, i * passo, '') : altra);
+    }
+    if (quante > 1) { await carica(); toast(`${quante} cotte create nello stesso FV`); }
     location.hash = `#/cotta/${encodeURIComponent(rec.id)}`;
   });
   dlg.showModal();
@@ -1670,7 +1692,7 @@ function vistaPlanning() {
             const s = statoCotta(c0, stato.durate, undefined, stato.cotte);
             const left = Math.max(0, diffGiorni(plan.inizio, b.da)) * W;
             const right = (Math.min(plan.giorni - 1, diffGiorni(plan.inizio, b.a)) + 1) * W;
-            const lotti = (b.travaso ? '↳ ' : '') + (b.cotte.length > 1 ? b.cotte.map(c => c.numero).join('/') : c0.lotto || '');
+            const lotti = (b.travaso ? '↳ ' : '') + (b.cotte.length > 1 ? b.cotte.map(c => c.numero).sort((x, y) => x - y).join('/') : c0.lotto || '');
             const mp = ['pianificata', 'tank'].includes(s) && b.cotte.some(c => c.materiePrime);
             const conflitto = b.cotte.some(c => inConflitto.has(c.id));
             // giorni totali della cotta: nella prima barra contano anche quelli dopo il travaso (Romain 2026-10-16)
