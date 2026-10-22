@@ -28,6 +28,7 @@ import * as contenitori from './vista-contenitori.js';
 import { contenitoriPerRiga } from './contenitori.js';
 import { ID_BEERFIRM, beerfirmDa } from './beerfirm.js';
 import { ID_FERIE, ferieDa, giorniFerie, TIPI_GIORNO } from './ferie.js';
+import { spostaCotta, cambiaFine, cambiaTravaso, cambiaFv } from './sposta-cotta.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
 import { lottoEtichetta } from './birra.js';
@@ -38,7 +39,7 @@ import { conGiorniDh } from './agenda.js';
 import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
-import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi } from './magazzino.js';
+import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi, unitaStandard, rigaStandard, cottaInUnitaStandard, uniformaUnita, decimaliUnita } from './magazzino.js';
 import {
   STATI, abv, addGiorni, conflitti, copiaDa, dataIT, daISO, diffGiorni, durateTipiche, fineCotta,
   CAMPI_COMUNI, SIMBOLI, scadenzaCotta, mesiScadenza, meseScadenzaIT, testoLottoScadenza, eventiGiorno, conAdditiviDefault, ogMedia, DURATA_DEFAULT, FASI, fasiCotta, gruppoCotta, lottoGruppo, registroComune, fvLiberi, litriConfezionati, profiloDefault, periodiCotta, travasoCotta, lottoDi, nomeBirra, numIT, oggiISO, prossimoNumero, numeriCronologici, problemiNumeri, statoCotta,
@@ -136,6 +137,21 @@ async function correggiRegula() {
   }));
   try { await db.salvaMolti(corrette); return true; }
   catch { return false; /* sola lettura: lo sistemerà chi può modificare */ }
+}
+// Unità uniformi (Romain 2026-10-22): kg per malti, zuccheri e luppoli, g per sali e coadiuvanti.
+// Converte articoli, inventari, bolle, movimenti e schede cotta senza perdere quantità. Con il cloud parte solo
+// dopo una sincronizzazione riuscita, così un dispositivo rimasto indietro non riscrive dati vecchi.
+let unitaControllate = false;
+async function uniformaUnitaArchivio() {
+  if (unitaControllate || lettore) return;
+  unitaControllate = true;
+  const [articoli, bolle, inventari, scarichi, cotte] = await Promise.all(['articolo', 'bolla', 'inventario', 'scarico', 'cotta'].map(t => db.tutti(t)));
+  const da = uniformaUnita({ articoli, bolle, inventari, scarichi, cotte });
+  if (!da.length) return;
+  try {
+    await db.salvaMolti(da.map(({ aggiornato, daSincronizzare, ...r }) => r));
+    toast(`Unità uniformate: luppoli, malti e zuccheri in kg, sali e coadiuvanti in g (${da.length} schede aggiornate)`);
+  } catch { unitaControllate = false; /* sola lettura: lo sistemerà chi può modificare */ }
 }
 // Lotti delle cotte pianificate in ordine di data (vedi numeriCronologici)
 async function allineaNumeri() {
@@ -364,7 +380,8 @@ function dialogNuovaCotta(pre = {}) {
     <form method="dialog">
       <h2>${pre.titolo || 'Nuova cotta'}</h2>
       <div class="griglia" style="grid-template-columns:1fr 1fr">
-        <label style="grid-column:1/-1">Birra <input name="birra" list="dl-birre" required value="${pre.birra || ''}" autocomplete="off"></label>
+        <label style="grid-column:1/-1;position:relative">Birra <input name="birra" required value="${pre.birra || ''}" autocomplete="off">
+          <div id="sugg-birre" class="sugg" hidden></div></label>
         <label>Data cotta <input name="data" type="date" required value="${pre.data || oggiISO()}"></label>
         <label>Giorni in FV <input name="durata" type="number" min="1" max="120"></label>
         <label>Lotto n° <input name="numero" type="number" min="1" value="${prossimoNumero(stato.cotte, anno)}" title="Le cotte pianificate si numerano da sole in ordine di data"></label>
@@ -394,7 +411,7 @@ function dialogNuovaCotta(pre = {}) {
         <button class="primario" value="ok">Crea cotta</button>
       </div>
     </form>
-    <datalist id="dl-birre">${birre.map(b => html`<option value="${b}">`)}</datalist>`;
+`;
   document.body.appendChild(dlg);
   const f = dlg.querySelector('form');
   f.beerfirm.addEventListener('change', () => { f.beerfirm.dataset.toccato = '1'; });
@@ -439,7 +456,7 @@ function dialogNuovaCotta(pre = {}) {
         .then(([articoli, bolle, inventari, scarichi]) => ({ articoli, bolle, inventari, scarichi }));
       const { mancano } = materiePrimeMancanti({ ...datiMag, cotte: stato.cotte }, copiaDa(src, { data: f.data.value, numero: 0, anno: 0, fv: '' }), oggiISO());
       out.innerHTML = !datiMag.articoli.length ? ''
-        : mancano.length ? html`<span style="color:var(--warn)">Materie prime che mancherebbero il ${dataIT(f.data.value)}:</span> ${mancano.map(m => `${m.articolo.nome} ${numIT(m.manca, m.unita === 'kg' ? 1 : 0)} ${m.unita}`).join(', ')} · <a href="#/ordine">Da ordinare →</a>`.s
+        : mancano.length ? html`<span style="color:var(--warn)">Materie prime che mancherebbero il ${dataIT(f.data.value)}:</span> ${mancano.map(m => `${m.articolo.nome} ${numIT(m.manca, decimaliUnita(m.unita))} ${m.unita}`).join(', ')} · <a href="#/ordine">Da ordinare →</a>`.s
           : `✓ Materie prime: con le giacenze e gli ordini registrati c'è tutto per il ${dataIT(f.data.value)}.`;
     }, 300);
   };
@@ -498,6 +515,25 @@ function dialogNuovaCotta(pre = {}) {
   proponiNumero();
   // Romain 2026-10-22: anche le ricette di Brewfather, pure quelle mai fatte, nell'elenco birre e in "Copia da".
   // Una birra senza cotte precedenti prende da sola la sua ricetta Brewfather.
+  // Elenco birre a tutta larghezza con il nome intero (Romain 2026-10-22: nel menu del browser i nomi lunghi erano tagliati)
+  const voci = birre.map(b => { const u = ultimaCottaDi(b); return { nome: b, info: u ? `ultima cotta ${u.lotto || ''} del ${dataIT(u.data)}` : '' }; });
+  const $sugg = dlg.querySelector('#sugg-birre');
+  const mostraBirre = (tutte = false) => {
+    const q = tutte ? '' : nomeBirra(f.birra.value);
+    const lista = voci.filter(v => !q || v.nome.includes(q)).slice(0, 80);
+    $sugg.innerHTML = html`${lista.map(v => html`<button type="button" data-birra="${v.nome}"><b>${v.nome}</b>${v.info ? html`<small>${v.info}</small>` : ''}</button>`)}`.s;
+    $sugg.hidden = !lista.length;
+  };
+  f.birra.addEventListener('focus', () => mostraBirre(true));
+  f.birra.addEventListener('input', () => mostraBirre());
+  f.birra.addEventListener('blur', () => setTimeout(() => { $sugg.hidden = true; }, 150));
+  f.birra.addEventListener('keydown', e => { if (e.key === 'Escape' && !$sugg.hidden) { e.preventDefault(); $sugg.hidden = true; } });
+  $sugg.addEventListener('mousedown', e => e.preventDefault());
+  $sugg.addEventListener('click', e => {
+    const b = e.target.closest('[data-birra]'); if (!b) return;
+    f.birra.value = b.dataset.birra; $sugg.hidden = true;
+    f.birra.dispatchEvent(new Event('change'));
+  });
   let ricetteBf = [];
   const ricettaPerNome = nome => ricetteBf.find(r => nomeBirra(r.nome) === nomeBirra(nome));
   let bfAuto = false; // ricetta messa da sola: cambia se cambi la birra
@@ -517,7 +553,8 @@ function dialogNuovaCotta(pre = {}) {
     og.innerHTML = html`${ricetteBf.map(r => html`<option value="bf:${r.id}">${r.nome}${r.stile ? ` · ${r.stile}` : ''}</option>`)}`.s;
     f.copiaDa.value = scelto;
     const note = new Set(birre);
-    dlg.querySelector('#dl-birre').insertAdjacentHTML('beforeend', html`${ricetteBf.filter(r => !note.has(nomeBirra(r.nome))).map(r => html`<option value="${nomeBirra(r.nome)}">`)}`.s);
+    for (const r of ricetteBf) if (!note.has(nomeBirra(r.nome))) { note.add(nomeBirra(r.nome)); voci.push({ nome: nomeBirra(r.nome), info: `ricetta Brewfather${r.stile ? ` · ${r.stile}` : ''}` }); }
+    if (document.activeElement === f.birra) mostraBirre(true);
     proponiRicettaBf();
   })();
   f.copiaDa.addEventListener('change', () => {
@@ -584,7 +621,7 @@ function testoDryHop(c) {
       const r = dh.filter(x => (Number(x.giorno) || 0) === g);
       const quando = g > 0 ? `giorno ${g}${c.data ? ' (' + dataIT(addGiorni(c.data, g - 1)) + ')' : ''}` : '';
       return ['', ...(multi || quando ? [`DH ${multi ? giorni.indexOf(g) + 1 + ' · ' : ''}${quando}`.trim()] : []),
-        ...r.map(x => `- ${x.nome}: ${x.qta != null && x.qta !== '' ? numIT(+x.qta, 0) + ' ' + (x.unita || 'g') : '—'}`)];
+        ...r.map(x => `- ${x.nome}: ${x.qta != null && x.qta !== '' ? numIT(+x.qta, decimaliUnita(x.unita || 'g')) + ' ' + (x.unita || 'g') : '—'}`)];
     }),
   ].join('\n');
 }
@@ -594,7 +631,7 @@ function testoMalti(c) {
   return [
     `Macinatura cotta ${c.lotto || ''} ${c.birra || ''}${c.data ? ' del ' + dataIT(c.data) : ''}`.replace(/\s+/g, ' ').trim(),
     '',
-    ...righe.map(r => `- ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, 2) + ' ' + (r.unita || '') : '—'}`.trim()),
+    ...righe.map(r => `- ${r.nome}: ${r.qta != null && r.qta !== '' ? numIT(+r.qta, decimaliUnita(r.unita) || 2) + ' ' + (r.unita || '') : '—'}`.trim()),
     ...(kg ? ['', `Totale: ${numIT(kg, 2)} kg`] : []),
   ].join('\n');
 }
@@ -620,7 +657,7 @@ async function inviaMaltiWhatsApp(c) {
 
 const SEZIONI_INGR = [
   ['malti', 'Malti e zuccheri', 'kg'],
-  ['luppoli', 'Luppoli', 'g'],
+  ['luppoli', 'Luppoli', 'kg'],
   ['lievito', 'Lievito', 'g'],
   ['sali', 'Sali e additivi', 'g'],
 ];
@@ -639,6 +676,7 @@ async function vistaCotta(id) {
   c.acquaDip = c.acquaDip || {};
   // ingredienti scelti dalle voci del magazzino (anche a zero)
   let articoli = await magazzino.articoliRicetta();
+  c = cottaInUnitaStandard(c, articoli) || c; // luppoli in kg, sali e coadiuvanti in g (si salva alla prima modifica)
   const datiCosto = await costi.datiCosti();
   // fusti vuoti: con due polykeg per lo stesso formato (con e senza sacca) la riga dice quale
   const vuoti = await db.tutti('contenitore');
@@ -773,7 +811,7 @@ async function vistaCotta(id) {
       || Number(e.temp ?? NaN) !== Number(prima?.temp ?? NaN) && (pieno(e.temp) || pieno(prima?.temp));
   }
   const CAT_SEZIONE = { malti: ['malto', 'zucchero'], luppoli: ['luppolo'], lievito: ['lievito'], sali: ['sale', 'coadiuvante', 'aggiunta', 'spezia'] };
-  const fmtGiac = a => `${CATEGORIE[a.categoria] || ''} · in magazzino ${numIT(a.giacenza, a.unita === 'kg' || a.unita === 'L' ? 1 : 0)} ${a.unita}`;
+  const fmtGiac = a => `${CATEGORIE[a.categoria] || ''} · in magazzino ${numIT(a.giacenza, decimaliUnita(a.unita))} ${a.unita}`;
   function tabIngredienti(k, titolo, unitaDef) {
     const righe = c[k];
     const extra = k === 'luppoli';
@@ -835,7 +873,7 @@ async function vistaCotta(id) {
       return blocco(titolo, html`<table class="fc-tab"><tbody>${righe.map(r => html`<tr>
         <td>${r.nome}${r.recuperato ? html` <small>(recuperato)</small>` : ''}</td>
         ${conUso ? html`<td>${[r.uso, r.uso === 'dry hop' ? pieno(r.giorno) && `giorno ${r.giorno}` : pieno(r.minuti) && `${n(r.minuti, 0)} min`].filter(Boolean).join(' · ')}</td>` : ''}
-        <td class="n">${pieno(r.qta) ? `${n(r.qta, 2)} ${r.unita || ''}` : ''}</td></tr>`)}</tbody>
+        <td class="n">${pieno(r.qta) ? `${n(r.qta, decimaliUnita(r.unita) || 2)} ${r.unita || ''}` : ''}</td></tr>`)}</tbody>
         ${righe.length > 1 && kg ? html`<tfoot><tr><td${conUso ? raw(' colspan="2"') : ''}>Totale</td><td class="n">${numIT(kg, 2)} kg</td></tr></tfoot>` : ''}</table>`);
     };
     // registro: le righe utili (come a video), solo le colonne usate
@@ -1199,6 +1237,21 @@ async function vistaCotta(id) {
     const p = e.target.dataset.path;
     // spunte: alcuni Safari (iPad meno recenti) non mandano "input" sulle checkbox, solo "change"
     if (p && e.target.type === 'checkbox') { set(c, p, e.target.checked); salvaPresto(); }
+    // luppoli, malti e zuccheri in kg, sali e coadiuvanti in g: "150" in g diventa 0,15 kg
+    const ingr = p && /^(malti|luppoli|sali)\.(\d+)\.(nome|qta|unita)$/.exec(p);
+    if (ingr) {
+      const [, k, i] = ingr;
+      const r = c[k][Number(i)];
+      const art = r?.nome ? trovaArticolo(articoli, r.nome) : null;
+      const n = r && rigaStandard(r, art?.categoria || categoriaDa(k, r.nome), art?.unita);
+      if (n && n !== r) {
+        c[k][Number(i)] = n;
+        salvaPresto();
+        if (r.qta !== null && r.qta !== undefined && r.qta !== '') toast(`${numIT(Number(r.qta), decimaliUnita(r.unita))} ${r.unita} → ${numIT(n.qta, decimaliUnita(n.unita))} ${n.unita}`);
+        const y = scrollY; disegna(); scrollTo(0, y);
+        return;
+      }
+    }
     // ridisegna quando cambiano valori che influenzano KPI e stato
     // dopo che il cursore si è spostato sul campo successivo, che resta attivo anche dopo il ridisegno
     if (p && /^(og|fg|data|fine|fv|travaso|litri|numero|anno|birra|confezionato|scadenza|mesiScadenza|(malti|luppoli|lievito|sali)\.\d+\.nome|luppoli\.\d+\.(uso|giorno)|fermentazione\.\d+\.(data|densita|temp|ph|nota))/.test(p)) {
@@ -1245,7 +1298,8 @@ async function vistaCotta(id) {
     } else if (t.dataset.crea) {
       const [k, i] = t.dataset.crea.split('.');
       const r = c[k][Number(i)];
-      const rec = await magazzino.nuovoArticolo({ nome: r.nome, categoria: categoriaDa(k, r.nome), unita: r.unita === 'g' && k !== 'malti' ? 'g' : unitaDa(k) });
+      const categoria = categoriaDa(k, r.nome);
+      const rec = await magazzino.nuovoArticolo({ nome: r.nome, categoria, unita: unitaStandard(categoria, r.unita || unitaDa(k)) });
       if (!rec) return;
       r.nome = rec.nome;
       articoli = await magazzino.articoliRicetta();
@@ -1610,7 +1664,7 @@ function vistaPlanning() {
       <div class="g-row testa"><div class="g-label">FV</div><div class="g-days" style="width:${larghezza}px">${testa}</div></div>
       ${nomiFv.map(n => html`<div class="g-row">
         <div class="g-label">${n}<small>${(() => { const f = stato.fv.find(x => x.nome === n); return f && f.capacita ? `${numIT(f.capacita, 0)} L` : ''; })()}</small></div>
-        <div class="g-days" style="width:${larghezza}px">${sfondo}
+        <div class="g-days" data-fv="${n}" style="width:${larghezza}px">${sfondo}
           ${(barrePerFv.get(n) || []).map(b => {
             const c0 = b.cotte[0];
             const s = statoCotta(c0, stato.durate, undefined, stato.cotte);
@@ -1642,14 +1696,18 @@ function vistaPlanning() {
               x1: (diffGiorni(plan.inizio, f.a > a ? a : f.a) + 1) * W - left,
             })).filter(f => f.x1 - f.x0 >= 2 * W && f.x1 >= 110); // non sopra nome e lotto all'inizio della barra
             const bf = c0.beerfirm || '';
+            // trascinabile (Romain 2026-10-22): la barra si sposta, la maniglia a destra cambia la fine (o il travaso)
+            const fineTravaso = !b.travaso && b.cotte.some(c => b.a < fineCotta(c, stato.durate));
             return html`<a class="g-bar ${s} ${conflitto ? 'conflitto' : ''} ${bf ? 'beerfirm' : ''}" href="#/cotta/${encodeURIComponent(c0.id)}"
+              data-ids="${b.cotte.map(c => c.id).join(',')}" data-fv="${n}" data-trav="${b.travaso ? '1' : ''}" data-fine-trav="${fineTravaso ? '1' : ''}" data-a="${b.a}"
               style="left:${left + 1}px;width:${Math.max(right - left - 2, 8)}px;${sfondoFasi}"
               title="${c0.birra}${bf ? ` · beerfirm ${bf}` : ''} · lotto ${lotti} · ${dataIT(b.da)} → ${dataIT(b.a)} · ${testoLottoScadenza(c0, stato.cotte, stato.durate)}">
               <b>${bf ? html`<span class="bf-chip">${bf}</span> ` : ''}${c0.birra}${b.cotte.every(c => c.lievitoOk) || b.cotte.every(c => c.etichetteOk) ? simboliPronti({ ...c0, lievitoOk: b.cotte.every(c => c.lievitoOk), etichetteOk: b.cotte.every(c => c.etichetteOk) }, s) : ''}</b><span>${mp ? html`<span class="mp">${lotti}</span>` : lotti} · <span title="${fineTot > b.a ? `In totale, compreso il travaso (${diffGiorni(b.da, b.a) + 1} gg in questo FV)` : ''}">${diffGiorni(b.da, fineTot) + 1} gg</span></span>
               ${giorniFasi.map(f => html`<span class="g-fase" style="right:${Math.max(right - left - f.x1, 0) + 3}px" title="${FASI[f.fase]}: ${f.giorni} giorni">${f.giorni} gg</span>`)}
               ${(c0.fermentazione || []).filter(e => e.data && e.data >= da && e.data <= a && eventiGiorno(e).length).map(e => html`<span class="g-ev" style="left:${diffGiorni(plan.inizio, e.data) * W - left - 1}px;width:${W}px" title="${eventiGiorno(e).join(' + ')} il ${dataIT(e.data)}">${eventiGiorno(e).map(k => SIMBOLI[k]).join('')}</span>`)}
               ${b.da <= oggi && oggi <= b.a && c0.data && oggi >= plan.inizio && oggi <= fineVista
-                ? html`<span class="g-eta" style="left:${diffGiorni(plan.inizio, oggi) * W - left - 1}px;width:${W}px" title="Cotta del ${dataIT(c0.data)}: giorno ${diffGiorni(c0.data, oggi) + 1}">${diffGiorni(c0.data, oggi) + 1}</span>` : ''}</a>`;
+                ? html`<span class="g-eta" style="left:${diffGiorni(plan.inizio, oggi) * W - left - 1}px;width:${W}px" title="Cotta del ${dataIT(c0.data)}: giorno ${diffGiorni(c0.data, oggi) + 1}">${diffGiorni(c0.data, oggi) + 1}</span>` : ''}
+              ${!lettore && b.a <= fineVista ? html`<span class="g-maniglia" title="Trascina per allungare o accorciare${fineTravaso ? ' (giorno del travaso)' : ''}"></span>` : ''}</a>`;
           })}
         </div></div>`)}
     </div></div>
@@ -1679,12 +1737,121 @@ function vistaPlanning() {
   document.getElementById('pianifica').onclick = () => dialogNuovaCotta({ titolo: 'Pianifica cotta', proponi: true });
   document.getElementById('esporta').onclick = esportaPlanning;
   document.getElementById('ferie').onclick = dialogFerie;
+  if (!lettore) trascinaBarre(document.querySelector('.gantt'));
   scrollOggi();
   function scrollOggi() {
     const wrap = document.querySelector('.gantt-wrap');
     const off = diffGiorni(plan.inizio, oggi);
     if (off >= 0 && off < plan.giorni) wrap.scrollLeft = Math.max(0, off * W - 120);
   }
+}
+
+// Barre del planning trascinabili (Romain 2026-10-22). Col mouse si trascina subito; col dito si tiene premuto
+// mezzo secondo (altrimenti il dito scorre il planning). La maniglia a destra allunga o accorcia.
+function trascinaBarre(gantt) {
+  let t = null;
+  const info = document.createElement('div');
+  info.className = 'drag-info';
+  const fine = () => {
+    clearTimeout(t?.timer);
+    if (t?.attivo) { t.bar.classList.remove('trascina'); t.bar.style.transform = ''; t.bar.style.width = t.w0; info.remove(); gantt.querySelectorAll('.g-days.meta').forEach(x => x.classList.remove('meta')); }
+    t = null;
+  };
+  const cotteDi = bar => bar.dataset.ids.split(',').map(id => stato.cotte.find(c => c.id === id)).filter(Boolean);
+  const calcola = e => {
+    const giorni = Math.round((e.clientX - t.x0) / W);
+    let fv = t.bar.dataset.fv;
+    if (t.modo === 'sposta') {
+      t.bar.style.pointerEvents = 'none';
+      const riga = document.elementFromPoint(e.clientX, e.clientY)?.closest('.g-days[data-fv]');
+      t.bar.style.pointerEvents = '';
+      if (riga) fv = riga.dataset.fv;
+    }
+    return { giorni, fv };
+  };
+  const avvia = () => {
+    t.attivo = true;
+    t.bar.classList.add('trascina');
+    document.body.appendChild(info);
+    navigator.vibrate?.(15);
+  };
+  const muovi = e => {
+    const { giorni, fv } = calcola(e);
+    const c0 = cotteDi(t.bar)[0];
+    if (t.modo === 'sposta') {
+      t.bar.style.transform = `translate(${giorni * W}px, ${e.clientY - t.y0}px)`;
+      gantt.querySelectorAll('.g-days[data-fv]').forEach(x => x.classList.toggle('meta', x.dataset.fv === fv && fv !== t.bar.dataset.fv));
+      info.textContent = `${c0?.birra || ''}: ${giorni ? `${giorni > 0 ? '+' : ''}${giorni} gg, cotta il ${dataIT(addGiorni(c0.data, giorni))}` : 'stessa data'}${fv !== t.bar.dataset.fv ? ` · in ${fv}` : ''}`;
+    } else {
+      t.bar.style.width = `${Math.max(parseFloat(t.w0) + giorni * W, W)}px`;
+      info.textContent = `${t.bar.dataset.fineTrav ? 'Travaso il' : 'Fine il'} ${dataIT(addGiorni(t.bar.dataset.a, giorni + (t.bar.dataset.fineTrav ? 1 : 0)))} (${giorni > 0 ? '+' : ''}${giorni} gg)`;
+    }
+    info.style.left = `${Math.min(e.clientX + 12, innerWidth - 240)}px`;
+    info.style.top = `${Math.max(e.clientY - 44, 8)}px`;
+  };
+  gantt.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    const bar = e.target.closest('.g-bar[data-ids]');
+    if (!bar) return;
+    const modo = e.target.closest('.g-maniglia') ? 'fine' : 'sposta';
+    t = { bar, modo, x0: e.clientX, y0: e.clientY, w0: bar.style.width, mouse: e.pointerType === 'mouse', attivo: false };
+    if (!t.mouse) { if (modo === 'fine') avvia(); else t.timer = setTimeout(() => t && avvia(), 450); }
+  });
+  gantt.addEventListener('pointermove', e => {
+    if (!t) return;
+    if (!t.attivo) {
+      if (t.mouse && Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > 5) { avvia(); t.bar.setPointerCapture?.(e.pointerId); } else if (!t.mouse && Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > 8) { fine(); return; } else return;
+    }
+    muovi(e);
+  });
+  // col dito, a trascinamento partito, il planning non deve scorrere
+  gantt.addEventListener('touchmove', e => { if (t?.attivo) e.preventDefault(); }, { passive: false });
+  gantt.addEventListener('contextmenu', e => { if (t) e.preventDefault(); });
+  gantt.addEventListener('pointercancel', fine);
+  gantt.addEventListener('dragstart', e => e.preventDefault()); // le barre sono link: niente trascinamento nativo del link
+  gantt.addEventListener('pointerup', async e => {
+    if (!t) return;
+    if (!t.attivo) { fine(); return; }
+    // niente click sulla barra (aprirebbe la cotta) dopo il trascinamento
+    gantt.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); }, { capture: true, once: true });
+    const { giorni, fv } = calcola(e);
+    const { modo, bar } = t;
+    fine();
+    await applicaTrascina(cotteDi(bar), modo, giorni, fv, bar.dataset);
+  });
+}
+
+async function applicaTrascina(cotte, modo, giorni, fv, ds) {
+  const oggi = oggiISO();
+  const cambiaFvDi = fv !== ds.fv;
+  if (!cotte.length || (!giorni && !cambiaFvDi)) return;
+  const nuove = [];
+  for (const c of cotte) {
+    let n = c;
+    if (modo === 'sposta') {
+      if (giorni) n = spostaCotta(n, giorni, oggi);
+      if (typeof n !== 'string' && cambiaFvDi) n = cambiaFv(n, fv, !!ds.trav, stato.fv);
+    } else if (ds.fineTrav) {
+      const tr = travasoCotta(c, stato.fv);
+      n = tr ? cambiaTravaso(c, addGiorni(tr.data, giorni), stato.durate, stato.fv) : c;
+    } else {
+      n = cambiaFine(c, addGiorni(fineCotta(c, stato.durate), giorni), stato.durate, stato.fv);
+    }
+    if (typeof n === 'string') { toast(n); return vistaPlanning(); }
+    nuove.push(n);
+  }
+  const c0 = cotte[0], n0 = nuove[0];
+  const nome = `${c0.birra} ${cotte.map(c => c.lotto).filter(Boolean).join(' + ')}`;
+  const msg = modo === 'sposta'
+    ? `${nome}: ${giorni ? `cotta dal ${dataIT(c0.data)} al ${dataIT(n0.data)}` : ''}${giorni && cambiaFvDi ? ', ' : ''}${cambiaFvDi ? `${ds.trav ? 'travaso' : 'fermentatore'} da ${ds.fv} a ${fv}` : ''}?`
+    : ds.fineTrav
+      ? `${nome}: travaso dal ${dataIT(travasoCotta(c0, stato.fv)?.data)} al ${dataIT(n0.travaso.data)}?`
+      : `${nome}: fine in FV dal ${dataIT(fineCotta(c0, stato.durate))} al ${dataIT(n0.fine)} (${diffGiorni(n0.data, n0.fine) + 1} giorni)?`;
+  if (!(await chiedi(msg, 'Cambia'))) return vistaPlanning();
+  for (const n of nuove) await db.salva(n);
+  await carica();
+  toast('Planning aggiornato');
+  vistaPlanning();
 }
 
 // Giorni non lavorativi (Romain 2026-10-22, "ferie" nel codice): periodi dal/al, gialli nel planning ed esclusi dalle date proposte
@@ -2268,6 +2435,8 @@ misuraTop();
   window.addEventListener('online', () => aggiornaRete());
   window.addEventListener('offline', () => aggiornaRete());
   sync.onStato(aggiornaRete);
+  if (auth.configurato()) sync.onStato(s => { if (s.ultimo && !s.errore) uniformaUnitaArchivio(); });
+  else uniformaUnitaArchivio();
   sync.avvia();
   // allegati aggiunti senza rete: si inviano appena c'è internet
   const allegatiInSospeso = () => { if (!lettore) allegati.inviaInSospeso(stato.cotte.filter(x => (x.allegati || []).some(a => !a.inviato))).then(cs => cs.length && db.salvaMolti(cs)).catch(() => {}); };

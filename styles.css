@@ -332,6 +332,8 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-mag td { padding: 6px; border-bottom: 1px solid var(--border); }
 .tab-mag th.n, .tab-mag td.n, .tab-edit th.n, .tab-edit td.n { text-align: right; white-space: nowrap; }
 .tab-mag tr.neg td { color: var(--warn); }
+.tab-mag tr.ordinato td { opacity: .55; }
+.tab-mag tr.ordinato td:first-child { opacity: 1; }
 .tab-mag tr.basso td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .tab-mag tr.futuro td { color: var(--muted); font-style: italic; }
 .scad.vicino { color: #c2410c; font-weight: 600; }
@@ -1193,3 +1195,18 @@ body.ordina { background: var(--bg); }
   .fc-piede { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e7e5e4; color: #a8a29e; font-size: 9px; }
 }
 #fc-trasporto[hidden] { display: none; }
+
+/* elenco birre di Nuova/Pianifica cotta: nome intero, a capo se lungo */
+.sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; max-height: 280px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 4px; }
+.sugg button { display: block; width: 100%; text-align: left; white-space: normal; background: none; border: 0; border-radius: 6px; padding: 7px 10px; font-weight: 400; color: var(--text); }
+.sugg button:hover, .sugg button:focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.sugg small { display: block; color: var(--muted); font-size: 12px; }
+
+/* barre del planning trascinabili */
+.g-bar[data-ids] { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.g-bar.trascina { z-index: 30; opacity: .85; box-shadow: 0 6px 16px rgb(0 0 0 / .3); cursor: grabbing; transition: none; }
+.g-maniglia { position: absolute; top: 0; right: 0; bottom: 0; width: 12px; cursor: ew-resize; touch-action: none; border-radius: 0 6px 6px 0; }
+.g-maniglia::after { content: ''; position: absolute; top: 25%; bottom: 25%; right: 4px; width: 3px; border-radius: 2px; background: rgb(0 0 0 / .35); }
+@media (pointer: coarse) { .g-maniglia { width: 20px; } }
+.g-days.meta { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.drag-info { position: fixed; z-index: 1000; pointer-events: none; background: var(--text); color: var(--bg); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
