@@ -1153,3 +1153,4 @@ body.ordina { background: var(--bg); }
 .or-modi legend { padding: 0 4px; font-weight: 600; }
 .or-indirizzo[hidden] { display: none; }
 .or-modi label.spunta { min-height: auto; margin: 6px 0; display: flex; gap: 8px; align-items: center; font-size: .95rem; }
+.b-impegnati { color: var(--accent-forte, #b45309); font-weight: 600; }

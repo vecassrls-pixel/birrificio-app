@@ -10,11 +10,11 @@ export const NOMI_TIPO = { invoice: 'Fattura', delivery_note: 'DDT', receipt: 'R
 export async function client() {
   const token = process.env.FIC_TOKEN;
   let azienda = process.env.FIC_COMPANY_ID;
-  const chiama = async (path, params = {}, conAzienda = true, corpo = null) => {
+  const chiama = async (path, params = {}, conAzienda = true, corpo = null, opzioni = null) => {
     const res = await fetch(`${BASE}${conAzienda ? `/c/${encodeURIComponent(azienda)}` : ''}${path}?${new URLSearchParams(params)}`, {
       method: corpo ? 'POST' : 'GET',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
-      ...(corpo ? { body: JSON.stringify({ data: corpo }) } : {}),
+      ...(corpo ? { body: JSON.stringify({ data: corpo, ...(opzioni ? { options: opzioni } : {}) }) } : {}),
     });
     if (!res.ok) {
       let msg = res.statusText;
@@ -107,11 +107,17 @@ export async function prodotti(fic) {
 export async function clienti(fic) {
   const out = [];
   for (let pagina = 1; pagina <= 20; pagina++) {
-    const r = await fic.chiama('/entities/clients', { fieldset: 'basic', sort: 'name', page: pagina, per_page: 100 });
+    const r = await fic.chiama('/entities/clients', { fieldset: 'detailed', sort: 'name', page: pagina, per_page: 100 });
     out.push(...(r.data || []));
     if (pagina >= (r.last_page || 1)) break;
   }
-  return out.map(c => ({ id: c.id, nome: c.name || '', piva: c.vat_number || c.tax_code || '' }));
+  // indirizzo e telefono dall'anagrafica: servono alle consegne degli ordini
+  const t = v => String(v || '').trim();
+  return out.map(c => ({
+    id: c.id, nome: c.name || '', piva: c.vat_number || c.tax_code || '',
+    indirizzo: t(c.address_street), comune: [t(c.address_postal_code), t(c.address_city), t(c.address_province) ? `(${t(c.address_province)})` : ''].filter(Boolean).join(' '),
+    telefono: t(c.phone),
+  }));
 }
 
 // Crea una fattura con le righe del carrello; la si completa e si invia in Fatture in Cloud.
@@ -121,7 +127,7 @@ export async function creaFattura(fic, { data, cliente, righe, lordo = false, al
   const iva = (await fic.chiama('/info/vat_types')).data || [];
   const vat = iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled && !v.e_invoice) || iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled);
   if (!vat) throw Object.assign(new Error(`Fatture in Cloud: non trovo l'aliquota IVA ${aliquota}%`), { status: 502 });
-  const d = (await fic.chiama('/issued_documents', {}, true, {
+  const doc = {
     type: 'invoice',
     entity: { ...(cliente.id ? { id: Number(cliente.id) } : {}), name: cliente.nome },
     date: data,
@@ -132,6 +138,12 @@ export async function creaFattura(fic, { data, cliente, righe, lordo = false, al
       qty: r.qta, ...(r.prezzo !== null && r.prezzo !== undefined ? { [lordo ? 'gross_price' : 'net_price']: r.prezzo } : {}),
       vat: { id: vat.id },
     })),
-  })).data;
+  };
+  // un pagamento unico non pagato pari al totale, come fa Fatture in Cloud a mano: senza, i pagamenti predefiniti
+  // del cliente non tornano con il totale (errore 422 "Il totale dei pagamenti non corrisponde al totale da pagare")
+  const tot = (await fic.chiama('/issued_documents/totals', {}, true, doc).catch(() => null))?.data || {};
+  const dovuto = Number(tot.amount_due ?? tot.amount_gross);
+  if (dovuto > 0) doc.payments_list = [{ amount: dovuto, due_date: data, status: 'not_paid' }];
+  const d = (await fic.chiama('/issued_documents', {}, true, doc, { fix_payments: true })).data;
   return { id: String(d.id), numero: `${NOMI_TIPO.invoice} ${d.number ?? ''}${d.numeration || ''}`.trim(), url: d.url || '' };
 }

@@ -9,6 +9,7 @@ import {
   listaDisponibili, testoListaBirre, formatoCliente, maiuscole, MARCHI, birreExist,
 } from './birra.js';
 import { nomeBirra } from './dominio.js';
+import { impegnatiOrdini } from './portale.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
 import { leggiCarrello, mettiNelCarrello, trascinabile, TIPO_DRAG } from './carrello.js';
 
@@ -16,10 +17,10 @@ let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGio
 export function init(strumenti) { u = strumenti; }
 
 export async function datiBirra() {
-  const [movimenti, inventari, prodotti, imp] = await Promise.all([
-    u.db.tutti('movbirra'), u.db.tutti('inventariobirra'), u.db.tutti('prodottobirra'), u.db.leggi(ID_IMPOSTAZIONI),
+  const [movimenti, inventari, prodotti, imp, ordini] = await Promise.all([
+    u.db.tutti('movbirra'), u.db.tutti('inventariobirra'), u.db.tutti('prodottobirra'), u.db.leggi(ID_IMPOSTAZIONI), u.db.tutti('ordinecliente'),
   ]);
-  return { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari, prodotti, impostazioni: imp && !imp.eliminato ? imp : null };
+  return { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari, prodotti, impostazioni: imp && !imp.eliminato ? imp : null, ordini, impegnati: impegnatiOrdini(ordini) };
 }
 export async function impostazioniBirra() { return impostazioniDa(await u.db.leggi(ID_IMPOSTAZIONI)); }
 async function salvaImpostazioni(patch) {
@@ -141,7 +142,7 @@ export async function vistaBirra() {
           <span class="b-icona" aria-hidden="true">${ICONA[x.tipo] || '🍺'}</span>
           <span class="b-nome">${nomeFormato(x.tipo, x.litri)}${x.mancanti ? html` <span title="Scaricati più pezzi di quelli caricati: manca un confezionamento o un inventario">⚠</span>` : ''}
             <span class="b-lotti">${x.lotti.length ? x.lotti.map(l => html`<span class="b-lotto">${l.lotto || 'senza lotto'} <b>${u.numIT(l.pezzi, 0)}</b></span>`) : html`<span class="totale">nessun lotto</span>`}</span></span>
-          <span class="b-num"><b>${u.numIT(x.giacenza, 0)}</b><small>pz · ${u.numIT(x.litriTot, 0)} L</small>${scadBadge(x)}</span>
+          <span class="b-num"><b>${u.numIT(x.giacenza, 0)}</b><small>pz · ${u.numIT(x.litriTot, 0)} L</small>${dati.impegnati.get(x.chiave) ? html`<small class="b-impegnati" title="Promessi negli ordini aperti non ancora fatturati">${u.numIT(dati.impegnati.get(x.chiave), 0)} impegnati · liberi ${u.numIT(x.giacenza - dati.impegnati.get(x.chiave), 0)}</small>` : ''}${scadBadge(x)}</span>
         </a>`)}
       </section>`;
     })}</div>` : filtri.marchio === 'exist' && !exist.size ? html`<div class="scheda"><p class="vuoto">Nessuna birra Exist ancora. Apri una birra (tocca un suo formato) e in "Grado alcolico, stile e marchio" scegli Marchio: Exist.</p></div>` : html`<div class="scheda"><p class="vuoto">${filtri.scad ? 'Nessuna birra scaduta o in scadenza 👍' : g.length ? 'Nessuna birra in magazzino con questi filtri.' : 'Nessuna birra: scrivi il confezionamento nella scheda di una cotta.'}</p></div>`}

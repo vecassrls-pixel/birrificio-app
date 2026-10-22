@@ -307,10 +307,11 @@ export function conCodice(prodotti, chiave, codice, x = 1) {
 // ---------- lista delle birre disponibili per i clienti ----------
 // Solo pezzi di lotti non scaduti; per ogni birra stile e grado alcolico.
 // dati come giacenzeBirra (+ prodotti e cotte per le caratteristiche)
+// dati.impegnati (facoltativo): Map prodotto → pezzi promessi dagli ordini aperti, che non sono più disponibili
 export function listaDisponibili(dati, oggi = oggiISO()) {
   const perBirra = new Map();
   for (const x of giacenzeBirra(dati, oggi).values()) {
-    const pezzi = x.lotti.filter(l => !l.scadenza || l.scadenza >= oggi).reduce((t, l) => t + l.pezzi, 0);
+    const pezzi = x.lotti.filter(l => !l.scadenza || l.scadenza >= oggi).reduce((t, l) => t + l.pezzi, 0) - (dati.impegnati?.get(x.chiave) || 0);
     if (pezzi <= 0) continue;
     if (!perBirra.has(x.birra)) {
       const c = caratteristiche(x.birra, dati.prodotti, dati.cotte);

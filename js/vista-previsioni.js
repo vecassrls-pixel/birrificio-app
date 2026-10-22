@@ -2,16 +2,17 @@
 // Calcoli in js/previsioni.js; i dati di vendita sono gli scarichi del magazzino birra (fatture, Shopify, taproom…).
 
 import { ID_IMPOSTAZIONI, giacenzeBirra, listaDisponibili, testoListaBirre } from './birra.js';
+import { impegnatiOrdini } from './portale.js';
 import { coperturaBirre, statoClienti, messaggioCliente, numeroWhatsApp, SETTIMANE_VENDITE } from './previsioni.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica, linkOrdini }
 export function init(strumenti) { u = strumenti; }
 
 async function datiBirra() {
-  const [movimenti, inventari, prodotti, imp, clienti] = await Promise.all([
-    u.db.tutti('movbirra'), u.db.tutti('inventariobirra'), u.db.tutti('prodottobirra'), u.db.leggi(ID_IMPOSTAZIONI), u.db.tutti('cliente'),
+  const [movimenti, inventari, prodotti, imp, clienti, ordini] = await Promise.all([
+    u.db.tutti('movbirra'), u.db.tutti('inventariobirra'), u.db.tutti('prodottobirra'), u.db.leggi(ID_IMPOSTAZIONI), u.db.tutti('cliente'), u.db.tutti('ordinecliente'),
   ]);
-  return { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari, prodotti, impostazioni: imp && !imp.eliminato ? imp : null, clienti };
+  return { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari, prodotti, impostazioni: imp && !imp.eliminato ? imp : null, clienti, impegnati: impegnatiOrdini(ordini) };
 }
 const L = n => `${u.numIT(n, 0)} L`;
 

@@ -106,7 +106,7 @@ cantina.init({ $app, html, raw, stato, dataIT, oggiISO, diffGiorni, conGiorniDh:
 magBirra.init({ $app, html, db, toast, chiedi, copia, stato, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 carrello.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, token: () => (auth.configurato() ? auth.token() : null) });
 previsioni.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica: pre => dialogNuovaCotta(pre), linkOrdini: (nome, scheda) => ordiniClienti.dialogLink(nome, scheda) });
-ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT, oggiISO, addGiorni });
+ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT, oggiISO, addGiorni, token: () => (auth.configurato() ? auth.token() : null) });
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
