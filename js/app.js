@@ -374,6 +374,7 @@ function dialogNuovaCotta(pre = {}) {
       <label style="margin-top:12px;display:block">Copia da <select name="copiaDa">
         <option value="">Ultima cotta della stessa birra</option>
         <option value="no">Nessuna: ricetta vuota</option>
+        <optgroup label="Ricetta Brewfather" id="og-bf"><option value="" disabled>carico le ricette…</option></optgroup>
         <optgroup label="Una cotta a scelta">${cotteDaCopiare.map(c => html`<option value="${c.id}" ${c.id === pre.copiaDa ? 'selected' : ''}>${c.lotto || '—'} · ${c.birra} · ${dataIT(c.data)}${c.fv ? ` · ${c.fv}` : ''}</option>`)}</optgroup>
       </select></label>
       <p class="totale" style="margin:4px 0 0">Si copiano ingredienti, litri, OG prevista, acqua, profilo di temperatura, giorni del DH e durata in FV.</p>
@@ -397,7 +398,7 @@ function dialogNuovaCotta(pre = {}) {
   document.body.appendChild(dlg);
   const f = dlg.querySelector('form');
   f.beerfirm.addEventListener('change', () => { f.beerfirm.dataset.toccato = '1'; });
-  const srcScelta = () => (f.copiaDa.value === 'no' ? null : f.copiaDa.value ? stato.cotte.find(c => c.id === f.copiaDa.value) : ultimaCottaDi(f.birra.value));
+  const srcScelta = () => (f.copiaDa.value === 'no' || f.copiaDa.value.startsWith('bf:') ? null : f.copiaDa.value ? stato.cotte.find(c => c.id === f.copiaDa.value) : ultimaCottaDi(f.birra.value));
   const aggiornaFv = () => {
     const birra = f.birra.value;
     // durata: quella del profilo che verrà copiato, altrimenti 34 giorni (fermentazione, DH, freddo)
@@ -481,7 +482,7 @@ function dialogNuovaCotta(pre = {}) {
     return applicaProposta(d, fv, tfv, td);
   };
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); proponiPrimo(); });
-  f.birra.addEventListener('change', () => { f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
+  f.birra.addEventListener('change', () => { proponiRicettaBf(); f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
   f.data.addEventListener('change', aggiornaFv);
   // numero e anno proposti dalla data: una cotta futura prende il suo posto in ordine di data
@@ -495,10 +496,37 @@ function dialogNuovaCotta(pre = {}) {
   };
   f.data.addEventListener('change', proponiNumero);
   proponiNumero();
+  // Romain 2026-10-22: anche le ricette di Brewfather, pure quelle mai fatte, nell'elenco birre e in "Copia da".
+  // Una birra senza cotte precedenti prende da sola la sua ricetta Brewfather.
+  let ricetteBf = [];
+  const ricettaPerNome = nome => ricetteBf.find(r => nomeBirra(r.nome) === nomeBirra(nome));
+  let bfAuto = false; // ricetta messa da sola: cambia se cambi la birra
+  const proponiRicettaBf = () => {
+    if (bfAuto) { f.copiaDa.value = ''; bfAuto = false; }
+    if (f.copiaDa.value || ultimaCottaDi(f.birra.value)) return;
+    const r = ricettaPerNome(f.birra.value);
+    if (r) { f.copiaDa.value = `bf:${r.id}`; bfAuto = true; }
+  };
+  (async () => {
+    const og = dlg.querySelector('#og-bf');
+    try {
+      ricetteBf = await bf.elencoRicette((await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT);
+    } catch { og.innerHTML = html`<option value="" disabled>Brewfather non raggiungibile (serve internet)</option>`.s; return; }
+    if (!dlg.isConnected) return;
+    const scelto = f.copiaDa.value;
+    og.innerHTML = html`${ricetteBf.map(r => html`<option value="bf:${r.id}">${r.nome}${r.stile ? ` · ${r.stile}` : ''}</option>`)}`.s;
+    f.copiaDa.value = scelto;
+    const note = new Set(birre);
+    dlg.querySelector('#dl-birre').insertAdjacentHTML('beforeend', html`${ricetteBf.filter(r => !note.has(nomeBirra(r.nome))).map(r => html`<option value="${nomeBirra(r.nome)}">`)}`.s);
+    proponiRicettaBf();
+  })();
   f.copiaDa.addEventListener('change', () => {
-    // cotta scelta senza birra scritta: la birra è quella della cotta
+    bfAuto = false;
+    // cotta o ricetta scelta senza birra scritta: la birra è quella della cotta o della ricetta
     const x = stato.cotte.find(c => c.id === f.copiaDa.value);
     if (x && !f.birra.value) f.birra.value = x.birra;
+    const rb = f.copiaDa.value.startsWith('bf:') && ricetteBf.find(r => `bf:${r.id}` === f.copiaDa.value);
+    if (rb && !f.birra.value) f.birra.value = nomeBirra(rb.nome);
     f.durata.dataset.auto = '1'; f.durata.value = ''; delete f.dh.dataset.toccato; aggiornaFv(); proponiPrimo();
   });
   aggiornaFv();
@@ -516,10 +544,18 @@ function dialogNuovaCotta(pre = {}) {
       og: null, fg: null, phMash: null, litri: null, sali: conAdditiviDefault(), malti: [], luppoli: [], lievito: [],
       acquaMash: {}, acquaSparge: {}, fermentazione: [], confezionato: [], note: '',
     };
+    // ricetta Brewfather scelta in "Copia da": ingredienti, acqua e profilo dalla ricetta
+    const idBf = String(fd.get('copiaDa') || '').startsWith('bf:') ? String(fd.get('copiaDa')).slice(3) : '';
+    if (idBf) {
+      try {
+        const r = await bf.scaricaRicetta((await db.meta('brewfatherProxy')) || bf.PROXY_DEFAULT, idBf);
+        Object.assign(base, nomiDaMagazzino(bf.ricettaPerCotta(base, r), (await db.tutti('articolo')).filter(a => !a.eliminato)));
+      } catch { toast('Ricetta Brewfather non scaricata: importala dalla scheda della cotta'); }
+    }
     const durata = Number(fd.get('durata'));
     if (!base.fermentazione.length) base.fermentazione = profiloDefault(data);
     if (durata && durata !== base.fermentazione.length) base.fine = addGiorni(data, durata - 1);
-    base.dh = !!fd.get('dh');
+    if (!idBf || f.dh.dataset.toccato) base.dh = !!fd.get('dh');
     // travaso proposto dal pianificatore, se data e FV sono rimasti quelli della proposta
     if (travasoScelto?.perData === data && travasoScelto.perFv === fv) base.travaso = { fv: travasoScelto.fv, data: travasoScelto.data };
     base.beerfirm = fd.get('beerfirm') || '';
