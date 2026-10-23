@@ -12,6 +12,9 @@
 //                  → { prodotti: [{ id, nome, codice }] }
 //                /.netlify/functions/fattureincloud?elenco=clienti    anagrafica clienti (permesso Clienti: lettura)
 //                  → { clienti: [{ id, nome, piva, indirizzo, comune, telefono }] }
+//                /.netlify/functions/fattureincloud?scadenze=1&dal=2025-10-01&pagateDal=2026-08-01
+//                  rate di fatture emesse, note di credito e acquisti per il cashflow (solo admin ed editori,
+//                  come la cassa) → { voci: [{ id, verso, tipo, numero, data, controparte, importo, scadenza, pagata }], senzaRate, altri }
 //   POST { azione: 'fattura', data, cliente: { id?, nome }, lordo, note, righe: [{ codice, nome, descrizione, qta, prezzo }],
 //          accompagnatoria: { colli, peso, causale, destinazione, trasportatore } | null }
 //                  crea la fattura (permesso Fatture: lettura e scrittura) → { id, numero, url }
@@ -53,6 +56,19 @@ async function fattura(req) {
   }
 }
 
+// il cashflow non lo vede chi è in sola lettura, come la cassa (Romain 2026-10-19)
+async function scadenze(req, url) {
+  if (!(await puoScrivere(req))) return json({ errore: 'Il cashflow lo vedono solo admin ed editori' }, 401);
+  const dal = dataValida(url.searchParams.get('dal')), pagateDal = dataValida(url.searchParams.get('pagateDal')) || dal;
+  if (!dal) return json({ errore: 'Data non valida' }, 400);
+  try {
+    return json(await fic.scadenze(await fic.client(), { dal, pagateDal }));
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) return json({ errore: 'Il token di Fatture in Cloud non può leggere fatture e acquisti: controlla i permessi in lettura su Fatture, Note di credito e Acquisti dell\'app "Global Brewing".' }, 502);
+    return json({ errore: e.message }, 500);
+  }
+}
+
 export default async req => {
   if (!fic.configurato()) return json({ errore: 'Fatture in Cloud non configurato sul server' }, 503);
   if (req.method === 'POST') return fattura(req);
@@ -60,6 +76,7 @@ export default async req => {
   if (!(await autorizzato(req))) return json({ errore: 'Accesso non autorizzato' }, 401);
 
   const url = new URL(req.url);
+  if (url.searchParams.get('scadenze')) return scadenze(req, url);
   const elenco = ['prodotti', 'clienti'].includes(url.searchParams.get('elenco')) ? url.searchParams.get('elenco') : '';
   const dal = dataValida(url.searchParams.get('dal'));
   const tipo = TIPI.includes(url.searchParams.get('tipo')) ? url.searchParams.get('tipo') : 'invoice';

@@ -93,6 +93,60 @@ export async function acquisti(fic, { dal, max = 40 }) {
   };
 }
 
+// Scadenze dei pagamenti per il cashflow (pagina #/cashflow): le rate (payments_list) delle fatture emesse,
+// delle note di credito e dei documenti dei fornitori dal giorno `dal`. Si tengono le rate non pagate e quelle
+// pagate dal giorno `pagateDal` (per le ultime settimane).
+// → { voci: [{ id, verso: 'entrata'|'uscita', tipo, numero, data, controparte, importo, scadenza, pagata }], senzaRate, altri }
+//   importo in euro, positivo; le note di credito sono entrate negative (riducono quanto ci devono).
+const PAGINE_SCADENZE = 15;
+async function documentiConRate(fic, path, params) {
+  const docs = [];
+  let altri = false;
+  for (let pagina = 1; ; pagina++) {
+    const r = await fic.chiama(path, { ...params, fieldset: 'detailed', sort: '-date', page: pagina, per_page: 100 });
+    docs.push(...(r.data || []));
+    if (pagina >= (r.last_page || 1)) break;
+    if (pagina >= PAGINE_SCADENZE) { altri = true; break; }
+  }
+  // l'elenco a volte non porta le rate: si leggono uno per uno (al massimo 60, 6 alla volta)
+  const mancanti = docs.map((d, i) => [d, i]).filter(([d]) => !Array.isArray(d.payments_list)).slice(0, 60);
+  for (let i = 0; i < mancanti.length; i += 6) {
+    await Promise.all(mancanti.slice(i, i + 6).map(async ([d, j]) => {
+      docs[j] = (await fic.chiama(`${path}/${d.id}`, { fieldset: 'detailed' }).catch(() => null))?.data || d;
+    }));
+  }
+  return { docs, altri };
+}
+export async function scadenze(fic, { dal, pagateDal }) {
+  const q = { q: `date >= '${dal}'` };
+  const [fatture, note, acquisti] = await Promise.all([
+    documentiConRate(fic, '/issued_documents', { ...q, type: 'invoice' }),
+    documentiConRate(fic, '/issued_documents', { ...q, type: 'credit_note' }),
+    documentiConRate(fic, '/received_documents', { ...q, type: 'expense' }),
+  ]);
+  const voci = [];
+  let senzaRate = 0;
+  const aggiungi = (d, verso, tipo, segno, numero) => {
+    const rate = Array.isArray(d.payments_list) ? d.payments_list : null;
+    if (!rate || !rate.length) { senzaRate++; return; }
+    rate.forEach((p, i) => {
+      if (p.status === 'reversed') return;
+      const pagata = p.status === 'paid' ? (p.paid_date || p.due_date || d.date) : null;
+      if (pagata && pagata < pagateDal) return;
+      const importo = Number(p.amount);
+      if (!(importo > 0)) return;
+      voci.push({
+        id: `${tipo}-${d.id}-${i}`, verso, tipo, numero, data: d.date, controparte: d.entity?.name || '',
+        importo: segno * importo, scadenza: p.due_date || d.date, pagata,
+      });
+    });
+  };
+  for (const d of fatture.docs) aggiungi(d, 'entrata', 'fattura', 1, `Fattura ${d.number ?? ''}${d.numeration || ''}`.trim());
+  for (const d of note.docs) aggiungi(d, 'entrata', 'nota', -1, `Nota di credito ${d.number ?? ''}${d.numeration || ''}`.trim());
+  for (const d of acquisti.docs) aggiungi(d, 'uscita', 'acquisto', 1, d.invoice_number ? `Fattura ${d.invoice_number}` : (d.description || 'Spesa'));
+  return { voci, senzaRate, altri: fatture.altri || note.altri || acquisti.altri };
+}
+
 export async function prodotti(fic) {
   const out = [];
   for (let pagina = 1; pagina <= 20; pagina++) {

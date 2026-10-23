@@ -1092,7 +1092,7 @@ body.ordina { background: var(--bg); }
 @media screen { .s6-pag.s6-altra { display: none; } }
 @media print { .s6-pag + .s6-pag { break-before: page; } }
 /* la cassa non si mostra a chi è in sola lettura */
-.lettore .top nav a[data-tab="cassa"], .lettore a[href="#/cassa"] { display: none !important; }
+.lettore .top nav a[data-tab="cassa"], .lettore a[href="#/cassa"], .lettore a[href="#/cashflow"] { display: none !important; }
 
 /* Beerfirm: cotte fatte per conto terzi */
 .bf-chip { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; background: #1c1917; color: #fff; border-radius: 4px; padding: 1px 5px; vertical-align: 1px; line-height: 1.3; }
@@ -1210,3 +1210,19 @@ body.ordina { background: var(--bg); }
 @media (pointer: coarse) { .g-maniglia { width: 20px; } }
 .g-days.meta { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .drag-info { position: fixed; z-index: 1000; pointer-events: none; background: var(--text); color: var(--bg); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+/* cashflow */
+.cf-avviso { border-left: 4px solid var(--s-tank); }
+.cf-rosso { border-left-color: var(--warn); }
+.cf-grafico { display: block; width: 100%; height: auto; max-height: 240px; margin: 4px 0 12px; }
+.cf-grafico .cf-barra path { fill: var(--s-pianificata); }
+.cf-grafico .cf-barra.cf-sotto path { fill: var(--warn); }
+.cf-grafico .cf-barra:hover path { opacity: .8; }
+.cf-grafico .cf-griglia { stroke: var(--border); stroke-width: 1; }
+.cf-grafico .cf-zero { stroke: var(--muted); stroke-width: 1; }
+.cf-grafico .cf-soglia { stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.cf-grafico .cf-asse { fill: var(--muted); font-size: 11px; }
+.cf-tab tr.cf-sett { cursor: pointer; }
+.cf-tab tr.cf-dett > td { background: var(--surface-2); }
+.cf-tab td:first-child { white-space: nowrap; }
+@media (max-width: 600px) { .cf-tab .cf-n, .cf-tab .cf-fino, .cf-tab th:nth-child(4), .cf-tab tr.cf-sett td:nth-child(4) { display: none; } .cf-grafico { min-height: 150px; } }
