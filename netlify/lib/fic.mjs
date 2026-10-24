@@ -148,7 +148,7 @@ export async function creaFattura(fic, { data, cliente, righe, lordo = false, al
   if (c.default_payment_terms_type === 'end_of_month') scad.setUTCDate(new Date(Date.UTC(scad.getUTCFullYear(), scad.getUTCMonth() + 1, 0)).getUTCDate());
   const scadenza = scad.toISOString().slice(0, 10);
   const perCodice = new Map();
-  if (righe.some(r => r.codice)) for (const p of await prodotti(fic).catch(() => [])) if (p.codice) perCodice.set(p.codice.trim().toLowerCase(), p);
+  if (righe.some(r => r.codice)) for (const p of await prodotti(fic).catch(() => [])) { if (p.nome && !perCodice.has(p.nome.trim().toLowerCase())) perCodice.set(p.nome.trim().toLowerCase(), p); if (p.codice) perCodice.set(p.codice.trim().toLowerCase(), p); } // anche per nome: tra i codici salvati ci sono le descrizioni dei prodotti
   const doc = {
     type: 'invoice',
     entity,
@@ -168,7 +168,7 @@ export async function creaFattura(fic, { data, cliente, righe, lordo = false, al
     } : {}),
     items_list: righe.map(r => ({
       ...(r.codice && perCodice.get(r.codice.toLowerCase()) ? { product_id: Number(perCodice.get(r.codice.toLowerCase()).id) } : {}),
-      ...(r.codice ? { code: perCodice.get(r.codice.toLowerCase())?.codice || r.codice } : {}),
+      ...(r.codice ? { code: perCodice.get(r.codice.toLowerCase())?.codice || r.codice.slice(0, 30) } : {}),
       name: perCodice.get(r.codice?.toLowerCase())?.nome || r.nome, ...(r.descrizione ? { description: r.descrizione } : {}),
       qty: r.qta, ...(r.prezzo !== null && r.prezzo !== undefined ? { [lordo ? 'gross_price' : 'net_price']: r.prezzo } : {}),
       vat: { id: vat.id },
