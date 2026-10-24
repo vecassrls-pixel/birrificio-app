@@ -131,13 +131,22 @@ export async function creaFattura(fic, { data, cliente, righe, lordo = false, al
   const iva = (await fic.chiama('/info/vat_types')).data || [];
   const vat = iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled && !v.e_invoice) || iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled);
   if (!vat) throw Object.assign(new Error(`Fatture in Cloud: non trovo l'aliquota IVA ${aliquota}%`), { status: 502 });
-  let entity = { name: cliente.nome };
+  let entity = { name: cliente.nome }, c = {};
   if (cliente.id) {
-    const c = (await fic.chiama(`/entities/clients/${encodeURIComponent(cliente.id)}`, { fieldset: 'detailed' })).data || {};
+    c = (await fic.chiama(`/entities/clients/${encodeURIComponent(cliente.id)}`, { fieldset: 'detailed' })).data || {};
     entity = Object.fromEntries(CAMPI_ENTITA.filter(k => c[k] !== undefined && c[k] !== null && c[k] !== '').map(k => [k, c[k]]));
     entity.id = Number(cliente.id);
     entity.name ||= cliente.nome;
   }
+  // fattura elettronica (Romain 2026-10-24): codice destinatario dall'anagrafica, 0000000 se il cliente ha solo la PEC
+  entity.e_invoice = true;
+  entity.ei_code ||= '0000000';
+  // scadenza e metodo di pagamento predefiniti del cliente, come quando la fattura si fa a mano
+  const giorni = Number(c.default_payment_terms) || 0;
+  const scad = new Date(`${data}T12:00:00Z`);
+  scad.setUTCDate(scad.getUTCDate() + giorni);
+  if (c.default_payment_terms_type === 'end_of_month') scad.setUTCDate(new Date(Date.UTC(scad.getUTCFullYear(), scad.getUTCMonth() + 1, 0)).getUTCDate());
+  const scadenza = scad.toISOString().slice(0, 10);
   const perCodice = new Map();
   if (righe.some(r => r.codice)) for (const p of await prodotti(fic).catch(() => [])) if (p.codice) perCodice.set(p.codice.trim().toLowerCase(), p);
   const doc = {
@@ -145,6 +154,9 @@ export async function creaFattura(fic, { data, cliente, righe, lordo = false, al
     entity,
     date: data,
     use_gross_prices: !!lordo,
+    e_invoice: true,
+    ei_data: { vat_kind: 'I', payment_method: 'MP05' }, // bonifico
+    ...(c.default_payment_method?.id ? { payment_method: { id: c.default_payment_method.id } } : {}),
     ...(note ? { notes: note } : {}),
     ...(accompagnatoria ? {
       accompanying_invoice: true,
@@ -166,7 +178,7 @@ export async function creaFattura(fic, { data, cliente, righe, lordo = false, al
   // del cliente non tornano con il totale (errore 422 "Il totale dei pagamenti non corrisponde al totale da pagare")
   const tot = (await fic.chiama('/issued_documents/totals', {}, true, doc).catch(() => null))?.data || {};
   const dovuto = Number(tot.amount_due ?? tot.amount_gross);
-  if (dovuto > 0) doc.payments_list = [{ amount: dovuto, due_date: data, status: 'not_paid' }];
+  if (dovuto > 0) doc.payments_list = [{ amount: dovuto, due_date: scadenza, status: 'not_paid' }];
   const d = (await fic.chiama('/issued_documents', {}, true, doc, { fix_payments: true })).data;
   return { id: String(d.id), numero: `${NOMI_TIPO.invoice} ${d.number ?? ''}${d.numeration || ''}`.trim(), url: d.url || '' };
 }

@@ -235,7 +235,7 @@ export async function vistaCarrello() {
         <datalist id="fc-dl-trasp"><option value="Mittente"><option value="Destinatario"><option value="Vettore"></datalist>
         <label style="grid-column:1/-1">Destinazione <input id="fc-dest" value="${destinazione}" placeholder="se diversa dalla sede del cliente"></label>
       </div>
-      <p class="totale">Prezzi ${iva ? 'IVA inclusa' : 'IVA esclusa'}, aliquota 22%. La fattura si crea in Fatture in Cloud e la completi lì (pagamento, invio). ${giaScaricato ? `L'ordine è già scaricato dal magazzino (${u.dataIT(giaScaricato.data)}): la fattura si collega a quello scarico e non scarica di nuovo` : 'Lo scarico dal magazzino si fa subito, con i lotti scelti,'}; l'import notturno non lo ripete.</p>
+      <p class="totale">Prezzi ${iva ? 'IVA inclusa' : 'IVA esclusa'}, aliquota 22%. La fattura elettronica si crea in Fatture in Cloud con scadenza e pagamento predefiniti del cliente: la controlli e la invii allo SDI da lì. ${giaScaricato ? `L'ordine è già scaricato dal magazzino (${u.dataIT(giaScaricato.data)}): la fattura si collega a quello scarico e non scarica di nuovo` : 'Lo scarico dal magazzino si fa subito, con i lotti scelti,'}; l'import notturno non lo ripete.</p>
       <div class="barra"><span class="spazio"></span><button value="no" formnovalidate>Annulla</button><button class="primario" id="fc-crea" value="si">Crea la fattura</button></div>
     </form>`.s;
     document.body.appendChild(d);
