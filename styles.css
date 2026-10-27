@@ -628,6 +628,7 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 
 /* Listini */
 .tab-listino tr.li-gruppo td { padding: 12px 4px 2px; font-weight: 700; border-bottom: 1px solid var(--border); }
+.tab-listino tr.li-gruppo .li-info { font-weight: 400; color: var(--muted); margin-left: 6px; }
 .tab-listino input[type="number"] { width: 110px; }
 .tab-listino tr.escluso td:not(:first-child) { opacity: .45; }
 .tab-listino input.fisso { border-color: var(--accent); font-weight: 600; }

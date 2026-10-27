@@ -80,6 +80,11 @@ export const righeDaCopiare = righe => righe.filter(r => !r.escluso && r.prezzo)
 
 export const soldi = n => Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const euro = n => `€ ${soldi(n)}`;
+// "IPA · 6,5% vol" dalle righe arricchite con stile e abv (vedi conCaratteristiche)
+const numIT1 = n => Number(n).toLocaleString('it-IT', { maximumFractionDigits: 1 });
+export const infoBirra = r => [r.stile || '', r.abv > 0 ? `${numIT1(r.abv)}% vol` : ''].filter(Boolean).join(' · ');
+// aggiunge a ogni riga stile e grado alcolico della birra. info: (birra) → { stile, abv }
+export const conCaratteristiche = (righe, info) => righe.map(r => ({ ...r, ...info(r.birra) }));
 const testoIva = l => (l.iva ? `Prezzi IVA ${ALIQUOTA_IVA}% inclusa` : 'Prezzi IVA esclusa');
 
 // Testo da incollare in un messaggio o una mail: una birra per blocco, un formato per riga.
@@ -88,13 +93,13 @@ export function testoListino(l, righe, data) {
   if (l.note?.trim()) out.push(l.note.trim());
   let birra = '';
   for (const r of righeDaCopiare(righe)) {
-    if (r.birra !== birra) { out.push('', r.birra); birra = r.birra; }
+    if (r.birra !== birra) { out.push('', [r.birra, infoBirra(r)].filter(Boolean).join(' · ')); birra = r.birra; }
     out.push(`  ${r.formato}: ${euro(r.prezzo)}`);
   }
   return out.join('\n');
 }
 // Tabella da incollare in Excel o Numbers (colonne separate da tabulazione, numeri all'italiana)
 export function tabellaListino(l, righe) {
-  return [['Birra', 'Formato', `Prezzo € (${l.iva ? 'IVA inclusa' : 'IVA esclusa'})`].join('\t'),
-    ...righeDaCopiare(righe).map(r => [r.birra, r.formato, soldi(r.prezzo)].join('\t'))].join('\n');
+  return [['Birra', 'Stile', 'Grado % vol', 'Formato', `Prezzo € (${l.iva ? 'IVA inclusa' : 'IVA esclusa'})`].join('\t'),
+    ...righeDaCopiare(righe).map(r => [r.birra, r.stile || '', r.abv > 0 ? numIT1(r.abv) : '', r.formato, soldi(r.prezzo)].join('\t'))].join('\n');
 }

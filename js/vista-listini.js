@@ -1,9 +1,9 @@
 // Pagina "Listini": listino base Alpha (prezzi scritti a mano) + ricarico = altri listini con nome, da copiare e incollare.
 // Calcoli in listini.js.
 
-import { ID_IMPOSTAZIONI, elencoProdotti, giacenzeBirra, formatoCliente } from './birra.js';
+import { ID_IMPOSTAZIONI, elencoProdotti, giacenzeBirra, formatoCliente, caratteristiche, maiuscole } from './birra.js';
 import { LOGO_KASHMIR } from './logo-kashmir.js';
-import { ARROTONDA, ALIQUOTA_IVA, ID_ALPHA, nuovoAlpha, perCalcolo, nuovoListino, listinoDa, GRUPPI_RICARICO, testoRicarico, righeListino, righeDaCopiare, testoListino, tabellaListino, soldi } from './listini.js';
+import { ARROTONDA, ALIQUOTA_IVA, ID_ALPHA, nuovoAlpha, perCalcolo, nuovoListino, listinoDa, GRUPPI_RICARICO, testoRicarico, righeListino, righeDaCopiare, testoListino, conCaratteristiche, infoBirra, tabellaListino, soldi } from './listini.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia }
 export function init(strumenti) { u = strumenti; }
@@ -27,6 +27,14 @@ async function dati() {
     listini: [alpha, ...tutti.filter(x => x.id !== ID_ALPHA).sort((a, b) => a.nome.localeCompare(b.nome, 'it'))],
     chiavi: elencoProdotti(d),
     giacenze: giacenzeBirra(d),
+    // stile e grado alcolico per birra: quelli scritti in Birra, altrimenti dall'ultima cotta
+    info: (() => {
+      const cache = new Map();
+      return birra => {
+        if (!cache.has(birra)) { const c = caratteristiche(birra, prodotti, u.stato.cotte); cache.set(birra, { stile: c.stileVale ? maiuscole(c.stileVale) : '', abv: c.abvVale }); }
+        return cache.get(birra);
+      };
+    })(),
   };
 }
 // Foglio da stampare o salvare in PDF (solo in stampa), con lo stesso stile della lista birre per i clienti
@@ -37,13 +45,14 @@ function foglio(l, righe, oggi) {
     if (birre.at(-1)?.birra !== r.birra) birre.push({ birra: r.birra, formati: [] });
     birre.at(-1).formati.push(r);
   }
+  const info = b => infoBirra(b.formati[0]);
   return html`<div class="lista-clienti li-foglio solo-stampa">
     <div class="lc-testa">
       <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
       <div><h1>Listino ${l.nome}</h1><div class="lc-data">Prezzi al ${oggi} · ${l.iva ? `IVA ${ALIQUOTA_IVA}% inclusa` : 'IVA esclusa'}</div>
         ${l.note?.trim() ? html`<div class="lc-data">${l.note.trim()}</div>` : ''}</div>
     </div>
-    <div class="lc-griglia">${birre.map(b => html`<section class="lc-birra"><h2>${b.birra}</h2>
+    <div class="lc-griglia">${birre.map(b => html`<section class="lc-birra"><h2>${b.birra}</h2>${info(b) ? html`<p class="lc-info">${info(b)}</p>` : ''}
       ${b.formati.map(f => html`<div class="lc-formato"><span>${formatoCliente(f)}</span><span class="lc-punti"></span><b>€ ${soldi(f.prezzo)}</b></div>`)}
     </section>`)}</div>
     <p class="lc-piede">Kashmir Brewing Company · prezzi al pezzo, soggetti a variazioni</p>
@@ -57,7 +66,7 @@ export async function vistaListini() {
   const l = D.listini.find(x => x.id === leggiScelto()) || D.listini[0];
   const eAlpha = l.id === ID_ALPHA;
   const vendita = D.alpha.prezzi || {};
-  const righe = l ? righeListino(l, D.chiavi, D.giacenze, vendita, D.alpha.esclusi) : [];
+  const righe = l ? conCaratteristiche(righeListino(l, D.chiavi, D.giacenze, vendita, D.alpha.esclusi), D.info) : [];
   const daCopiare = righeDaCopiare(righe);
   const senzaBase = righe.filter(r => !r.escluso && !r.base && !r.fisso).length;
   const oggi = u.dataIT(u.oggiISO());
@@ -102,7 +111,7 @@ export async function vistaListini() {
         <tbody>${righe.map(r => {
           const prima = r.birra !== birraPrima;
           birraPrima = r.birra;
-          return html`${prima ? html`<tr class="li-gruppo"><td colspan="6">${r.birra}</td></tr>` : ''}<tr class="${r.escluso ? 'escluso' : ''}">
+          return html`${prima ? html`<tr class="li-gruppo"><td colspan="6">${r.birra}${infoBirra(r) ? html` <small class="li-info">${infoBirra(r)}</small>` : ''}</td></tr>` : ''}<tr class="${r.escluso ? 'escluso' : ''}">
             <td><input type="checkbox" data-includi="${r.chiave}" ${r.escluso ? '' : 'checked'} title="Nel listino"></td>
             <td>${r.formato}</td>
             <td class="n li-extra">${r.giacenza ? u.numIT(r.giacenza, 0) : '—'}</td>
