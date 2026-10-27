@@ -2,7 +2,7 @@
 // Calcoli in listini.js.
 
 import { ID_IMPOSTAZIONI, elencoProdotti, giacenzeBirra } from './birra.js';
-import { ARROTONDA, ALIQUOTA_IVA, ID_ALPHA, nuovoAlpha, perCalcolo, nuovoListino, listinoDa, prezzoListino, righeListino, righeDaCopiare, testoListino, tabellaListino, soldi } from './listini.js';
+import { ARROTONDA, ALIQUOTA_IVA, ID_ALPHA, nuovoAlpha, perCalcolo, nuovoListino, listinoDa, GRUPPI_RICARICO, testoRicarico, righeListino, righeDaCopiare, testoListino, tabellaListino, soldi } from './listini.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia }
 export function init(strumenti) { u = strumenti; }
@@ -49,11 +49,11 @@ export async function vistaListini() {
       <button class="primario solo-editori" id="li-nuovo">+ Nuovo listino</button>
     </div>
     ${D.listini.length > 1 ? html`<div class="filtri-stato" role="group" aria-label="Listino">
-      ${D.listini.map(x => html`<button class="st-libero ${x.id === l.id ? 'attivo' : ''}" data-scegli="${x.id}" aria-pressed="${x.id === l.id}">${x.nome} <b>${x.id === ID_ALPHA ? 'base' : `${x.ricarico > 0 ? '+' : ''}${u.numIT(x.ricarico, 1)}%`}</b></button>`)}
+      ${D.listini.map(x => html`<button class="st-libero ${x.id === l.id ? 'attivo' : ''}" data-scegli="${x.id}" aria-pressed="${x.id === l.id}">${x.nome} <b>${x.id === ID_ALPHA ? 'base' : testoRicarico(x, u.numIT)}</b></button>`)}
     </div>` : ''}
     ${D.listini.length === 1 ? html`<div class="scheda avviso"><h2>Come funziona</h2>
       <p>Scrivi i prezzi del listino base Alpha, poi crea gli altri listini con un ricarico in % su Alpha: per esempio "Distributori +15%", "Pub +30%", "Taproom IVA inclusa".
-      Ogni listino resta salvato e si copia con un tocco per incollarlo in un messaggio, una mail o Excel.</p>
+      Il ricarico può essere diverso per fusti e lattine. Ogni listino resta salvato e si copia con un tocco per incollarlo in un messaggio, una mail o Excel.</p>
       <button class="primario solo-editori" id="li-nuovo2">Crea un listino da Alpha</button></div>` : ''}${html`
     <div class="scheda">
       <div class="barra" style="margin-top:0">
@@ -63,7 +63,8 @@ export async function vistaListini() {
       </div>
       <div class="griglia solo-editori">
         <label>Nome<input data-campo="nome" value="${l.nome}"></label>
-        ${eAlpha ? '' : html`<label>Ricarico su Alpha (%)<input data-campo="ricarico" type="number" step="any" inputmode="decimal" value="${l.ricarico}"></label>`}
+        ${eAlpha ? '' : html`<label>Ricarico su Alpha (%)<input data-campo="ricarico" type="number" step="any" inputmode="decimal" value="${l.ricarico}"></label>
+        ${GRUPPI_RICARICO.map(([tipo, nome]) => html`<label>Ricarico ${nome.toLowerCase()} (%)<input data-ricarico="${tipo}" type="number" step="any" inputmode="decimal" value="${l.ricarichi[tipo] ?? ''}" placeholder="come sopra: ${u.numIT(Number(l.ricarico) || 0, 1)}" title="Vuoto = vale il ricarico su Alpha"></label>`)}`}
         <label>Arrotonda per eccesso a<select data-campo="arrotonda">${ARROTONDA.map(([v, n]) => html`<option value="${v}" ${Number(l.arrotonda) === v ? 'selected' : ''}>${n}</option>`)}</select></label>
         <label>Prodotti<select data-campo="prodotti">
           <option value="magazzino" ${l.prodotti === 'magazzino' ? 'selected' : ''}>Solo quelli in magazzino</option>
@@ -72,7 +73,7 @@ export async function vistaListini() {
       <label class="solo-editori" style="margin-top:10px"><input type="checkbox" data-campo="iva" ${l.iva ? 'checked' : ''}> Prezzi IVA inclusa (${ALIQUOTA_IVA}%)</label>
       <label class="solo-editori" style="margin-top:10px">Note in fondo al titolo (consegna, minimo d'ordine…)<textarea data-campo="note" rows="2">${l.note || ''}</textarea></label>
       ${eAlpha ? html`<p class="totale"><b>Alpha è il listino base</b>: scrivi a mano il prezzo (IVA esclusa) dei prodotti che vendi; togli la spunta a quelli che non vendi. Gli altri listini contengono solo i prodotti con un prezzo in Alpha, più il loro ricarico.</p>` : ''}
-      <p class="totale">${daCopiare.length} prodotti nel listino · prezzo = ${eAlpha ? 'prezzo Alpha' : `Alpha ${l.ricarico >= 0 ? '+' : '−'} ${u.numIT(Math.abs(l.ricarico), 1)}%`}${l.iva ? ` + IVA ${ALIQUOTA_IVA}%` : ', IVA esclusa'}${Number(l.arrotonda) ? `, arrotondato per eccesso a ${soldi(l.arrotonda)} €` : ''}.
+      <p class="totale">${daCopiare.length} prodotti nel listino · prezzo = ${eAlpha ? 'prezzo Alpha' : `Alpha ${testoRicarico(l, u.numIT)}`}${l.iva ? ` + IVA ${ALIQUOTA_IVA}%` : ', IVA esclusa'}${Number(l.arrotonda) ? `, arrotondato per eccesso a ${soldi(l.arrotonda)} €` : ''}.
         ${senzaBase ? html`<b>⚠ ${senzaBase} senza prezzo in Alpha</b>: ${eAlpha ? 'scrivilo nella colonna Base o togli la spunta se non lo vendi' : html`scrivilo nel listino <button class="link st-libero" data-scegli="${ID_ALPHA}">Alpha</button>`}.` : ''}</p>
       ${righe.length ? html`<div class="scroll-x"><table class="tab-edit tab-listino">
         <thead><tr><th title="Nel listino">✓</th><th>Formato</th><th class="n li-extra">Giacenza</th><th>${eAlpha ? 'Base €' : 'Alpha €'}</th><th>${eAlpha ? 'Prezzo €' : 'Prezzo listino €'}</th><th class="n li-extra">€/L</th></tr></thead>
@@ -125,6 +126,13 @@ export async function vistaListini() {
       if (c === 'arrotonda') v = Number(v);
       if (c === 'nome' && !v.trim()) return vistaListini();
       await salvaListino({ ...l, [c]: c === 'nome' ? v.trim() : v });
+      return vistaListini();
+    }
+    if (t.dataset.ricarico && l) {
+      const ricarichi = { ...l.ricarichi };
+      const n = Number(String(t.value).replace(',', '.'));
+      if (t.value === '' || !Number.isFinite(n)) delete ricarichi[t.dataset.ricarico]; else ricarichi[t.dataset.ricarico] = n;
+      await salvaListino({ ...l, ricarichi });
       return vistaListini();
     }
     if (t.dataset.includi && l) {
