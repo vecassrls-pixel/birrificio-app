@@ -1,7 +1,8 @@
 // Pagina "Listini": listino base Alpha (prezzi scritti a mano) + ricarico = altri listini con nome, da copiare e incollare.
 // Calcoli in listini.js.
 
-import { ID_IMPOSTAZIONI, elencoProdotti, giacenzeBirra } from './birra.js';
+import { ID_IMPOSTAZIONI, elencoProdotti, giacenzeBirra, formatoCliente } from './birra.js';
+import { LOGO_KASHMIR } from './logo-kashmir.js';
 import { ARROTONDA, ALIQUOTA_IVA, ID_ALPHA, nuovoAlpha, perCalcolo, nuovoListino, listinoDa, GRUPPI_RICARICO, testoRicarico, righeListino, righeDaCopiare, testoListino, tabellaListino, soldi } from './listini.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia }
@@ -27,6 +28,26 @@ async function dati() {
     chiavi: elencoProdotti(d),
     giacenze: giacenzeBirra(d),
   };
+}
+// Foglio da stampare o salvare in PDF (solo in stampa), con lo stesso stile della lista birre per i clienti
+function foglio(l, righe, oggi) {
+  const { html } = u;
+  const birre = [];
+  for (const r of righeDaCopiare(righe)) {
+    if (birre.at(-1)?.birra !== r.birra) birre.push({ birra: r.birra, formati: [] });
+    birre.at(-1).formati.push(r);
+  }
+  return html`<div class="lista-clienti li-foglio solo-stampa">
+    <div class="lc-testa">
+      <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
+      <div><h1>Listino ${l.nome}</h1><div class="lc-data">Prezzi al ${oggi} · ${l.iva ? `IVA ${ALIQUOTA_IVA}% inclusa` : 'IVA esclusa'}</div>
+        ${l.note?.trim() ? html`<div class="lc-data">${l.note.trim()}</div>` : ''}</div>
+    </div>
+    <div class="lc-griglia">${birre.map(b => html`<section class="lc-birra"><h2>${b.birra}</h2>
+      ${b.formati.map(f => html`<div class="lc-formato"><span>${formatoCliente(f)}</span><span class="lc-punti"></span><b>€ ${soldi(f.prezzo)}</b></div>`)}
+    </section>`)}</div>
+    <p class="lc-piede">Kashmir Brewing Company · prezzi al pezzo, soggetti a variazioni</p>
+  </div>`;
 }
 const salvaListino = ({ aggiornato: _a, ...l }) => u.db.salva(l);
 
@@ -60,6 +81,7 @@ export async function vistaListini() {
         <h2 style="margin:0">${l.nome}</h2><span class="spazio"></span>
         <button class="piccolo st-libero" id="li-copia" ${daCopiare.length ? '' : 'disabled'} title="Testo per WhatsApp o mail">⧉ Copia testo</button>
         <button class="piccolo st-libero" id="li-excel" ${daCopiare.length ? '' : 'disabled'} title="Tabella da incollare in Excel">⧉ Copia per Excel</button>
+        <button class="piccolo primario st-libero" id="li-stampa" ${daCopiare.length ? '' : 'disabled'} title="Stampa il listino o salvalo in PDF">🖨 Stampa / PDF</button>
       </div>
       <div class="griglia solo-editori">
         <label>Nome<input data-campo="nome" value="${l.nome}"></label>
@@ -106,7 +128,8 @@ export async function vistaListini() {
       return html`<details class="scheda st-tabella"><summary><b>Tutti i listini a confronto</b></summary>
         <div class="scroll-x"><table class="tab-mag"><thead><tr><th>Prodotto</th>${D.listini.map(x => html`<th class="n">${x.nome}${x.iva ? ' (IVA incl.)' : ''}</th>`)}</tr></thead>
         <tbody>${usate.map(({ r, prezzi }) => html`<tr><td>${r.birra} · ${r.formato}</td>${prezzi.map(p => html`<td class="n">${euro(p)}</td>`)}</tr>`)}</tbody></table></div></details>`;
-    })() : ''}`}`;
+    })() : ''}`}
+    ${daCopiare.length ? foglio(l, righe, oggi) : ''}`;
 
   const nuovo = async (base) => {
     const nome = base ? `${base.nome} (copia)` : `Listino ${D.listini.length + 1}`;
@@ -164,6 +187,12 @@ export async function vistaListini() {
     if (t.id === 'li-nuovo' || t.id === 'li-nuovo2') return nuovo(null);
     if (t.id === 'li-duplica') return nuovo(eAlpha ? null : l);
     if (t.id === 'li-copia') return u.copia(testoListino(l, righe, oggi), `Listino "${l.nome}" copiato: ${daCopiare.length} prodotti`);
+    if (t.id === 'li-stampa') {
+      const titolo = document.title;
+      document.title = `Listino ${l.nome} ${u.oggiISO()}`;
+      addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
+      return window.print();
+    }
     if (t.id === 'li-excel') return u.copia(tabellaListino(l, righe), `Tabella copiata: incollala in Excel`);
     if (t.id === 'li-elimina') {
       if (!(await u.chiedi(`Eliminare il listino "${l.nome}"? I prezzi base restano.`, 'Elimina'))) return;

@@ -308,6 +308,7 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
   input[type="date"][value=""] { color: transparent !important; }
   main { padding: 12mm 13mm !important; max-width: none !important; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
   main:has(.pv-foglio, .lista-clienti) { padding: 0 !important; }
+  #app:has(.li-foglio) > :not(.li-foglio) { display: none !important; }
   .scheda { border: none; padding: 0; margin: 0 0 10px; break-inside: avoid; background: none !important; box-shadow: none !important; }
   .riga-cotta { box-shadow: none; }
   .scroll-x { overflow: visible !important; }
