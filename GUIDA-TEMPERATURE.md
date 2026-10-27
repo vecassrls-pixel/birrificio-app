@@ -86,13 +86,27 @@ ping -c 3 192.168.2.1        # deve rispondere il PLC
 ```
 Sul router del birrificio conviene dare un **IP fisso** (prenotazione DHCP) al Lenovo, al Waveshare e alle due schede ESP32.
 
+**Accesso a distanza (Tailscale).** La chiavetta Wi-Fi Atlantis lascia uscire il traffico ma non accetta collegamenti SSH in entrata
+dagli altri dispositivi Wi-Fi: per entrare nel Lenovo si usa **Tailscale** (gratuito), che funziona anche da fuori birrificio.
+```
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up            # aprire il link (o --qr per il QR code) e accedere
+tailscale ip -4              # indirizzo 100.x.y.z del Lenovo
+```
+Sul PC/telefono installare Tailscale con lo stesso account, poi `ssh birrificio@100.x.y.z`. In login.tailscale.com/admin/machines,
+sulla riga del Lenovo: **… → Disable key expiry** (altrimenti ogni 6 mesi va rifatto l'accesso).
+
 ### 2.4 Installare il programma del gateway
 
+Il repository è privato: si collega il Lenovo all'account GitHub con `gh` (codice da inserire su github.com/login/device dal PC).
 ```
-sudo apt install -y git
-git clone <indirizzo del repository dell'app> && cd birrificio-app/tools/gateway-temperature
+sudo apt install -y git gh
+gh auth login                # GitHub.com → HTTPS → Y → Login with a web browser
+gh repo clone vecassrls-pixel/birrificio-app && cd birrificio-app/tools/gateway-temperature
 sudo bash installa.sh
 ```
+Per aggiornare il programma più avanti: `cd ~/birrificio-app && git pull && cd tools/gateway-temperature && sudo bash installa.sh`.
+Finché nessun blocco è `"attivo": true` il servizio va lasciato spento (`sudo systemctl disable gateway-temperature`), altrimenti si ferma e riparte di continuo.
 (In alternativa copiare la cartella `tools/gateway-temperature` con una chiavetta.)
 Dettagli e comandi: `tools/gateway-temperature/README.md`.
 
