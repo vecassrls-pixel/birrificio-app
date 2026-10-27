@@ -3,6 +3,7 @@
 //
 // Record nell'archivio:
 //   listino { id: 'listino-…', tipo: 'listino', nome, ricarico (% sui prezzi di Alpha),
+//             ricarichi: { fusto, 'lattina/bottiglia' } (% diversa per formato; vuoto = vale ricarico),
 //             arrotonda (€, 0 = al centesimo; per eccesso), iva (true = prezzi IVA inclusa),
 //             prodotti: 'magazzino' (solo con giacenza) | 'tutti', esclusi: [chiavi prodotto],
 //             fissi: { chiave: € } (prezzo scritto a mano, vince sul calcolo), note }
@@ -19,9 +20,23 @@ export const nuovoListino = (id, nome) => ({
   id, tipo: 'listino', nome, ricarico: 30, arrotonda: 0.1, iva: false, prodotti: 'magazzino', esclusi: [], fissi: {}, note: '',
 });
 export const nuovoAlpha = () => ({ ...nuovoListino(ID_ALPHA, 'Alpha'), ricarico: 0, arrotonda: 0, prodotti: 'tutti', prezzi: {} });
-export const listinoDa = rec => ({ ...(rec.id === ID_ALPHA ? nuovoAlpha() : nuovoListino(rec.id, rec.nome || 'Listino')), ...rec, esclusi: rec.esclusi || [], fissi: rec.fissi || {} });
+export const listinoDa = rec => ({ ...(rec.id === ID_ALPHA ? nuovoAlpha() : nuovoListino(rec.id, rec.nome || 'Listino')), ...rec, esclusi: rec.esclusi || [], fissi: rec.fissi || {}, ricarichi: rec.ricarichi || {} });
 // Alpha non ha ricarico né prezzi fissati: il suo prezzo è quello scritto nella colonna Base
-export const perCalcolo = l => (l.id === ID_ALPHA ? { ...l, ricarico: 0, fissi: {} } : l);
+export const perCalcolo = l => (l.id === ID_ALPHA ? { ...l, ricarico: 0, ricarichi: {}, fissi: {} } : l);
+
+// Formati con un ricarico a parte (stessi tipi della chiave prodotto "BIRRA|tipo|litri")
+export const GRUPPI_RICARICO = [['fusto', 'Fusti'], ['lattina/bottiglia', 'Lattine']];
+// Ricarico in % per un tipo di prodotto: quello del formato se scritto, altrimenti quello generale
+export function ricaricoPer(l, tipo) {
+  const r = l.ricarichi?.[tipo];
+  return r !== undefined && r !== null && r !== '' && Number.isFinite(Number(r)) ? Number(r) : Number(l.ricarico) || 0;
+}
+// Ricarichi da mostrare: "+30%" oppure "fusti +20% · lattine +35%"
+export function testoRicarico(l, numIT = n => String(n)) {
+  const pc = n => `${n > 0 ? '+' : n < 0 ? '−' : ''}${numIT(Math.abs(n), 1)}%`;
+  const valori = GRUPPI_RICARICO.map(([t, n]) => [n.toLowerCase(), ricaricoPer(l, t)]);
+  return valori.every(([, v]) => v === valori[0][1]) ? pc(valori[0][1]) : valori.map(([n, v]) => `${n} ${pc(v)}`).join(' · ');
+}
 
 export function prezzoBase(vendita, chiave) {
   const v = vendita[chiave];
@@ -33,9 +48,9 @@ export function arrotonda(x, passo) {
   if (!(passo > 0)) return cent;
   return Math.round(Math.ceil(cent / passo - 1e-9) * passo * 100) / 100;
 }
-export function prezzoListino(base, l) {
+export function prezzoListino(base, l, tipo) {
   if (!(base > 0)) return null;
-  const netto = base * (1 + (Number(l.ricarico) || 0) / 100);
+  const netto = base * (1 + ricaricoPer(l, tipo) / 100);
   return arrotonda(l.iva ? netto * (1 + ALIQUOTA_IVA / 100) : netto, Number(l.arrotonda) || 0);
 }
 
@@ -52,7 +67,7 @@ export function righeListino(l, chiavi, giacenze, vendita, fuoriAlpha = []) {
       const p = daChiave(chiave);
       const giacenza = giacenze.get(chiave)?.giacenza ?? 0;
       const base = prezzoBase(vendita, chiave);
-      const calcolato = prezzoListino(base, l);
+      const calcolato = prezzoListino(base, l, p.tipo);
       const fisso = Number(l.fissi[chiave]) > 0 ? Number(l.fissi[chiave]) : null;
       const prezzo = fisso ?? calcolato;
       return { ...p, formato: nomeFormato(p.tipo, p.litri), giacenza, base, baseBirra: vendita[chiave] ?? null, calcolato, fisso, prezzo, escluso: esclusi.has(chiave), alLitro: prezzo && p.litri ? prezzo / p.litri : null };

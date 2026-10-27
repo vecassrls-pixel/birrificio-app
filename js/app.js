@@ -31,7 +31,7 @@ import { ID_FERIE, ferieDa, giorniFerie, TIPI_GIORNO } from './ferie.js';
 import { spostaCotta, cambiaFine, cambiaTravaso, cambiaFv } from './sposta-cotta.js';
 import { intervalliCotta, caricaCurva, graficoTemperature, attivaGraficoTemp, profiloCotta } from './temperature.js';
 import { apriEtichetta } from './etichetta.js';
-import { lottoEtichetta } from './birra.js';
+import { lottoEtichetta, idProdotto } from './birra.js';
 import * as qr from './vista-qr.js';
 import * as carrello from './vista-carrello.js';
 import * as ordiniClienti from './vista-ordini.js';
@@ -137,6 +137,41 @@ async function correggiRegula() {
   }));
   try { await db.salvaMolti(corrette); return true; }
   catch { return false; /* sola lettura: lo sistemerà chi può modificare */ }
+}
+// Codici di Fatture in Cloud di BOH, Enkidu (LMS ZERO5) e XMAS finiti su La Morte Sua con gli import (Romain 2026-10-24):
+// si spostano sulle birre giuste, così fatture e import scaricano il prodotto giusto. Quando non li trova più non fa nulla.
+const CODICI_SPOSTATI = {
+  'LMS BOH|fusto|25': ['LMSMISTERB_KEG25', 'Keg 25L Birra Lamortesua BOH Modern IPA 6,1%'],
+  'LMS BOH|lattina/bottiglia|0.33': ['LMSMISTERB_LAT33', 'Lattina 0,33L Birra Lamortesua BOH Modern IPA 6,1%'],
+  'LMS ZERO5|fusto|25': ['LMSZERO5_KEG25', 'Keg 25L Birra Lamortesua Enkidu Modern IPA 6%'],
+  'LMS ZERO5|lattina/bottiglia|0.33': ['LMSZERO5_LAT33', 'Lattina 0,33L Birra Lamortesua Enkidu Modern IPA 6%'],
+  'XMAS|fusto|25': ['LamortesuaXMAS_keg25', 'Keg 25L Birra Lamortesua XMAS 9,0%'],
+  'XMAS|fusto|20': ['LamortesuaXMAS_keg20', 'Keg 20L Birra Lamortesua XMAS 9,0%'],
+  'XMAS|lattina/bottiglia|0.33': ['latt_33_LamortesuaXMAS', 'Lamortesua Lattina 33cl Birra XMAS 9,0%'],
+};
+let codiciControllati = false;
+async function spostaCodiciLms() {
+  if (codiciControllati || lettore) return;
+  codiciControllati = true;
+  const prodotti = await db.tutti('prodottobirra');
+  const dove = new Map(Object.entries(CODICI_SPOSTATI).flatMap(([k, cc]) => cc.map(c => [c.toLowerCase(), k])));
+  const da = prodotti.filter(p => !p.chiave.startsWith('LMS ') && !p.chiave.startsWith('XMAS|') && (p.codici || []).some(c => dove.has(String(c.codice).toLowerCase())));
+  if (!da.length) return;
+  const nuovi = new Map();
+  const tolti = da.map(({ aggiornato, daSincronizzare, ...p }) => {
+    for (const c of p.codici) {
+      const k = dove.get(String(c.codice).toLowerCase());
+      if (!k) continue;
+      if (!nuovi.has(k)) {
+        const { aggiornato: _a, daSincronizzare: _d, ...e } = prodotti.find(x => x.chiave === k) || { tipo: 'prodottobirra', id: idProdotto(k), chiave: k, codici: [] };
+        nuovi.set(k, { ...e, eliminato: false, codici: [...(e.codici || [])] });
+      }
+      const n = nuovi.get(k);
+      if (!n.codici.some(x => String(x.codice).toLowerCase() === String(c.codice).toLowerCase())) n.codici.push(c);
+    }
+    return { ...p, codici: p.codici.filter(c => !dove.has(String(c.codice).toLowerCase())) };
+  });
+  try { await db.salvaMolti([...tolti, ...nuovi.values()]); } catch { /* sola lettura */ }
 }
 // Unità uniformi (Romain 2026-10-22): kg per malti, zuccheri e luppoli, g per sali e coadiuvanti.
 // Converte articoli, inventari, bolle, movimenti e schede cotta senza perdere quantità. Con il cloud parte solo
@@ -2457,8 +2492,8 @@ misuraTop();
   window.addEventListener('online', () => aggiornaRete());
   window.addEventListener('offline', () => aggiornaRete());
   sync.onStato(aggiornaRete);
-  if (auth.configurato()) sync.onStato(s => { if (s.ultimo && !s.errore) uniformaUnitaArchivio(); });
-  else uniformaUnitaArchivio();
+  if (auth.configurato()) sync.onStato(s => { if (s.ultimo && !s.errore) { uniformaUnitaArchivio(); spostaCodiciLms(); } });
+  else { uniformaUnitaArchivio(); spostaCodiciLms(); }
   sync.avvia();
   // allegati aggiunti senza rete: si inviano appena c'è internet
   const allegatiInSospeso = () => { if (!lettore) allegati.inviaInSospeso(stato.cotte.filter(x => (x.allegati || []).some(a => !a.inviato))).then(cs => cs.length && db.salvaMolti(cs)).catch(() => {}); };
