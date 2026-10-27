@@ -18,9 +18,38 @@ export const CATEGORIE = {
   sale: 'Sali', aggiunta: 'Aggiunte', coadiuvante: 'Coadiuvanti',
 };
 export const GIORNI_IN_SCADENZA = 30;
+// sopra questa quantità un articolo in kg/L è quasi certamente stato scritto in grammi/ml
+// (6300 kg di luppolo, 750 kg di Yeastvit); malti e zuccheri esclusi
+export function sogliaGrammi(art) {
+  if (!['kg', 'L'].includes(art?.unita) || ['malto', 'zucchero'].includes(art.categoria)) return null;
+  return art.categoria === 'luppolo' ? 1000 : 200;
+}
 export const UNITA = ['kg', 'g', 'L', 'ml', 'pz'];
 const FATTORE = { kg: 1000, g: 1, L: 1000, ml: 1, pz: 1 };
 const FAMIGLIA = { kg: 'peso', g: 'peso', L: 'volume', ml: 'volume', pz: 'pezzi' };
+
+// Unità uniformi in tutta l'app (Romain 2026-10-22): kg per malti, zuccheri e luppoli, g per sali e coadiuvanti.
+// Vale solo tra kg e g: pezzi, litri e ml (acido lattico) restano come sono. Lieviti, spezie e aggiunte liberi.
+export const UNITA_CATEGORIA = { malto: 'kg', zucchero: 'kg', luppolo: 'kg', sale: 'g', coadiuvante: 'g' };
+export function unitaStandard(categoria, unita) {
+  const std = UNITA_CATEGORIA[categoria];
+  return std && (!unita || FAMIGLIA[unita] === 'peso') ? std : unita;
+}
+// Cifre decimali per mostrare una quantità: in kg e L fino ai grammi (0,035 kg di luppolo), in g e ml interi
+export const decimaliUnita = unita => (unita === 'kg' || unita === 'L' ? 3 : unita === 'g' || unita === 'ml' ? 1 : 0);
+const arrot6 = x => Math.round(x * 1e6) / 1e6;
+// Riga { qta, unita, prezzo? } portata nell'unità standard della categoria (prezzo in € per unità della riga).
+// unitaVuota: unità con cui vale la riga se non ne ha una (quella dell'articolo). Ritorna la stessa riga se non cambia.
+export function rigaStandard(r, categoria, unitaVuota) {
+  const da = r.unita || unitaVuota;
+  const a = unitaStandard(categoria, da);
+  if (!da || !a || a === da || FAMIGLIA[da] !== 'peso') return r;
+  const f = converti(1, da, a);
+  const vuota = r.qta === null || r.qta === undefined || r.qta === '';
+  const out = { ...r, qta: vuota ? r.qta : arrot6(Number(r.qta) * f), unita: a };
+  if (Number(r.prezzo) > 0) out.prezzo = arrot6(Number(r.prezzo) / f);
+  return out;
+}
 
 // Converte qta da un'unità all'altra; null se non confrontabili (es. kg → pz)
 export function converti(qta, da, a) {
@@ -29,6 +58,26 @@ export function converti(qta, da, a) {
   if (!da || da === a) return q;
   if (!FAMIGLIA[da] || FAMIGLIA[da] !== FAMIGLIA[a]) return null;
   return (q * FATTORE[da]) / FATTORE[a];
+}
+
+// Cambio di unità di un articolo (es. luppolo da g a kg): le righe degli inventari non hanno unità e valgono
+// nell'unità dell'articolo, quindi vanno convertite con lui, come scorta minima, peso per pezzo e prezzo.
+// Senza conversione 6300 g contati diventavano 6300 kg (Romain 2026-10-20). null se le unità non si convertono.
+// Bolle e movimenti manuali con righe senza unità (valevano nell'unità dell'articolo) prendono l'unità vecchia.
+export function cambiaUnita(art, nuova, inventari, documenti = []) {
+  const f = converti(1, art.unita, nuova);
+  if (!art.unita || art.unita === nuova || f === null) return null;
+  const per = v => (v === null || v === undefined || v === '' ? v : arrot6(Number(v) * f));
+  const modificati = inventari.filter(inv => (inv.righe || []).some(r => r.articoloId === art.id))
+    .map(inv => ({ ...inv, righe: inv.righe.map(r => (r.articoloId === art.id ? { ...r, qta: per(r.qta) } : r)) }));
+  const senzaUnita = r => r.articoloId === art.id && !r.unita;
+  const documentiModificati = documenti.filter(d => (d.righe || []).some(senzaUnita))
+    .map(d => ({ ...d, righe: d.righe.map(r => (senzaUnita(r) ? { ...r, unita: art.unita } : r)) }));
+  return {
+    art: { ...art, unita: nuova, scortaMin: per(art.scortaMin) || 0, pesoPezzo: per(art.pesoPezzo) || null, prezzo: art.prezzo ? arrot6(art.prezzo / f) : art.prezzo },
+    inventari: modificati,
+    documenti: documentiModificati,
+  };
 }
 
 // Come converti, ma i pezzi (sacchi, confezioni) valgono il peso per pezzo dell'articolo, se c'è:
@@ -160,11 +209,23 @@ export function nomiDaMagazzino(c, articoli) {
       return { ...r, nome: art ? art.nome : sez === 'sali' ? nomeItaliano(r.nome) : r.nome };
     });
   }
+  // luppoli di Brewfather (in g) in kg, sali e coadiuvanti in g
+  const std = cottaInUnitaStandard(c, articoli);
+  if (std) for (const sez of ['malti', 'luppoli', 'sali']) c[sez] = std[sez];
   return c;
 }
 
 const SEZIONI = ['malti', 'luppoli', 'lievito', 'sali'];
 export const NOME_ACIDO = 'Acido lattico';
+// Acido lattico nelle schede cotta in grammi (Romain 2026-10-19). Le correzioni pH vecchie hanno `ml`,
+// le righe importate da Brewfather possono essere in ml: si portano in g con la densità 1,2.
+const arrot1 = x => Math.round(x * 10) / 10;
+export const acidoG = r => (r.g !== undefined && r.g !== null && r.g !== '' ? r.g : r.ml !== undefined && r.ml !== null && r.ml !== '' ? arrot1(Number(r.ml) * DENSITA_ACIDO) : null);
+export function acidoInGrammi(c) {
+  const acido = (c.acido || []).map(({ ml, ...r }) => ({ ...r, g: acidoG({ ...r, ml }) }));
+  const sali = (c.sali || []).map(r => (/acido\s+lattico/i.test(r.nome || '') && r.unita === 'ml' ? { ...r, qta: r.qta === null || r.qta === '' ? r.qta : arrot1(Number(r.qta) * DENSITA_ACIDO), unita: 'g' } : r));
+  return { ...c, acido, sali };
+}
 
 // Giorno in cui un ingrediente esce dal magazzino: DH al suo giorno, il resto il giorno di cotta
 export function dataUscita(c, sezione, r) {
@@ -188,15 +249,15 @@ export function scarichiCotte(cotte, articoli) {
     for (const sez of SEZIONI) {
       for (const [i, r] of (c[sez] || []).entries()) {
         if (!r.nome || !(Number(r.qta) > 0) || lievitoRecuperato(sez, r)) continue;
-        // nelle schede l'acido lattico è scritto in "g" ma sono ml
-        const unita = /acido/i.test(r.nome) && r.unita === 'g' ? 'ml' : r.unita || '';
+        const unita = r.unita || '';
         out.push({ articolo: trovaArticolo(articoli, r.nome), nome: r.nome, sezione: /acido/i.test(r.nome) ? 'acido' : sez, qta: Number(r.qta), unita, data: dataUscita(c, sez, r), cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `${sez}.${i}` } });
       }
     }
-    // correzioni pH con acido lattico (ml), ognuna alla sua data
+    // correzioni pH con acido lattico (g; le vecchie in ml), ognuna alla sua data
     for (const [i, r] of (c.acido || []).entries()) {
-      if (!(Number(r.ml) > 0)) continue;
-      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: Number(r.ml), unita: 'ml', data: r.data || c.data, cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `acido.${i}` } });
+      const g = Number(acidoG(r));
+      if (!(g > 0)) continue;
+      out.push({ articolo: trovaArticolo(articoli, NOME_ACIDO), nome: NOME_ACIDO, sezione: 'acido', qta: g, unita: 'g', data: r.data || c.data, cotta: c, lotto: r.lotto || '', dove: { tipo: 'cotta', id: c.id, path: `acido.${i}` } });
     }
   }
   return out;
@@ -318,14 +379,73 @@ export function daCollegare(cotte, articoli, da) {
   return [...m.values()].sort((a, b) => b.volte - a.volte);
 }
 
-export const unitaDa = sezione => (sezione === 'malti' ? 'kg' : sezione === 'acido' ? 'ml' : 'g');
+export const unitaDa = sezione => (sezione === 'malti' || sezione === 'luppoli' ? 'kg' : sezione === 'acido' ? 'ml' : 'g');
+
+// Ingredienti di una scheda cotta nelle unità standard (luppoli in kg, sali e coadiuvanti in g).
+// La categoria è quella dell'articolo di magazzino, altrimenti si deduce da sezione e nome. Il lievito resta com'è.
+// Ritorna la cotta modificata, oppure null se era già a posto.
+export function cottaInUnitaStandard(c, articoli) {
+  let cambiata = false;
+  const out = { ...c };
+  for (const sez of ['malti', 'luppoli', 'sali']) {
+    if (!Array.isArray(c[sez])) continue;
+    out[sez] = c[sez].map(r => {
+      if (!r || !r.nome) return r;
+      const art = trovaArticolo(articoli, r.nome);
+      const n = rigaStandard(r, art?.categoria || categoriaDa(sez, r.nome), art?.unita);
+      if (n !== r) cambiata = true;
+      return n;
+    });
+  }
+  return cambiata ? out : null;
+}
+
+// Porta tutto l'archivio alle unità standard, senza perdere quantità:
+// articoli (con inventari, scorta, peso a pezzo, prezzo), righe di bolle e movimenti manuali, ingredienti delle cotte.
+// Le cotte si guardano con gli articoli di prima, così le righe senza unità valgono come prima.
+// Ritorna i record da salvare (vuoto se è già tutto a posto).
+export function uniformaUnita({ articoli, inventari, bolle, scarichi = [], cotte = [] }) {
+  const salva = new Map();
+  const ultimo = r => salva.get(r.id) || r;
+  for (const c of cotte) {
+    if (c.eliminato) continue;
+    const n = cottaInUnitaStandard(c, articoli);
+    if (n) salva.set(c.id, n);
+  }
+  const nuovi = new Map();
+  for (const a of articoli) {
+    if (a.eliminato) continue;
+    const std = unitaStandard(a.categoria, a.unita);
+    if (!std || std === a.unita) continue;
+    const ch = cambiaUnita(a, std, inventari.map(ultimo), [...bolle, ...scarichi].map(ultimo));
+    if (!ch) continue;
+    nuovi.set(a.id, ch.art);
+    salva.set(a.id, ch.art);
+    for (const x of [...ch.inventari, ...ch.documenti]) salva.set(x.id, x);
+  }
+  const artDi = id => nuovi.get(id) || articoli.find(a => a.id === id);
+  for (const d of [...bolle, ...scarichi]) {
+    if (d.eliminato) continue;
+    const prima = ultimo(d);
+    let cambiato = false;
+    const righe = (prima.righe || []).map(r => {
+      const art = r.articoloId && artDi(r.articoloId);
+      if (!art) return r;
+      const n = rigaStandard(r, art.categoria, art.unita);
+      if (n !== r) cambiato = true;
+      return n;
+    });
+    if (cambiato) salva.set(d.id, { ...prima, righe });
+  }
+  return [...salva.values()];
+}
 
 // Proposta di catalogo dagli ingredienti usati nelle cotte recenti (per il primo inventario)
 export function articoliDaRicette(cotte, articoli, da) {
   return daCollegare(cotte, articoli, da).map(x => ({
     nome: x.chiave.replace(/\b\w/g, l => l.toUpperCase()),
     categoria: categoriaDa(x.sezione, x.nome),
-    unita: unitaDa(x.sezione),
+    unita: unitaStandard(categoriaDa(x.sezione, x.nome), unitaDa(x.sezione)),
     scortaMin: 0,
     alias: [],
     volte: x.volte,
@@ -372,8 +492,13 @@ export function registroS6(dati, da, a) {
 
 // Unisce un doppione: tutto ciò che era di `togli` (bolle, inventari, scarichi manuali) passa a `tieni`,
 // il nome e gli alias di `togli` diventano alias di `tieni` (così le cotte lo trovano ancora).
+// Un inventario vale come giacenza dell'articolo: se in un inventario c'è solo uno dei due, la riga unita
+// prende anche la giacenza che l'altro aveva in quel giorno, così le quantità si sommano (Romain 2026-10-16).
 // Restituisce i record da salvare, oppure { errore } se le quantità degli inventari non sono convertibili.
-export function unisciArticoli(tieni, togli, { bolle, inventari, scarichi = [] }) {
+export function unisciArticoli(tieni, togli, dati) {
+  const { bolle, inventari, scarichi = [] } = dati;
+  // giacenza di un articolo in un giorno, calcolata sui dati prima dell'unione (mai sotto zero)
+  const giacenzaAl = (art, data) => Math.max(0, giacenze({ ...dati, articoli: [art], scarichi }, data).get(art.id)?.giacenza || 0);
   const k = chiaveNome(tieni.nome);
   const alias = [...new Set([...(tieni.alias || []), togli.nome, ...(togli.alias || [])])].filter(x => chiaveNome(x) !== k);
   const art = {
@@ -388,12 +513,23 @@ export function unisciArticoli(tieni, togli, { bolle, inventari, scarichi = [] }
     modificati.push({ ...b, righe: b.righe.map(r => (r.articoloId === togli.id ? { ...r, articoloId: tieni.id, ...(r.nome !== undefined ? { nome: tieni.nome } : {}) } : r)) });
   }
   for (const inv of inventari) {
+    const ha = id => (inv.righe || []).some(r => r.articoloId === id && r.qta !== null && r.qta !== '' && r.qta !== undefined);
+    if (ha(tieni.id) && !ha(togli.id) && inv.data) {
+      // contato solo `tieni`: si aggiunge la giacenza di `togli` in quel giorno
+      const extra = converti(giacenzaAl(togli, inv.data), togli.unita, tieni.unita);
+      if (extra === null) return { errore: `${togli.nome} è in ${togli.unita} e non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      if (extra) modificati.push({ ...inv, righe: inv.righe.map(r => (r.articoloId === tieni.id ? { ...r, qta: Number(r.qta) + extra } : r)) });
+      continue;
+    }
     if (!(inv.righe || []).some(r => r.articoloId === togli.id)) continue;
+    // contato solo `togli`: alla sua riga (che passa a `tieni`) si aggiunge la giacenza di `tieni` in quel giorno
+    const extraTieni = ha(togli.id) && !ha(tieni.id) && inv.data ? giacenzaAl(tieni, inv.data) : 0;
     const righe = [];
     for (const r of inv.righe) {
       if (r.articoloId !== togli.id) { righe.push(r); continue; }
-      const q = r.qta === null || r.qta === '' || r.qta === undefined ? r.qta : converti(r.qta, togli.unita, tieni.unita);
-      if (q === null && r.qta !== null) return { errore: `L'inventario del ${inv.data} ha ${togli.nome} in ${togli.unita}: non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      const q0 = r.qta === null || r.qta === '' || r.qta === undefined ? r.qta : converti(r.qta, togli.unita, tieni.unita);
+      if (q0 === null && r.qta !== null) return { errore: `L'inventario del ${inv.data} ha ${togli.nome} in ${togli.unita}: non si converte in ${tieni.unita}. Cambia prima l'unità di uno dei due.` };
+      const q = typeof q0 === 'number' ? q0 + extraTieni : q0;
       const gia = righe.find(x => x.articoloId === tieni.id);
       if (gia) gia.qta = (Number(gia.qta) || 0) + (Number(q) || 0);
       else righe.push({ ...r, articoloId: tieni.id, qta: q });

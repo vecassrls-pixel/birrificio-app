@@ -1,6 +1,6 @@
 // Ordini dei clienti online (pagina pubblica ordina.html, senza login: vale il token personale del cliente).
 //   GET  ?t=<token>                                   → { cliente, catalogo, ordini } birre disponibili con i prezzi del suo listino
-//   POST { t, righe: [{ prodotto, pezzi }], note, consegna } → salva l'ordine (record 'ordinecliente') e avvisa su Telegram
+//   POST { t, righe: [{ prodotto, pezzi }], note, consegna, modo, indirizzo, comune, telefono } → salva l'ordine (record 'ordinecliente') e avvisa su Telegram
 // Il token si crea nell'app (Birra → Clienti → Link ordini) e si può disattivare in ogni momento.
 
 import { json, dataValida } from '../lib/accesso.mjs';
@@ -10,7 +10,7 @@ import { ID_IMP, impostazioni, oraItalia } from '../lib/automazioni.mjs';
 import { durateTipiche, dataIT, numIT } from '../../js/dominio.js';
 import { ID_IMPOSTAZIONI, nomeProdotto } from '../../js/birra.js';
 import { esc } from '../../js/riepilogo.js';
-import { catalogoCliente, righeOrdine, tokenValido, totaleOrdine } from '../../js/portale.js';
+import { catalogoCliente, righeOrdine, tokenValido, totaleOrdine, datiConsegna, MODI_CONSEGNA, impegnatiOrdini } from '../../js/portale.js';
 
 async function clienteDa(token) {
   if (!tokenValido(token)) return null;
@@ -20,9 +20,9 @@ async function clienteDa(token) {
 }
 
 async function catalogo(cliente, oggi) {
-  const [t, impBirra] = await Promise.all([db.tipi(['cotta', 'movbirra', 'inventariobirra', 'prodottobirra', 'listino']), db.leggi(ID_IMPOSTAZIONI)]);
+  const [t, impBirra] = await Promise.all([db.tipi(['cotta', 'movbirra', 'inventariobirra', 'prodottobirra', 'listino', 'ordinecliente']), db.leggi(ID_IMPOSTAZIONI)]);
   if (!impBirra?.inizio || impBirra.eliminato) return [];
-  const datiBirra = { cotte: t.cotta, durate: durateTipiche(t.cotta), movimenti: t.movbirra, inventari: t.inventariobirra, prodotti: t.prodottobirra, impostazioni: impBirra };
+  const datiBirra = { cotte: t.cotta, durate: durateTipiche(t.cotta), movimenti: t.movbirra, inventari: t.inventariobirra, prodotti: t.prodottobirra, impostazioni: impBirra, impegnati: impegnatiOrdini(t.ordinecliente) };
   return catalogoCliente(datiBirra, t.listino, cliente, oggi);
 }
 
@@ -39,7 +39,12 @@ export default async req => {
       ]);
       return json({
         cliente: cliente.nome, oggi, catalogo: cat,
-        ordini: ordini.map(o => ({ data: o.dati.data, consegna: o.dati.consegna, stato: o.dati.stato, righe: o.dati.righe.map(r => ({ nome: nomeProdotto(r.prodotto), pezzi: r.pezzi })) })),
+        recapito: { modo: cliente.modo || '', indirizzo: cliente.indirizzo || '', comune: cliente.comune || '', telefono: cliente.telefono || '' },
+        ordini: ordini.map(o => ({
+          data: o.dati.data, consegna: o.dati.consegna, stato: o.dati.stato, modo: o.dati.modo || '',
+          corriere: o.dati.stato === 'spedito' ? o.dati.corriere || '' : '', tracking: o.dati.stato === 'spedito' ? o.dati.tracking || '' : '',
+          righe: o.dati.righe.map(r => ({ nome: nomeProdotto(r.prodotto), pezzi: r.pezzi })),
+        })),
       });
     }
     if (req.method !== 'POST') return json({ errore: 'Metodo non consentito' }, 405);
@@ -53,12 +58,16 @@ export default async req => {
     if (!righe.length) return json({ errore: 'L\'ordine è vuoto' }, 400);
     const consegna = dataValida(corpo.consegna) && corpo.consegna >= oggi ? corpo.consegna : '';
     const note = String(corpo.note || '').trim().slice(0, 1000);
-    const ordine = { id: db.nuovoId('ordinecliente'), tipo: 'ordinecliente', cliente: cliente.nome, clienteId: cliente.id, data: oggi, consegna, righe, note, stato: 'nuovo', creato: new Date().toISOString() };
-    await db.salva([ordine]);
+    const rec = datiConsegna(corpo);
+    const ordine = { id: db.nuovoId('ordinecliente'), tipo: 'ordinecliente', cliente: cliente.nome, clienteId: cliente.id, data: oggi, consegna, righe, note, stato: 'nuovo', creato: new Date().toISOString(), ...rec };
+    // l'indirizzo scritto dal cliente resta nella sua scheda per i prossimi ordini
+    const nuovi = Object.fromEntries(Object.entries(rec).filter(([k, v]) => v && v !== cliente[k]));
+    await db.salva(Object.keys(nuovi).length ? [ordine, { ...cliente, ...nuovi }] : [ordine]);
     if (telegram.configurato()) {
       const imp = impostazioni(await db.leggi(ID_IMP));
       const tot = totaleOrdine(righe);
       const testo = [`🛒 <b>Nuovo ordine da ${esc(cliente.nome)}</b>`, ...righe.map(r => `${r.pezzi} × ${esc(nomeProdotto(r.prodotto))}`),
+        rec.modo ? `${MODI_CONSEGNA[rec.modo]}${rec.indirizzo || rec.comune ? `: ${esc([rec.indirizzo, rec.comune].filter(Boolean).join(', '))}` : ''}` : '',
         consegna ? `Consegna richiesta: ${dataIT(consegna)}` : '', note ? `<i>${esc(note)}</i>` : '', tot ? `Totale circa ${numIT(tot, 2)} €` : '',
         process.env.URL ? `<a href="${esc(process.env.URL)}/#/ordini-clienti">Apri gli ordini</a>` : ''].filter(Boolean).join('\n');
       await telegram.invia(testo, imp.chatId || undefined).catch(() => {}); // l'ordine è salvato anche se Telegram non risponde

@@ -78,7 +78,8 @@ drop policy if exists "autorizzati leggono" on records;
 drop policy if exists "editori inseriscono" on records;
 drop policy if exists "editori modificano" on records;
 drop policy if exists "editori eliminano" on records;
-create policy "autorizzati leggono" on records for select to authenticated using (autorizzato());
+create policy "autorizzati leggono" on records for select to authenticated
+  using (autorizzato() and (tipo not in ('movcassa', 'contacassa', 'sospesocassa') or puo_scrivere())); -- cassa: non per i lettori
 create policy "editori inseriscono" on records for insert to authenticated with check (puo_scrivere());
 create policy "editori modificano" on records for update to authenticated using (puo_scrivere()) with check (puo_scrivere());
 create policy "editori eliminano" on records for delete to authenticated using (puo_scrivere());

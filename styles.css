@@ -20,7 +20,7 @@
   --s-tank: #d97706;
   --s-confezionata: #15803d;
   --s-chiusa: #78716c;
-  --weekend: #f7dbe3;
+  --weekend: #f7dbe3; --libero: #c9ecc9; --ferie: #fbe7a1; --pulizie: #d3d6db;
   --f-fermentazione: #fb923c;
   --f-dh: #b39dfa;
   --f-maturazione: #7dd3fc;
@@ -35,7 +35,7 @@
     --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
     --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
     --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
-    --weekend: #3d1c27; --ombra: none;
+    --weekend: #3d1c27; --libero: #1d4223; --ferie: #4a3d12; --pulizie: #3a3e45; --ombra: none;
     color-scheme: dark;
   }
 }
@@ -44,7 +44,7 @@
   --border: #3a342e; --accent: #f59e0b; --accent-forte: #fbbf24; --accent-text: #1c1917; --accent-tenue: #3a2a14;
   --ok: #4ade80; --warn: #f87171; --top-bg: #0a1222;
   --s-pianificata: #60a5fa; --s-tank: #fbbf24; --s-confezionata: #4ade80; --s-chiusa: #a8a29e;
-  --weekend: #3d1c27; --ombra: none;
+  --weekend: #3d1c27; --libero: #1d4223; --ferie: #4a3d12; --pulizie: #3a3e45; --ombra: none;
   color-scheme: dark;
 }
 
@@ -69,7 +69,8 @@ h3 { font-size: .8rem; margin: 1.1rem 0 .5rem; color: var(--muted); text-transfo
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.02rem; text-decoration: none; color: var(--top-text); white-space: nowrap; }
 .brand img { height: 32px; width: auto; display: block; }
-.top nav { display: flex; gap: 2px; flex: 1; min-width: 0; }
+.top nav { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.top nav::-webkit-scrollbar { display: none; }
 .top nav a {
   display: flex; align-items: center; gap: 7px; text-decoration: none; color: var(--top-muted);
   padding: 8px 12px; border-radius: 9px; white-space: nowrap; font-weight: 500;
@@ -211,6 +212,12 @@ label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { cursor: 
 .g-day { position: absolute; top: 0; bottom: 0; border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent); font-size: .68rem; color: var(--muted); text-align: center; }
 .g-day.lun { border-left-color: color-mix(in srgb, var(--muted) 55%, transparent); }
 .g-day.fest { background: var(--weekend); }
+.g-day.libero { background: color-mix(in srgb, var(--libero) 60%, transparent); }
+.g-row.testa .g-day.libero { background: var(--libero); color: var(--text); }
+.g-day.ferie-chiuso { background: color-mix(in srgb, var(--ferie) 70%, transparent); }
+.g-row.testa .g-day.ferie-chiuso { background: var(--ferie); color: var(--text); }
+.g-day.ferie-pulizie { background: color-mix(in srgb, var(--pulizie) 70%, transparent); }
+.g-row.testa .g-day.ferie-pulizie { background: var(--pulizie); color: var(--text); }
 .g-day.oggi { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .g-row.testa .g-day.oggi { color: var(--accent); font-weight: 700; }
 .g-bar {
@@ -267,9 +274,11 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; gap: 0; justify-content: space-around;
     height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom);
     background: var(--top-bg); border-top: 1px solid rgb(255 255 255 / .08);
+    justify-content: flex-start; scroll-snap-type: x proximity; /* 11 voci: si scorre di lato */
   }
-  .top nav a { flex: 1; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 1px; border-radius: 0; font-size: .64rem; font-weight: 500; min-width: 0; }
+  .top nav a { flex: 1 0 60px; scroll-snap-align: start; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 1px; border-radius: 0; font-size: .64rem; font-weight: 500; min-width: 0; }
   .top nav a span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .top nav a[data-tab="materie-prime"] { flex-basis: 76px; } /* "Materie prime" intero */
   .top nav a svg { width: 23px; height: 23px; }
   .top nav a.attivo { background: none; color: #fff; }
   .top nav a.attivo svg { stroke: var(--brand-chiaro); }
@@ -290,12 +299,15 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
 }
 @media (min-width: 761px) { .solo-telefono { display: none !important; } }
 @media print {
-  @page { size: A4; margin: 12mm; }
+  /* margini dati dal contenuto (main), ripetuti su ogni pagina: restano anche con "Margini: nessuno"
+     o se la stampante non arriva al bordo; i fogli che hanno i loro margini (preventivo, lista birre) li tolgono */
+  @page { size: A4; margin: 0; }
   :root { color-scheme: light; }
   body { background: #fff !important; color: #000 !important; font-size: 11px; }
   .top, #app > .barra, .testa-scheda, .filtri-stato, details.legenda-box, button, .calc-hlt, .stato-salvataggio { display: none !important; }
   input[type="date"][value=""] { color: transparent !important; }
-  main { padding: 0 !important; max-width: none !important; }
+  main { padding: 12mm 13mm !important; max-width: none !important; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  main:has(.pv-foglio, .lista-clienti) { padding: 0 !important; }
   .scheda { border: none; padding: 0; margin: 0 0 10px; break-inside: avoid; background: none !important; box-shadow: none !important; }
   .riga-cotta { box-shadow: none; }
   .scroll-x { overflow: visible !important; }
@@ -320,6 +332,8 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-mag td { padding: 6px; border-bottom: 1px solid var(--border); }
 .tab-mag th.n, .tab-mag td.n, .tab-edit th.n, .tab-edit td.n { text-align: right; white-space: nowrap; }
 .tab-mag tr.neg td { color: var(--warn); }
+.tab-mag tr.ordinato td { opacity: .55; }
+.tab-mag tr.ordinato td:first-child { opacity: 1; }
 .tab-mag tr.basso td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .tab-mag tr.futuro td { color: var(--muted); font-style: italic; }
 .scad.vicino { color: #c2410c; font-weight: 600; }
@@ -340,7 +354,7 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .tab-s6 tr { break-inside: avoid; }
 .tab-tempcelle .tc-nota { width: 100%; min-height: 30px; padding: 3px 8px; font-size: .85rem; }
 .tab-tempcelle td { vertical-align: middle; }
-@page s6 { size: A4 landscape; margin: 10mm; }
+@page s6 { size: A4 landscape; margin: 0; }
 @media print { .s6 { padding: 0; } .s6-testa img { height: 44px; } .tab-s6 { font-size: 10px; } .tab-s6 th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
 /* profilo in sola lettura: niente pulsanti di modifica, campi non modificabili */
@@ -348,6 +362,7 @@ input.calcolato { background: transparent; border-style: dashed; font-weight: 60
 .lettore #app input:disabled, .lettore #app select:disabled, .lettore #app textarea:disabled { opacity: 1; color: var(--text); cursor: default; }
 .tab-edit tr.escluso td { opacity: .45; }
 .tab-edit tr.escluso td:first-child { opacity: 1; }
+.tab-edit .nota-riga { margin: 2px 0 0; color: var(--warn, #b45309); font-weight: 600; }
 /* inventario: materie prime a zero nascoste (le quantità scritte restano) */
 .senza-zero:not(.filtrato) tr.zero, .senza-zero:not(.filtrato) .scheda.tutti-zero { display: none; }
 #elenco-inv [hidden] { display: none !important; }
@@ -523,7 +538,7 @@ body.cerca-attiva .cerca-top { color: var(--brand-chiaro); }
 .kpi b.neg, td.neg, .neg > td { color: var(--warn); }
 /* ---------- tablet (iPad) ---------- */
 .nav-corto { display: none; }
-@media (max-width: 1360px) {
+@media (max-width: 1700px) {
   .nav-lungo { display: none; }
   .nav-corto { display: inline; }
 }
@@ -797,7 +812,7 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .rt-lotti a { display: block; padding: 7px 8px; border-radius: 8px; text-decoration: none; color: var(--text); }
 .rt-lotti a:hover { background: var(--surface-2); }
 .rt-lotti small { display: block; color: var(--muted); }
-.rt-foglio h2 { font-size: 1rem; margin: 18px 0 6px; color: #000; }
+.rt-foglio h2 { font-size: 1rem; margin: 18px 0 6px; color: #000; break-after: avoid; }
 .rt-manca { color: #b42318; font-weight: 600; }
 .tab-arrivi th.c, .tab-arrivi td.c { text-align: center; width: 70px; }
 .tab-arrivi th.c { white-space: normal; font-size: .7rem; }
@@ -1039,3 +1054,159 @@ body.ordina { background: var(--bg); }
   .cr-layout { grid-template-columns: 1fr; }
   .cr-cesto { position: static; order: -1; }
 }
+/* lista birre: articoli tolti (✕), che non escono né in copia né in stampa */
+.lc-x { margin-left: 8px; min-height: 26px; min-width: 26px; padding: 0 6px; border: 1px solid var(--lc-line); border-radius: 6px; background: #fff; color: var(--lc-soft); font-size: .8rem; line-height: 1; vertical-align: middle; cursor: pointer; }
+.lc-x:hover { border-color: var(--accent); color: var(--accent-forte); }
+.lc-birra h2 .lc-x { font-weight: 400; text-transform: none; }
+.lc-tolto { opacity: .4; }
+.lc-formato.lc-tolto > span:first-child, .lc-birra.lc-tolto h2 { text-decoration: line-through; }
+.lc-birra.lc-tolto .lc-tolto { opacity: 1; }
+.lc-aiuto { max-width: 860px; margin: 0 auto 10px; }
+@media print { .lc-tolto, .lc-x, .lc-aiuto { display: none !important; } }
+/* pagina Birra: unghia Kashmir / Exist */
+.b-marchi { display: flex; gap: 0; margin: 0 0 14px; border-bottom: 2px solid var(--border); }
+.b-marchi button { min-height: 42px; padding: 8px 22px; border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0; background: none; color: var(--muted); font: inherit; font-weight: 600; font-size: .98rem; margin-bottom: -2px; cursor: pointer; }
+.b-marchi button:hover { color: var(--text); }
+.b-marchi button.attivo { background: var(--surface); color: var(--accent-forte); border-color: var(--border); border-bottom: 2px solid var(--surface); }
+.b-marchi small { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .74rem; }
+.lc-marchio { order: 2; font-size: 2.2rem; font-weight: 900; letter-spacing: .12em; color: var(--lc-ink); }
+@media print { .lc-marchio { font-size: 26pt; } }
+/* contenitori vuoti */
+.cn-card { margin-bottom: 12px; }
+.st-tile.allerta { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+.st-tile.allerta > b { color: var(--warn); }
+.w-kpi-btn { font: inherit; text-align: left; align-items: flex-start; cursor: pointer; }
+/* 11 voci nel menu: più strette finché c'è posto, poi si scorre di lato */
+@media (min-width: 1001px) and (max-width: 1700px) { .top nav { gap: 0; } .top nav a { padding: 8px 5px; gap: 4px; } }
+.cn-formati { border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px 10px; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; }
+.cn-formati legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
+@media (max-width: 760px) { .cs-kpi { grid-template-columns: 1fr 1fr; gap: 8px; } .cs-kpi .w-kpi { padding: 10px 12px; } .cs-kpi .w-kpi b { font-size: 1.25rem; } }
+
+/* registro trebbie */
+.tab-trebbie input.tr-kg { width: 90px; min-width: 70px; text-align: right; }
+.tab-trebbie td.n:has(.tr-kg) { width: 1%; }
+@media print { .tab-trebbie input.tr-kg::-webkit-inner-spin-button { display: none; } .s6 .scroll-x { overflow: visible; } }
+/* registro S6 a fogli da 18 righe: a video un foglio alla volta, in stampa tutti */
+.s6-pagine { align-items: center; gap: 10px; }
+.s6-pagine button { min-width: 48px; }
+@media screen { .s6-pag.s6-altra { display: none; } }
+@media print { .s6-pag + .s6-pag { break-before: page; } }
+/* la cassa non si mostra a chi è in sola lettura */
+.lettore .top nav a[data-tab="cassa"], .lettore a[href="#/cassa"] { display: none !important; }
+
+/* Beerfirm: cotte fatte per conto terzi */
+.bf-chip { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; background: #1c1917; color: #fff; border-radius: 4px; padding: 1px 5px; vertical-align: 1px; line-height: 1.3; }
+.g-bar.beerfirm { background-image: repeating-linear-gradient(135deg, rgb(0 0 0 / .1) 0 6px, transparent 6px 12px); }
+.cn-fab summary { cursor: pointer; }
+.cn-fab .w-lista { margin-top: 8px; }
+/* stampa S6: un foglio A4 orizzontale ogni 18 righe, righe alte che riempiono la pagina (i margini sono quelli di main) */
+@media print {
+  .s6.s6-pag { break-after: page; }
+  .s6.s6-pag:last-of-type { break-after: auto; }
+  .s6-pag + .s6-pag { break-before: auto; }
+  .s6-pag .s6-testa img { height: 14mm; }
+  .s6-pag .s6-testa h1 { font-size: 14pt; }
+  .s6-pag .s6-testa div div { font-size: 10pt; }
+  .s6-pag .s6-legenda { font-size: 9pt; margin: 2.5mm 0 2mm; }
+  .s6-pag .tab-s6 { font-size: 10.5pt; }
+  .s6-pag .tab-s6 thead tr { height: 7.5mm; }
+  .s6-pag .tab-s6 tbody tr { height: 8mm; }
+  .s6-pag .tab-s6 td, .s6-pag .tab-s6 th { padding: 0 2.2mm; vertical-align: middle; }
+}
+
+/* pulizie automatiche */
+.tab-pulizie select.s6-lotto, .tab-trebbie select.s6-lotto { min-height: 26px; padding: 2px 6px; font-size: inherit; border-style: dashed; background: transparent; width: auto; }
+@media print { .tab-pulizie select.s6-lotto, .tab-trebbie select.s6-lotto { border: none; appearance: none; } }
+
+/* schede HACCP insetti e roditori, esecuzione pulizie: stesso stile degli altri registri (.s6, .tab-s6) */
+.iss-foglio { margin-bottom: 12px; }
+.iss-tab { margin-top: 10px; }
+.iss-tab .c { text-align: center; }
+.iss-inf td:first-child { font-weight: 600; padding: 10px 8px; }
+.iss-inf th.c, .iss-inf td.c { width: 120px; }
+.iss-inf tr.iss-presenza td { background: color-mix(in srgb, #b42318 10%, #fff); }
+.iss-box { display: inline-block; font-size: 1.5rem; line-height: 1; padding: 2px 10px; color: #000; cursor: pointer; user-select: none; }
+.lettore .iss-box { cursor: default; }
+.iss-firma { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: .85rem; }
+.iss-firma select, .iss-firma input { width: auto; min-width: 200px; }
+.iss-note { display: flex; align-items: center; gap: 6px; flex: 1; }
+.iss-note input { flex: 1; }
+.iss-griglia th, .iss-griglia td { padding: 2px 4px; height: 22px; min-width: 52px; white-space: nowrap; }
+.iss-griglia td[data-pamb] { cursor: pointer; }
+.iss-griglia td[data-pamb]:hover { background: #f3f3f3; }
+.iss-griglia td.iss-si { font-weight: 600; }
+.iss-griglia td.iss-no { background: #e5e5e5; }
+@media screen { .iss-foglio.iss-altro { display: none; } }
+@media print {
+  .iss-foglio { margin: 0; }
+  .iss-pag { break-after: page; }
+  .iss-pag:last-of-type { break-after: auto; }
+  .iss-inf { font-size: 11pt; }
+  .iss-inf td:first-child { padding: 4.5mm 3mm; }
+  .iss-box { font-size: 15pt; }
+  .iss-griglia { font-size: 8.5pt; }
+  .iss-griglia th, .iss-griglia td { height: 4.4mm; padding: 0 1.5mm; }
+  .iss-griglia td.iss-no, .iss-inf tr.iss-presenza td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .iss-firma select, .iss-firma input { border: none !important; min-width: 0; }
+  .iss-firma input::placeholder { color: transparent; }
+}
+
+/* ordini: dettagli e giro consegne */
+.or-dett .od-modi { display: flex; flex-wrap: wrap; margin: 4px 0 10px; }
+.or-dett [hidden] { display: none !important; }
+.gi-tappe { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 12px; }
+.or-modi { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 0 0 10px; }
+.or-modi legend { padding: 0 4px; font-weight: 600; }
+.or-indirizzo[hidden] { display: none; }
+.or-modi label.spunta { min-height: auto; margin: 6px 0; display: flex; gap: 8px; align-items: center; font-size: .95rem; }
+.b-impegnati { color: var(--accent-forte, #b45309); font-weight: 600; }
+
+/* foglio stampa / PDF della cotta: impaginato a parte, solo i dati presenti (Romain 2026-10-22) */
+.foglio-cotta { display: none; }
+@media print {
+  body.stampa-cotta #app > :not(.foglio-cotta) { display: none !important; }
+  body.stampa-cotta .foglio-cotta { display: block; color: #1c1917; font-size: 10.5px; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .fc-testa { display: flex; align-items: center; gap: 14px; padding-bottom: 10px; border-bottom: 2px solid #c2410c; margin-bottom: 10px; }
+  .fc-testa img { height: 46px; width: auto; }
+  .fc-testa h1 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
+  .fc-testa p { margin: 2px 0 0; color: #57534e; font-size: 11.5px; }
+  .fc-scad { margin-left: auto; text-align: right; font-weight: 700; font-size: 11.5px; white-space: nowrap; }
+  .fc-kpi { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }
+  .fc-kpi .fc-voce { background: #f5f5f4; border-radius: 6px; padding: 5px 8px; display: flex; flex-direction: column; }
+  .fc-kpi .fc-voce b { font-size: 13px; }
+  .fc-voce span { color: #78716c; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
+  .fc-voci { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 12px; }
+  .fc-voci .fc-voce { display: flex; flex-direction: column; border-bottom: 1px solid #e7e5e4; padding: 2px 0; }
+  .fc-blocco { break-inside: avoid; margin: 0 0 12px; }
+  .fc-blocco h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #c2410c; margin: 0 0 5px; padding-bottom: 3px; border-bottom: 1px solid #e7e5e4; }
+  .fc-colonne { columns: 2; column-gap: 18px; }
+  .fc-colonne .fc-blocco { break-inside: avoid; display: inline-block; width: 100%; }
+  .fc-tab { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .fc-tab td, .fc-tab th { padding: 2px 4px; border-bottom: 1px solid #f0efed; text-align: left; vertical-align: top; }
+  .fc-tab th { font-size: 9px; color: #78716c; text-transform: uppercase; font-weight: 600; }
+  .fc-tab .n { text-align: right; white-space: nowrap; }
+  .fc-tab tfoot td { font-weight: 700; border-bottom: none; border-top: 1px solid #a8a29e; }
+  .fc-tab small { color: #78716c; }
+  .fc-reg { font-size: 9.5px; margin-top: 6px; width: auto; min-width: 55%; }
+  .fc-reg td, .fc-reg th { padding: 2px 12px 2px 4px; }
+  .fc-reg tr { break-inside: avoid; }
+  .fc-blocco .graf-ferm, .fc-blocco svg { max-height: 62mm; margin: 0 0 6px; }
+  .fc-note { white-space: pre-wrap; margin: 0; }
+  .fc-piede { margin-top: 14px; padding-top: 6px; border-top: 1px solid #e7e5e4; color: #a8a29e; font-size: 9px; }
+}
+#fc-trasporto[hidden] { display: none; }
+
+/* elenco birre di Nuova/Pianifica cotta: nome intero, a capo se lungo */
+.sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; max-height: 280px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 4px; }
+.sugg button { display: block; width: 100%; text-align: left; white-space: normal; background: none; border: 0; border-radius: 6px; padding: 7px 10px; font-weight: 400; color: var(--text); }
+.sugg button:hover, .sugg button:focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.sugg small { display: block; color: var(--muted); font-size: 12px; }
+
+/* barre del planning trascinabili */
+.g-bar[data-ids] { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.g-bar.trascina { z-index: 30; opacity: .85; box-shadow: 0 6px 16px rgb(0 0 0 / .3); cursor: grabbing; transition: none; }
+.g-maniglia { position: absolute; top: 0; right: 0; bottom: 0; width: 12px; cursor: ew-resize; touch-action: none; border-radius: 0 6px 6px 0; }
+.g-maniglia::after { content: ''; position: absolute; top: 25%; bottom: 25%; right: 4px; width: 3px; border-radius: 2px; background: rgb(0 0 0 / .35); }
+@media (pointer: coarse) { .g-maniglia { width: 20px; } }
+.g-days.meta { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.drag-info { position: fixed; z-index: 1000; pointer-events: none; background: var(--text); color: var(--bg); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }

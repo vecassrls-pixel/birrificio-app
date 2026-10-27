@@ -5,6 +5,7 @@
 // { righe: [{ prodotto, pezzi, lotto ('' = il primo che scade), prezzo (null = dal listino) }], cliente, listino }
 
 import { daChiave, nomeProdotto } from './birra.js';
+import { dataIT } from './dominio.js';
 import { righeListino, listinoDa, ID_ALPHA } from './listini.js';
 import { pezziCartone } from './etichetta.js';
 
@@ -65,18 +66,69 @@ export const prezzoRiga = (r, prezzi) => (r.prezzo !== null && r.prezzo !== unde
 
 // Codice di Fatture in Cloud del prodotto (dai codici salvati in Importa): meglio quello del singolo pezzo,
 // altrimenti uno a confezione (x pezzi) che divide i pezzi del carrello. → { codice, x }
+// Se più codici portano allo stesso prodotto (es. LAMORTESUA keg 25 riceve anche le vendite di BOH o XMAS) si sceglie
+// quello che somiglia di più alla birra: contiene il suo nome e ha meno parole in più, meglio un codice corto che una descrizione.
+const soloLettere = t => String(t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const PAROLE_FORMATO = /keg|poly|sacca|latt?|lattina|cl|l|birra|\d+/g;
+function somiglianza(codice, birra) {
+  const c = soloLettere(codice), b = soloLettere(birra);
+  return [c.includes(b) ? 0 : 1, c.replace(b, '').replace(PAROLE_FORMATO, '').length, /\s/.test(codice) ? 1 : 0];
+}
+const prima = (a, b) => a.findIndex((v, i) => v !== b[i]) < 0 ? 0 : a[a.findIndex((v, i) => v !== b[i])] - b[a.findIndex((v, i) => v !== b[i])];
 export function codiceFic(prodotti, chiave, pezzi) {
-  const codici = (prodotti.find(p => p.chiave === chiave && !p.eliminato)?.codici || []).map(c => ({ codice: String(c.codice), x: Number(c.x) || 1 }));
-  return codici.find(c => c.x === 1) || codici.filter(c => pezzi % c.x === 0).sort((a, b) => b.x - a.x)[0] || { codice: '', x: 1 };
+  const { birra, tipo, litri } = daChiave(chiave);
+  let codici = (prodotti.find(p => p.chiave === chiave && !p.eliminato)?.codici || []).map(c => ({ codice: String(c.codice), x: Number(c.x) || 1 }));
+  // prodotto senza codici (es. NIR, i cui codici stanno su NITRO): si cercano tra tutti i codici quelli con il nome
+  // della birra e lo stesso formato (keg/poly e litri per i fusti, lat e 33 per le lattine)
+  if (!codici.length) {
+    const parole = birra.split(/\s+/).map(soloLettere).filter(Boolean), formato = tipo === 'fusto' ? /keg|poly/ : /lat/, misura = String(tipo === 'fusto' ? litri : Math.round(litri * 100));
+    codici = prodotti.filter(p => !p.eliminato).flatMap(p => p.codici || []).map(c => ({ codice: String(c.codice), x: Number(c.x) || 1 }))
+      .filter(c => { const t = soloLettere(c.codice); return parole.join('').length > 1 && parole.every(w => t.includes(w)) && formato.test(t) && t.includes(misura); });
+  }
+  const ordinati = codici.map(c => ({ ...c, s: somiglianza(c.codice, birra) })).sort((a, b) => prima(a.s, b.s));
+  const { s: _s, ...ok } = ordinati.find(c => c.x === 1) || ordinati.filter(c => pezzi % c.x === 0).sort((a, b) => b.x - a.x)[0] || { codice: '', x: 1, s: [] };
+  return ok;
 }
 
-// Righe della fattura per Fatture in Cloud
-export function righeFattura(c, prodotti, prezzi) {
-  return c.righe.filter(r => Number(r.pezzi) > 0).map(r => {
+// Lotti che prenderà lo scarico di ogni riga, come fa il magazzino: prima il lotto scelto, poi quello che scade prima.
+// g = giacenzeBirra(); → per ogni riga [{ lotto, scadenza, pezzi }]
+const stessoLotto = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+export function lottiRighe(righe, g) {
+  const resti = new Map();
+  return righe.map(r => {
+    if (!resti.has(r.prodotto)) resti.set(r.prodotto, (g.get(r.prodotto)?.lotti || []).map(l => ({ ...l })));
+    const lotti = resti.get(r.prodotto), out = [];
+    let resto = Number(r.pezzi) || 0;
+    const prendi = l => { const q = Math.min(resto, l.pezzi); if (q <= 0) return; l.pezzi -= q; resto -= q; out.push({ lotto: l.lotto, scadenza: l.scadenza, pezzi: q }); };
+    const scelto = r.lotto && lotti.find(l => stessoLotto(l.lotto, r.lotto));
+    if (scelto) prendi(scelto);
+    for (const l of lotti) { if (resto <= 0) break; prendi(l); }
+    if (resto > 0) out.push({ lotto: r.lotto || '', scadenza: '', pezzi: resto });
+    return out;
+  });
+}
+// "Lotto 51/26 scad. 31/05/27"; con più lotti anche i pezzi di ognuno
+export function testoLotti(lotti) {
+  const l = (lotti || []).filter(x => x.lotto);
+  return l.map(x => `Lotto ${x.lotto}${x.scadenza ? ` scad. ${dataIT(x.scadenza)}` : ''}${l.length > 1 ? ` (${x.pezzi} pz)` : ''}`).join(' · ');
+}
+
+// Cliente dell'anagrafica di Fatture in Cloud con questo nome: per id, poi nome uguale senza punti e spazi
+// ("Lucy S.R.L.S." = "LUCY SRLS"), poi un nome che contiene l'altro
+const pulito = n => String(n || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
+export function clienteFic(elenco, nome, id) {
+  const n = pulito(nome);
+  return (id && elenco.find(c => String(c.id) === String(id))) || elenco.find(c => pulito(c.nome) === n)
+    || (n.length > 3 ? elenco.filter(c => pulito(c.nome).length > 3 && (pulito(c.nome).includes(n) || n.includes(pulito(c.nome)))).sort((a, b) => a.nome.length - b.nome.length)[0] : null) || null;
+}
+
+// Righe della fattura per Fatture in Cloud; lotti = lottiRighe() delle stesse righe (i lotti vanno in descrizione)
+export function righeFattura(c, prodotti, prezzi, lotti = []) {
+  return c.righe.filter(r => Number(r.pezzi) > 0).map((r, i) => {
     const { codice, x } = codiceFic(prodotti, r.prodotto, Number(r.pezzi));
     const p = prezzoRiga(r, prezzi);
     return {
-      codice, nome: nomeProdotto(r.prodotto), descrizione: r.lotto ? `Lotto ${r.lotto}` : '',
+      codice, nome: nomeProdotto(r.prodotto), descrizione: lotti[i] ? testoLotti(lotti[i]) : r.lotto ? `Lotto ${r.lotto}` : '',
       qta: Number(r.pezzi) / x, prezzo: p === null ? null : Math.round(p * x * 10000) / 10000,
     };
   });

@@ -100,6 +100,10 @@ export function elencoProdotti({ cotte, movimenti = [], inventari = [], prodotti
 
 // Grado alcolico e stile di una birra (uguali per tutti i formati): quelli scritti nei prodotti,
 // altrimenti proposti dall'ultima cotta della birra (stile, ABV da OG e FG).
+// Marchio della birra: Kashmir (di default) o Exist; si sceglie nella scheda prodotto e vale per tutti i formati
+export const MARCHI = { kashmir: 'Kashmir', exist: 'Exist' };
+export const birreExist = (prodotti = []) => new Set(prodotti.filter(p => !p.eliminato && !p.rinominatoIn && p.chiave && p.marchio === 'exist').map(p => daChiave(p.chiave).birra));
+
 export function caratteristiche(birra, prodotti = [], cotte = []) {
   const mie = prodotti.filter(p => !p.eliminato && !p.rinominatoIn && p.chiave && daChiave(p.chiave).birra === birra);
   const conAbv = mie.find(p => p.abv !== null && p.abv !== undefined && p.abv !== '');
@@ -109,7 +113,7 @@ export function caratteristiche(birra, prodotti = [], cotte = []) {
   const recenti = cotte.filter(c => !c.eliminato && nomi.has(nomeBirra(c.birra))).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
   const misurato = recenti.map(c => abv(Number(c.og), c.fg === null || c.fg === undefined || c.fg === '' ? null : Number(c.fg))).find(x => x > 0);
   const r = {
-    abv: conAbv ? Number(conAbv.abv) : null, stile: conStile?.stile || '',
+    abv: conAbv ? Number(conAbv.abv) : null, stile: conStile?.stile || '', marchio: mie.some(p => p.marchio === 'exist') ? 'exist' : 'kashmir',
     abvProposto: misurato ? Math.round(misurato * 10) / 10 : null, stileProposto: recenti.find(c => c.stile)?.stile || '',
   };
   // da mostrare: quelli scritti, altrimenti quelli dell'ultima cotta
@@ -253,7 +257,7 @@ const pulito = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-
 // Ritorna { prodotto, x } oppure { ignora: true } oppure null
 // formato: quello da usare quando il nome non lo dice (Shopify vende solo lattine da 33 cl)
 export const FORMATO_SHOPIFY = { tipo: 'lattina/bottiglia', litri: 0.33 };
-export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp, formato = null) {
+export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp, formato = null, cotte = []) {
   const cod = [codice, nome].map(s => String(s || '').trim().toLowerCase()).filter(Boolean);
   if (imp.codiciIgnorati.some(c => cod.includes(String(c).toLowerCase()))) return { ignora: true };
   for (const p of prodotti) {
@@ -262,10 +266,18 @@ export function trovaProdotto({ codice, nome }, chiavi, prodotti, imp, formato =
   }
   // dal nome: deve contenere il nome della birra; il formato dai litri (24, 24l, 0,33, 33cl) o dalla parola
   const n = ` ${pulito(`${nome} ${codice}`)} `;
-  const candidati = chiavi.map(daChiave).filter(p => n.includes(` ${pulito(p.birra)} `) || n.includes(pulito(p.birra).replace(/ /g, '')));
+  const candidati = chiavi.map(daChiave).filter(p => n.includes(` ${pulito(p.birra)} `) || n.replace(/ /g, '').includes(pulito(p.birra).replace(/ /g, '')));
   if (!candidati.length) return null;
-  const lungo = Math.max(...candidati.map(p => p.birra.length));
-  const migliori = candidati.filter(p => p.birra.length === lungo); // "LA MORTE SUA HOLIDAY" prima di "LA MORTE SUA"
+  // "LA MORTE SUA HOLIDAY" prima di "LA MORTE SUA": via le birre il cui nome sta dentro quello di un'altra trovata
+  const nomi = [...new Set(candidati.map(p => pulito(p.birra)))];
+  let restano = nomi.filter(a => !nomi.some(b => b !== a && b.includes(a)));
+  // "432HZ SESSION IPA": via le birre che si chiamano come lo stile di un'altra trovata
+  const stili = new Set(candidati.map(p => { const c = caratteristiche(p.birra, prodotti, cotte); return pulito(c.stile || c.stileProposto); }).filter(Boolean));
+  if (restano.some(a => !stili.has(a))) restano = restano.filter(a => !stili.has(a));
+  // più birre diverse nel nome: vale quella scritta per prima
+  const pos = a => { const i = n.indexOf(` ${a} `); return i < 0 ? n.replace(/ /g, '').indexOf(a.replace(/ /g, '')) : i; };
+  const prima = restano.sort((a, b) => pos(a) - pos(b))[0];
+  const migliori = candidati.filter(p => pulito(p.birra) === prima);
   const perFormato = migliori.filter(p => {
     const l = p.litri;
     const cl = Math.round(l * 100);
@@ -295,10 +307,11 @@ export function conCodice(prodotti, chiave, codice, x = 1) {
 // ---------- lista delle birre disponibili per i clienti ----------
 // Solo pezzi di lotti non scaduti; per ogni birra stile e grado alcolico.
 // dati come giacenzeBirra (+ prodotti e cotte per le caratteristiche)
+// dati.impegnati (facoltativo): Map prodotto → pezzi promessi dagli ordini aperti, che non sono più disponibili
 export function listaDisponibili(dati, oggi = oggiISO()) {
   const perBirra = new Map();
   for (const x of giacenzeBirra(dati, oggi).values()) {
-    const pezzi = x.lotti.filter(l => !l.scadenza || l.scadenza >= oggi).reduce((t, l) => t + l.pezzi, 0);
+    const pezzi = x.lotti.filter(l => !l.scadenza || l.scadenza >= oggi).reduce((t, l) => t + l.pezzi, 0) - (dati.impegnati?.get(x.chiave) || 0);
     if (pezzi <= 0) continue;
     if (!perBirra.has(x.birra)) {
       const c = caratteristiche(x.birra, dati.prodotti, dati.cotte);
@@ -313,8 +326,8 @@ export function listaDisponibili(dati, oggi = oggiISO()) {
 export const formatoCliente = f => (f.tipo === 'fusto' ? `Fusti ${numIT(f.litri, 0)} L` : `Lattine ${Math.round(f.litri * 100)} cl`);
 // "session ipa" → "Session Ipa" non va: solo la prima lettera di ogni parola se è tutto minuscolo
 export const maiuscole = s => (s === s.toLowerCase() ? s.replace(/(^|\s)\p{L}/gu, m => m.toUpperCase()).replace(/\bIpa\b/g, 'IPA').replace(/\bNeipa\b/g, 'NEIPA').replace(/\bApa\b/g, 'APA') : s);
-export function testoListaBirre(lista, oggi = oggiISO()) {
-  const righe = [`Birre disponibili · Kashmir Brewing Company · ${dataIT(oggi)}`, ''];
+export function testoListaBirre(lista, oggi = oggiISO(), produttore = 'Kashmir Brewing Company') {
+  const righe = [`Birre disponibili · ${produttore} · ${dataIT(oggi)}`, ''];
   for (const b of lista) {
     righe.push([b.birra, b.stile ? maiuscole(b.stile) : '', b.abv !== null ? `${numIT(b.abv, 1)}% vol` : ''].filter(Boolean).join(' · '));
     for (const f of b.formati) righe.push(`   ${formatoCliente(f)}: ${numIT(f.pezzi, 0)}`);

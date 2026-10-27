@@ -2,16 +2,17 @@
 // Calcoli in js/previsioni.js; i dati di vendita sono gli scarichi del magazzino birra (fatture, Shopify, taproom…).
 
 import { ID_IMPOSTAZIONI, giacenzeBirra, listaDisponibili, testoListaBirre } from './birra.js';
+import { impegnatiOrdini } from './portale.js';
 import { coperturaBirre, statoClienti, messaggioCliente, numeroWhatsApp, SETTIMANE_VENDITE } from './previsioni.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, pianifica, linkOrdini }
 export function init(strumenti) { u = strumenti; }
 
 async function datiBirra() {
-  const [movimenti, inventari, prodotti, imp, clienti] = await Promise.all([
-    u.db.tutti('movbirra'), u.db.tutti('inventariobirra'), u.db.tutti('prodottobirra'), u.db.leggi(ID_IMPOSTAZIONI), u.db.tutti('cliente'),
+  const [movimenti, inventari, prodotti, imp, clienti, ordini] = await Promise.all([
+    u.db.tutti('movbirra'), u.db.tutti('inventariobirra'), u.db.tutti('prodottobirra'), u.db.leggi(ID_IMPOSTAZIONI), u.db.tutti('cliente'), u.db.tutti('ordinecliente'),
   ]);
-  return { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari, prodotti, impostazioni: imp && !imp.eliminato ? imp : null, clienti };
+  return { cotte: u.stato.cotte, durate: u.stato.durate, movimenti, inventari, prodotti, impostazioni: imp && !imp.eliminato ? imp : null, clienti, impegnati: impegnatiOrdini(ordini) };
 }
 const L = n => `${u.numIT(n, 0)} L`;
 
@@ -76,6 +77,8 @@ export async function vistaClienti() {
       ${c.birre.length ? html`<p class="totale">Prende: ${c.birre.join(', ')}</p>` : ''}
       <div class="griglia cl-campi">
         <label>Telefono <input data-k="telefono" type="tel" value="${c.telefono}" placeholder="per WhatsApp"></label>
+        <label>Indirizzo <input data-k="indirizzo" value="${c.scheda?.indirizzo || ''}" placeholder="per le consegne"></label>
+        <label>Comune <input data-k="comune" value="${c.scheda?.comune || ''}"></label>
         <label>Ogni quanti giorni ordina <input data-k="ritmoGiorni" type="number" min="1" inputmode="numeric" value="${c.scheda?.ritmoGiorni || ''}" placeholder="${c.ritmo ? `calcolato: ${c.ritmo}` : 'da scrivere'}"></label>
       </div>
       <div class="barra solo-editori" style="margin:8px 0 0">
@@ -96,7 +99,7 @@ export async function vistaClienti() {
     const v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value ? Number(t.value) : null) : t.value.trim();
     await salva(card.dataset.id, { [t.dataset.k]: v });
     u.toast('Salvato');
-    if (t.dataset.k !== 'telefono') vistaClienti();
+    if (!['telefono', 'indirizzo', 'comune'].includes(t.dataset.k)) vistaClienti();
   };
   u.$app.onclick = async e => {
     const f = e.target.closest('[data-f]');

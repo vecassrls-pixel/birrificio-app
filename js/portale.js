@@ -4,12 +4,22 @@
 //
 // Record:
 //   cliente.portale  { token, listino (id), attivo }
-//   ordinecliente    { cliente, clienteId, data, consegna, righe: [{ prodotto, pezzi, prezzo }], note, stato, creato }
+//   ordinecliente    { cliente, clienteId, data, consegna, righe: [{ prodotto, pezzi, prezzo, iva }], note, stato, creato,
+//                      modo (ritiro|zona|corriere), indirizzo, comune, telefono, origine ('app' se inserito nell'app),
+//                      corriere, colli, peso, tracking, giroPosto, documento, movimento (id movbirra dello scarico) }
 
 import { listaDisponibili, formatoCliente, maiuscole } from './birra.js';
 import { righeListino, listinoDa, ID_ALPHA } from './listini.js';
 
-export const STATI_ORDINE = { nuovo: 'Nuovo', confermato: 'Confermato', consegnato: 'Consegnato', annullato: 'Annullato' };
+export const STATI_ORDINE = { nuovo: 'Nuovo', confermato: 'Confermato', pronto: 'Pronto', spedito: 'Spedito', consegnato: 'Consegnato', annullato: 'Annullato' };
+export const MODI_CONSEGNA = { ritiro: 'Ritiro in birrificio', zona: 'Consegna in zona', corriere: 'Spedizione con corriere' };
+
+// Come vuole ricevere l'ordine il cliente (dalla pagina pubblica): valori puliti e corti
+export function datiConsegna(corpo) {
+  const t = (v, n) => String(v || '').trim().slice(0, n);
+  const modo = MODI_CONSEGNA[corpo?.modo] ? corpo.modo : '';
+  return { modo, indirizzo: modo === 'ritiro' ? '' : t(corpo?.indirizzo, 200), comune: modo === 'ritiro' ? '' : t(corpo?.comune, 80), telefono: t(corpo?.telefono, 30) };
+}
 export const MAX_RIGHE = 40, MAX_PEZZI = 500;
 export const ULTIMI_PEZZI = 5; // sotto questa giacenza il cliente vede "ultimi pezzi"
 
@@ -54,6 +64,18 @@ export function righeOrdine(catalogo, richieste) {
     righe.push({ prodotto: f.chiave, pezzi, prezzo: f.prezzo, iva: f.iva });
   }
   return { righe, errori };
+}
+
+// Birra impegnata: pezzi per prodotto negli ordini aperti non ancora fatturati né scaricati (la giacenza non è ancora scesa).
+// tranne = id di un ordine da non contare (quello che si sta preparando nel carrello)
+export const ORDINI_APERTI = ['nuovo', 'confermato', 'pronto', 'spedito'];
+export function impegnatiOrdini(ordini, tranne = '') {
+  const per = new Map();
+  for (const o of ordini || []) {
+    if (o.eliminato || o.id === tranne || !ORDINI_APERTI.includes(o.stato) || o.documento || o.movimento) continue;
+    for (const r of o.righe || []) per.set(r.prodotto, (per.get(r.prodotto) || 0) + (Number(r.pezzi) || 0));
+  }
+  return per;
 }
 
 export const totaleOrdine = righe => righe.reduce((t, r) => t + (Number(r.prezzo) || 0) * r.pezzi, 0);

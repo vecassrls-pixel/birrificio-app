@@ -5,6 +5,9 @@
 //   movcassa   { data, descrizione, entrata, uscita, categoria, note, rifMovBirra? }  (entrata o uscita, in euro)
 //   contacassa { data, saldo, note }   contanti contati a fine giornata (o riporto di inizio anno):
 //              il saldo riparte da lì, e la differenza con il calcolato si vede nell'elenco.
+//   sospesocassa { data, descrizione, importo, verso: 'entrata'|'uscita'|'', note, chiuso, rifMovCassa }
+//              soldi da sistemare (colonna "da pagare" del foglio): non toccano il saldo finché non si
+//              segnano incassati o pagati; allora diventano un movcassa e il sospeso si chiude (chiuso = data).
 
 import { dataExcel } from './xlsx-leggi.js';
 
@@ -46,9 +49,17 @@ export function registroCassa(movimenti, conte) {
   return righe;
 }
 
+// Sospesi ancora aperti, dal più vecchio, e il totale per verso
+export function sospesiAperti(sospesi) {
+  const aperti = sospesi.filter(x => !x.eliminato && !x.chiuso).sort((a, b) => String(a.data).localeCompare(String(b.data)));
+  const tot = filtro => aperti.filter(filtro).reduce((t, x) => t + n(x.importo), 0);
+  return { aperti, daIncassare: tot(x => x.verso === 'entrata'), daPagare: tot(x => x.verso === 'uscita'), daCapire: tot(x => x.verso !== 'entrata' && x.verso !== 'uscita') };
+}
+
 // Import dal foglio Excel della cassa (esportato da Numbers): fogli "Cassa …" con le colonne
 // Descrizione, data, avere (entrata), dare (uscita), da pagare (la riga RIPORTO ha il saldo di inizio anno).
-// Le righe senza data prendono la data della riga prima. Ritorna { fogli: [{ nome, movimenti, conta }] }.
+// Le righe senza data prendono la data della riga prima. Le righe con solo "da pagare" sono sospesi
+// (senza verso: chi deve a chi lo si sceglie quando si chiude). Ritorna [{ nome, movimenti, conta, sospesi }].
 export function cassaDaExcel(fogli) {
   const out = [];
   for (const f of fogli) {
@@ -59,7 +70,7 @@ export function cassaDaExcel(fogli) {
     const [cD, cData, cAvere, cDare, cRip] = [col('descrizione'), col('data'), col('avere'), col('dare'), col('da pagare')];
     if (cD < 0 || cAvere < 0 || cDare < 0) continue;
     const anno = Number(f.nome.match(/(20\d\d)\s*$/)?.[1]) || null;
-    const movimenti = [];
+    const movimenti = [], sospesi = [];
     let conta = null, ultima = null;
     const daCella = v => {
       if (typeof v === 'number' && v > 20000 && v < 80000) return dataExcel(v);
@@ -71,13 +82,16 @@ export function cassaDaExcel(fogli) {
       if (/^riporto$/i.test(desc)) { const s = Number(r[cRip] ?? r[cAvere] ?? r[cDare]); if (Number.isFinite(s) && anno) conta = { data: `${anno - 1}-12-31`, saldo: s, note: `Riporto da "${f.nome}"` }; continue; }
       if (/^(totale|in cassa)$/i.test(desc)) break;
       const entrata = typeof r[cAvere] === 'number' ? r[cAvere] : null, uscita = typeof r[cDare] === 'number' ? r[cDare] : null;
-      if (!entrata && !uscita) continue;
       const data = (cData >= 0 && daCella(r[cData])) || ultima || (anno ? `${anno}-01-01` : null);
       if (!data) continue;
+      if (!entrata && !uscita) {
+        if (cRip >= 0 && typeof r[cRip] === 'number' && r[cRip] > 0) sospesi.push({ data, descrizione: desc || '(senza descrizione)', importo: r[cRip], verso: '' });
+        continue;
+      }
       ultima = data;
       movimenti.push({ data, descrizione: desc || '(senza descrizione)', entrata: entrata || null, uscita: uscita || null, categoria: categoriaCassa(desc, entrata) });
     }
-    if (movimenti.length) out.push({ nome: f.nome, movimenti, conta });
+    if (movimenti.length) out.push({ nome: f.nome, movimenti, conta, sospesi });
   }
   return out;
 }

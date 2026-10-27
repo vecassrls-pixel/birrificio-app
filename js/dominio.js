@@ -24,6 +24,10 @@ export const ADDITIVI_DEFAULT = [
   { nome: 'Brewmix', qta: 100, unita: 'g' },
   { nome: 'Antioxin', qta: 100, unita: 'g' },
   { nome: 'Yeastvit', qta: 60, unita: 'g' },
+  // Romain 2026-10-20
+  { nome: 'Spindasol', qta: 250, unita: 'g' },
+  { nome: 'Protafloc', qta: 60, unita: 'g' },
+  { nome: 'Polygel', qta: 166, unita: 'g' },
 ];
 // altri modi in cui l'additivo è scritto nelle schede
 const ALTRI_NOMI = { yeastvit: ['vityeast', 'yeatvit', 'viteast', 'nutrientelievito', 'yeastnutrient'] };
@@ -96,7 +100,7 @@ export function fasiCotta(c, durate) {
 // Ogni cotta tiene i suoi dati del giorno di cotta (OG, pH mash, acqua, ingredienti);
 // registro di fermentazione, fine in FV e travaso sono del fermentatore e quindi comuni;
 // il confezionamento si salva solo sulla prima cotta del gruppo.
-export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso', 'fg', 'scadenza', 'mesiScadenza', 'dh', 'allegati'];
+export const CAMPI_COMUNI = ['fermentazione', 'fine', 'travaso', 'fg', 'scadenza', 'mesiScadenza', 'dh', 'allegati', 'beerfirm'];
 
 export function gruppoCotta(c, cotte) {
   if (!c.fv || !c.data) return [c];

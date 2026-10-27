@@ -2,11 +2,14 @@
 // Riceve da app.js gli strumenti condivisi (html, db, toast…) per non duplicarli.
 
 import { LOGO_KASHMIR } from './logo-kashmir.js';
+import { token } from './auth.js';
+import { sincronizza } from './sync.js';
 import { CONTROLLI_ARRIVO, ID_OPERATORI, operatoriDa, opzioniOperatori } from './haccp.js';
 import {
-  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO,
+  CATEGORIE, UNITA, GIORNI_IN_SCADENZA, giacenze, daCollegare, articoliDaRicette, categoriaDa, chiaveNome, statoScadenza, unitaDa, registroS6, MOTIVI_SCARICO, MOTIVI_CARICO, unisciArticoli, trovaArticolo, densitaArticolo, DENSITA_ACIDO, cambiaUnita, sogliaGrammi, converti, unitaStandard, rigaStandard, decimaliUnita, UNITA_CATEGORIA,
 } from './magazzino.js';
-import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione } from './bolla-pdf.js';
+import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione, incrociaBolla } from './bolla-pdf.js';
+import { trovaContenitore } from './contenitori.js';
 import { chiediAi, fotoBase64 } from './ai.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
@@ -29,7 +32,7 @@ function scad(data) {
 }
 // lotti da cui è uscito uno scarico (solo quelli con un nome)
 const lottiUsati = m => ((m.lotti || []).some(l => l.lotto) ? ` · lotto ${m.lotti.map(l => l.lotto || '—').join(' + ')}` : '');
-const fmt = (n, unita) => `${u.numIT(n, unita === 'kg' || unita === 'L' ? 1 : 0)} ${unita}`;
+const fmt = (n, unita) => `${u.numIT(n, decimaliUnita(unita))} ${unita}`;
 // da quando cercare ingredienti non collegati: primo inventario, altrimenti 3 mesi fa
 const inizioControllo = inventari => [...inventari].map(i => i.data).filter(Boolean).sort()[0] || u.addGiorni(u.oggiISO(), -90);
 
@@ -45,10 +48,16 @@ export async function vistaMagazzino() {
     && !(nascondiZero && aZero(x.giacenza) && aZero(x.impegnato)));
   const sotto = [...g.values()].filter(x => x.sottoScorta || x.disponibile < 0);
   const scadenze = [...g.values()].filter(x => x.statoScadenza);
+  // inventari con numeri da grammi su articoli in kg/L (6300 contati = 6300 kg di luppolo): da correggere ÷1000
+  // (e lo stesso per bolle e carichi manuali): da correggere ÷1000 sulla riga d'origine
+  const sospetti = [...g.values()].flatMap(x => {
+    const soglia = sogliaGrammi(x.articolo);
+    return soglia ? x.movimenti.filter(m => !m.futuro && m.tipo !== 'scarico' && m.dove && m.qta >= soglia).map(m => ({ articolo: x.articolo, mov: m })) : [];
+  });
   const scollegati = daCollegare(dati.cotte, dati.articoli, inizioControllo(dati.inventari)).slice(0, 40);
   const bolle = [...dati.bolle].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 8);
   // fatture dei fornitori arrivate con l'import automatico notturno (netlify/lib/automazioni.mjs)
-  const acquisti = (await u.db.tutti('importsospeso')).filter(x => x.fonte === 'acquisti').sort((a, b) => String(b.doc?.data).localeCompare(String(a.doc?.data)));
+  const acquisti = (await u.db.tutti('importsospeso')).filter(x => x.fonte === 'acquisti' && !x.mpFatte).sort((a, b) => String(b.doc?.data).localeCompare(String(a.doc?.data)));
 
   u.$app.innerHTML = html`
     <div class="barra">
@@ -65,7 +74,15 @@ export async function vistaMagazzino() {
       <a class="btn" href="#/scarico/carico">+ Carico manuale</a>
       <a class="btn" href="#/scarico/nuovo">− Scarico manuale</a>
       <a class="btn primario" href="#/bolla/nuova">+ Bolla di carico</a>
+      <button class="solo-editori" id="importa-fic" title="Scarica adesso le fatture dei fornitori (e le vendite) da Fatture in Cloud, senza aspettare l'import della notte">⟳ Importa da Fatture in Cloud</button>
     </div>
+    ${sospetti.length ? html`<div class="scheda avviso solo-editori" id="sospetti"><h2>⚠ Quantità da controllare</h2>
+      <p class="totale">In queste righe il numero sembra in grammi ma l'articolo è in kg (o in ml con l'articolo in L). Se è così tocca "÷ 1000": cambia solo quella riga (di inventario, bolla o carico).</p>
+      <div class="scroll-x"><table class="tab-mag"><tbody>${sospetti.map((x, i) => html`<tr>
+        <td><a href="#/materia/${encodeURIComponent(x.articolo.id)}">${x.articolo.nome}</a></td>
+        <td>${x.mov.tipo === 'inventario' ? 'inventario' : x.mov.rif} del ${u.dataIT(x.mov.data)}</td>
+        <td class="n">${fmt(x.mov.qta, x.articolo.unita)}</td>
+        <td class="az"><button class="piccolo" data-diviso="${i}">÷ 1000 → ${fmt(x.mov.qta / 1000, x.articolo.unita)}</button></td></tr>`)}</tbody></table></div></div>` : ''}
     ${acquisti.length ? html`<div class="scheda solo-editori" id="acquisti"><h2>📥 Acquisti da Fatture in Cloud <span class="totale">${acquisti.length} da controllare</span></h2>
       <p class="totale">Fatture dei fornitori importate di notte. "Carica" apre la bolla già compilata con righe e prezzi: controlli e salvi. "Scarta" per spese, servizi e tutto quello che non è materia prima.</p>
       <ul class="w-lista">${acquisti.map(x => html`<li class="acq-riga"><span class="w-testo"><b>${x.doc.fornitore || 'Fornitore'}</b> · ${x.doc.numero || ''} · ${u.dataIT(x.doc.data)}<small>${x.doc.righe.slice(0, 4).map(r => r.descrizione).join(' · ')}${x.doc.righe.length > 4 ? ` e altre ${x.doc.righe.length - 4}` : ''}</small></span>
@@ -124,6 +141,22 @@ export async function vistaMagazzino() {
   $('cat')?.addEventListener('change', e => { filtri.categoria = e.target.value; vistaMagazzino(); });
   $('nascondi-zero')?.addEventListener('change', e => { scriviPref(e.target.checked); vistaMagazzino(); });
   $('nuovo-art').onclick = () => dialogArticolo({});
+  // import subito, lo stesso dell'automazione notturna (POST automazioni { azione: 'importa' }) (Romain 2026-10-20)
+  $('importa-fic').onclick = async e => {
+    const b = e.currentTarget;
+    b.disabled = true; b.textContent = '⟳ Importo…';
+    try {
+      const t = await token();
+      const res = await fetch('/.netlify/functions/automazioni', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }, body: JSON.stringify({ azione: 'importa' }) });
+      let r = null;
+      try { r = await res.json(); } catch { /* app non pubblicata su Netlify */ }
+      if (!res.ok || !r) throw new Error(r?.errore || (res.status === 404 ? 'L\'import funziona solo sull\'app pubblicata' : `Errore ${res.status}`));
+      const x = r.esito || {};
+      await sincronizza(); // porta nell'app quello che il server ha appena salvato
+      u.toast(`Import fatto: ${x.acquisti || 0} fatture fornitori da controllare, ${x.movimenti || 0} movimenti birra${x.errori?.length ? ` · ${x.errori.join(' · ')}` : ''}`);
+      if (location.hash === '#/materie-prime') vistaMagazzino();
+    } catch (ex) { u.toast(ex.message); b.disabled = false; b.textContent = '⟳ Importa da Fatture in Cloud'; }
+  };
   $('da-ricette')?.addEventListener('click', async () => {
     const proposti = articoliDaRicette(dati.cotte, dati.articoli, u.addGiorni(u.oggiISO(), -365));
     if (!proposti.length) return u.toast('Nessun ingrediente trovato nelle cotte recenti');
@@ -151,7 +184,19 @@ export async function vistaMagazzino() {
     await u.db.salva({ ...a, alias: [...new Set([...(a.alias || []), scollegati[i].nome])] });
     u.toast(`"${scollegati[i].nome}" collegato a ${a.nome}`);
   };
-  u.$app.onclick = e => {
+  u.$app.onclick = async e => {
+    const div = e.target.dataset.diviso;
+    if (div !== undefined) {
+      const x = sospetti[div];
+      const rec = await u.db.leggi(x.mov.dove.id);
+      const i = Number(x.mov.dove.path.split('.')[1]);
+      if (!rec?.righe?.[i] || rec.righe[i].articoloId !== x.articolo.id) return u.toast('Riga non trovata');
+      rec.righe[i] = { ...rec.righe[i], qta: Number(rec.righe[i].qta) / 1000 };
+      const { aggiornato: _a, ...daSalvare } = rec;
+      await u.db.salva(daSalvare);
+      u.toast(`${x.articolo.nome}: quantità corretta`);
+      return vistaMagazzino();
+    }
     const i = e.target.dataset.crea;
     if (i === undefined) return;
     const s = scollegati[i];
@@ -180,6 +225,14 @@ export function apriBozzaBolla(ddt) {
   if (location.hash === '#/bolla/nuova') vistaBolla('nuova'); else location.hash = '#/bolla/nuova';
 }
 
+// scelta la categoria, l'unità diventa quella standard (kg malti, zuccheri, luppoli; g sali e coadiuvanti)
+function unitaDaCategoria(form) {
+  form.categoria.addEventListener('change', () => {
+    const std = UNITA_CATEGORIA[form.categoria.value];
+    if (std && ['kg', 'g'].includes(form.unita.value)) form.unita.value = std;
+  });
+}
+
 // ---------- dialogo nuovo articolo ----------
 // vai = false: resta dove si è (es. scheda cotta) e restituisce l'articolo creato
 function dialogArticolo(pre, vai = true) {
@@ -190,13 +243,14 @@ function dialogArticolo(pre, vai = true) {
     <div class="griglia">
       <label style="grid-column:1/-1">Nome <input name="nome" required value="${pre.nome || ''}"></label>
       <label>Categoria <select name="categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (pre.categoria || 'malto') ? 'selected' : ''}>${v}</option>`)}</select></label>
-      <label>Unità <select name="unita">${UNITA.map(x => html`<option ${x === (pre.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></label>
+      <label>Unità <select name="unita">${UNITA.map(x => html`<option ${x === unitaStandard(pre.categoria || 'malto', pre.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></label>
       <label>Scorta minima <input name="scortaMin" type="number" step="any" inputmode="decimal"></label>
     </div>
     <div class="barra" style="margin-top:14px"><span class="spazio"></span>
       <button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">Crea</button></div>
   </form>`.s;
   document.body.appendChild(d);
+  unitaDaCategoria(d.querySelector('form'));
   const fatto = new Promise(ok => d.addEventListener('close', async () => {
     d.remove();
     if (d.returnValue !== 'ok') return ok(null);
@@ -204,7 +258,7 @@ function dialogArticolo(pre, vai = true) {
     const nome = String(fd.get('nome') || '').trim();
     if (!nome) return ok(null);
     const rec = await u.db.salva({
-      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: fd.get('categoria'), unita: fd.get('unita'),
+      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: fd.get('categoria'), unita: unitaStandard(fd.get('categoria'), fd.get('unita')),
       scortaMin: Number(fd.get('scortaMin')) || 0, alias: pre.alias || [], creato: u.oggiISO(),
     });
     if (vai) location.hash = `#/materia/${encodeURIComponent(rec.id)}`;
@@ -248,7 +302,7 @@ async function eseguiUnione(voci, i) {
   if (!tieni) {
     const cat = t.categoria || 'malto';
     tieni = await u.db.salva({
-      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome: t.nome, categoria: cat, unita: ['malto', 'zucchero'].includes(cat) ? 'kg' : 'g',
+      tipo: 'articolo', id: u.db.nuovoId('articolo'), nome: t.nome, categoria: cat, unita: unitaStandard(cat, 'g'),
       scortaMin: 0, alias: [...new Set(t.nomi || [])], creato: u.oggiISO(),
     });
   }
@@ -338,14 +392,33 @@ export async function vistaArticolo(id) {
           <td class="n">${m.tipo === 'inventario' ? '= ' : m.qta > 0 ? '+' : ''}${fmt(m.qta, a.unita)}</td>
         </tr>`)}</tbody></table></div>` : html`<p class="totale">Nessun movimento: fai l'inventario o carica una bolla.</p>`}
     </div>`;
+  unitaDaCategoria(document.getElementById('f-art'));
   document.getElementById('f-art').onsubmit = async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    await u.db.salva({
-      ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'), unita: fd.get('unita'),
+    const rec = {
+      ...a, nome: String(fd.get('nome')).trim(), categoria: fd.get('categoria'),
       scortaMin: Number(fd.get('scortaMin')) || 0, pesoPezzo: Number(fd.get('pesoPezzo')) || null, densita: Number(fd.get('densita')) || null, prezzo: Number(fd.get('prezzo')) || null,
       alias: String(fd.get('alias') || '').split(',').map(s => s.trim()).filter(Boolean),
-    });
+    };
+    // unità cambiata (g ↔ kg, ml ↔ L): si convertono anche inventari, scorta minima, peso per pezzo e prezzo
+    // malti, zuccheri e luppoli sempre in kg, sali e coadiuvanti in g (anche se si cambia categoria)
+    const unitaScelta = unitaStandard(rec.categoria, fd.get('unita'));
+    if (unitaScelta !== fd.get('unita')) u.toast(`${CATEGORIE[rec.categoria]} sempre in ${unitaScelta}`);
+    fd.set('unita', unitaScelta);
+    const cambio = cambiaUnita(rec, fd.get('unita'), dati.inventari, [...dati.bolle, ...dati.scarichi]);
+    if (cambio) {
+      if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${fd.get('unita')}? Le quantità contate negli inventari, la scorta minima e il prezzo vengono convertiti.`, 'Converti'))) return;
+      await u.db.salvaMolti([cambio.art, ...cambio.inventari, ...cambio.documenti].map(({ aggiornato: _a, ...x }) => x));
+    } else if (a.unita && a.unita !== fd.get('unita') && converti(1, a.unita, fd.get('unita')) === null) {
+      // pz ↔ kg non si converte: era solo l'unità sbagliata (fattura senza unità). Le righe di bolle e carichi
+      // scritte nella vecchia unità passano alla nuova con gli stessi numeri, così tornano nella giacenza.
+      const nuova = fd.get('unita');
+      const tocca = [...dati.bolle, ...dati.scarichi].filter(d => (d.righe || []).some(r => r.articoloId === id && (r.unita || a.unita) === a.unita));
+      if (!(await u.chiedi(`Passare ${rec.nome} da ${a.unita} a ${nuova}? Le quantità di bolle e carichi scritte in ${a.unita}${tocca.length ? ` (${tocca.length} document${tocca.length === 1 ? 'o' : 'i'})` : ''} restano con lo stesso numero ma in ${nuova}.`, 'Cambia unità'))) return;
+      const docs = tocca.map(({ aggiornato: _a, ...d }) => ({ ...d, righe: d.righe.map(r => (r.articoloId === id && (r.unita || a.unita) === a.unita ? { ...r, unita: nuova } : r)) }));
+      await u.db.salvaMolti([{ ...rec, unita: nuova }, ...docs].map(({ aggiornato: _a, ...x }) => x));
+    } else await u.db.salva({ ...rec, unita: fd.get('unita') });
     u.toast('Articolo salvato');
     vistaArticolo(id);
   };
@@ -379,14 +452,47 @@ export async function vistaBolla(id) {
   if (id !== 'nuova' && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Bolla non trovata. <a href="#/materie-prime">Torna alle materie prime</a></p>`; return; }
   const bozza = id === 'nuova' ? bozzaBolla : null;
   bozzaBolla = null;
+  // righe della fattura che sono lattine o fusti vuoti: vanno in Contenitori, non in magazzino
+  const contenitori = bozza?.sospesoId ? await u.db.tutti('contenitore') : [];
+  const vuoto = r => { const t = trovaContenitore(r, contenitori); return !!t && !t.ignora; };
   const b = esistente ? JSON.parse(JSON.stringify(esistente))
-    : bozza ? { tipo: 'bolla', data: bozza.data || u.oggiISO(), fornitore: bozza.fornitore || '', numero: bozza.numero || '', righe: proponiRighe(bozza, dati.articoli).map(r => ({ ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) })), ...(bozza.rifEsterno ? { rifEsterno: bozza.rifEsterno } : {}) }
+    : bozza ? { tipo: 'bolla', data: bozza.data || u.oggiISO(), fornitore: bozza.fornitore || '', numero: bozza.numero || '', righe: proponiRighe(bozza, dati.articoli).map((r, i) => (vuoto(bozza.righe[i]) ? { ...r, includi: false, nota: 'vuoto: si carica in Contenitori' } : { ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) })), ...(bozza.rifEsterno ? { rifEsterno: bozza.rifEsterno } : {}) }
     : { tipo: 'bolla', data: u.oggiISO(), fornitore: '', numero: '', righe: [{ nome: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
   const perId = new Map(dati.articoli.map(a => [a.id, a]));
   for (const r of b.righe) if (r.articoloId && !r.nome) r.nome = perId.get(r.articoloId)?.nome || '';
   const fornitori = [...new Set(dati.bolle.map(x => x.fornitore).filter(Boolean))].sort();
   let pdfStato = '';
   const daPdf = () => b.righe.some(r => r.descrizione);
+  // bolla nuova aperta da una fattura: il PDF o la foto della bolla non sostituiscono le righe, le incrociano
+  const daFattura = !esistente && !!bozza?.rifEsterno;
+  const noto = r => r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome);
+  const applica = (ddt, lette, origine) => {
+    if (!daFattura) {
+      b.data = ddt.data || b.data;
+      b.numero = ddt.numero || b.numero;
+      b.fornitore = ddt.fornitore || b.fornitore;
+      b.righe = lette;
+      return `${origine}: ${lette.filter(r => r.includi).length} righe da caricare, ${lette.filter(r => !r.includi).length} escluse (spese, imballi…).`;
+    }
+    if (ddt.numero) b.ddt = ddt.numero;
+    const { righe, avvisi } = incrociaBolla(b.righe, lette, noto);
+    b.righe = righe;
+    const lotti = righe.filter(r => r.includi !== false && r.lotto).length;
+    return `${origine}: lotti e scadenze presi dalla bolla (${lotti} righe con lotto)${avvisi ? ` · ${avvisi} da controllare, segnate con ⚠` : ' · quantità uguali alla fattura'}.`;
+  };
+
+  // totale kg di luppoli e di malti della bolla, tutti insieme (Romain 2026-10-20)
+  const totali = () => {
+    const t = { luppolo: 0, malto: 0 };
+    for (const r of b.righe) {
+      if (r.includi === false || !(Number(r.qta) > 0)) continue;
+      const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
+      const cat = art?.categoria || r.categoria;
+      const kg = converti(Number(r.qta), r.unita || art?.unita || 'kg', 'kg');
+      if (cat in t && kg !== null) t[cat] += kg;
+    }
+    return [['luppolo', 'Totale luppoli'], ['malto', 'Totale malti']].filter(([k]) => t[k] > 0).map(([k, n]) => `${n}: ${u.numIT(t[k], t[k] < 100 ? 2 : 0)} kg`).join(' · ');
+  };
 
   async function leggiPdf(file) {
     pdfStato = 'Leggo il PDF…';
@@ -394,12 +500,7 @@ export async function vistaBolla(id) {
     try {
       const ddt = leggiDdt(await estraiTesto(file));
       if (!ddt.righe.length) throw new Error('Non ho trovato righe articolo: il PDF è una scansione o ha un formato che non conosco. Inserisci le righe a mano.');
-      b.data = ddt.data || b.data;
-      b.numero = ddt.numero || b.numero;
-      b.fornitore = ddt.fornitore || b.fornitore;
-      b.righe = proponiRighe(ddt, dati.articoli);
-      const n = b.righe.filter(r => r.includi).length;
-      pdfStato = `${file.name}: ${n} righe da caricare, ${b.righe.length - n} escluse (spese, imballi…).`;
+      pdfStato = applica(ddt, proponiRighe(ddt, dati.articoli), file.name);
     } catch (ex) {
       // scansione o formato sconosciuto: ci prova Claude
       return leggiAi(file, `${ex.message.split(':')[0]}: lo faccio leggere all'AI…`);
@@ -414,13 +515,9 @@ export async function vistaBolla(id) {
     try {
       const { json: ddt } = await chiediAi({ azione: 'bolla', ...(await fotoBase64(file)) });
       if (!ddt?.righe?.length) throw new Error('Non ho trovato righe articolo nella foto: rifalla più dritta e illuminata, o inserisci le righe a mano.');
-      b.data = /^\d{4}-\d{2}-\d{2}$/.test(ddt.data) ? ddt.data : b.data;
-      b.numero = ddt.numero || b.numero;
-      b.fornitore = ddt.fornitore || b.fornitore;
       const righe = ddt.righe.map(r => ({ ...r, prezzo: r.prezzo ?? undefined, scadenza: /^\d{4}-\d{2}-\d{2}$/.test(r.scadenza) ? r.scadenza : '' }));
-      b.righe = proponiRighe({ ...ddt, righe }, dati.articoli).map(r => ({ ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) }));
-      const n = b.righe.filter(r => r.includi).length;
-      pdfStato = `Letta dall'AI: ${n} righe da caricare, ${b.righe.length - n} escluse. Controlla quantità e lotti prima di salvare.`;
+      const lette = proponiRighe({ ...ddt, righe }, dati.articoli).map(r => ({ ...r, includi: noto(r) }));
+      pdfStato = `${applica({ ...ddt, data: /^\d{4}-\d{2}-\d{2}$/.test(ddt.data) ? ddt.data : '' }, lette, 'Letta dall\'AI')} Controlla quantità e lotti prima di salvare.`;
     } catch (ex) {
       pdfStato = ex.message;
     }
@@ -434,6 +531,7 @@ export async function vistaBolla(id) {
       <div class="scheda">
         <h1 style="margin-top:0">${esistente ? 'Bolla di carico' : 'Nuova bolla di carico'}</h1>
         ${esistente ? '' : html`<div class="barra">
+          ${daFattura ? html`<span class="totale" style="margin:0;flex-basis:100%">Righe dalla fattura di Fatture in Cloud, senza lotti e scadenze: leggi il PDF o la foto della bolla (DDT) e li prendo da lì, controllando che le quantità siano le stesse.</span>` : ''}
           <label class="btn primario">📄 Leggi il PDF della bolla<input type="file" id="pdf" accept="application/pdf,.pdf" hidden></label>
           <label class="btn" title="Fotografa la bolla di carta: la legge Claude">📷 Foto della bolla<input type="file" id="foto-bolla" accept="image/*" capture="environment" hidden></label>
           <span class="totale" id="pdf-stato" style="margin:0">${pdfStato}</span>
@@ -466,7 +564,7 @@ export async function vistaBolla(id) {
             const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
             return html`<tr class="${r.includi === false ? 'escluso' : ''}">
               ${daPdf() ? html`<td><input type="checkbox" data-r="${i}.includi" ${r.includi === false ? '' : 'checked'} style="width:auto;min-height:auto"></td>` : ''}
-              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px">${r.descrizione ? html`<div class="totale" style="margin:2px 0 0">${r.descrizione}${art || r.includi === false ? '' : ' · articolo nuovo'}</div>` : ''}</td>
+              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px">${r.descrizione ? html`<div class="totale" style="margin:2px 0 0">${r.descrizione}${art || r.includi === false ? '' : ' · articolo nuovo'}</div>` : ''}${r.nota ? html`<div class="totale nota-riga">⚠ ${r.nota}</div>` : ''}</td>
               <td>${art ? html`<span class="totale">${CATEGORIE[art.categoria]}</span>` : html`<select data-r="${i}.categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (r.categoria || 'malto') ? 'selected' : ''}>${v}</option>`)}</select>`}</td>
               <td><input data-r="${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
               <td><select data-r="${i}.unita">${UNITA.map(x => html`<option ${x === (r.unita || art?.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></td>
@@ -477,7 +575,7 @@ export async function vistaBolla(id) {
             </tr>`;
           })}</tbody>
         </table></div>
-        <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><span class="spazio"></span>
+        <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><b id="tot-bolla">${totali()}</b><span class="spazio"></span>
           <button class="primario" id="salva">Salva bolla</button></div>
       </div>`;
   }
@@ -495,6 +593,8 @@ export async function vistaBolla(id) {
     if (t.dataset.r) {
       const [i, k] = t.dataset.r.split('.');
       b.righe[i][k] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value;
+      const $tot = document.getElementById('tot-bolla');
+      if ($tot) $tot.textContent = totali();
       if (k === 'includi' && e.type === 'change') disegna();
       // nome scelto: mostra categoria e unità dell'articolo esistente
       if (k === 'nome' && e.type === 'change') {
@@ -522,7 +622,8 @@ export async function vistaBolla(id) {
         const nome = String(r.nome).trim();
         let art = dati.articoli.find(a => a.nome.toLowerCase() === nome.toLowerCase()) || nuovi.find(a => a.nome.toLowerCase() === nome.toLowerCase());
         if (!art) {
-          art = { tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: r.categoria || 'malto', unita: r.unita || 'kg', scortaMin: 0, alias: [], creato: [b.data, u.oggiISO()].sort()[0] };
+          const categoria = r.categoria || 'malto';
+          art = { tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria, unita: unitaStandard(categoria, r.unita || 'kg'), scortaMin: 0, alias: [], creato: [b.data, u.oggiISO()].sort()[0] };
           nuovi.push(art);
         }
         // la descrizione del fornitore diventa un alias: la prossima bolla trova l'articolo da sola
@@ -530,11 +631,20 @@ export async function vistaBolla(id) {
           art.alias = [...(art.alias || []), r.descrizione];
           if (!nuovi.includes(art)) aggiornati.set(art.id, art);
         }
-        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', ...(Number(r.prezzo) > 0 ? { prezzo: Number(r.prezzo) } : {}), ...(r.descrizione ? { descrizione: r.descrizione } : {}) };
+        // quantità e prezzo nell'unità standard (luppoli in kg, sali e coadiuvanti in g)
+        return rigaStandard({ articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: String(r.lotto || '').trim(), scadenza: r.scadenza || '', ...(Number(r.prezzo) > 0 ? { prezzo: Number(r.prezzo) } : {}), ...(r.descrizione ? { descrizione: r.descrizione } : {}) }, art.categoria, art.unita);
       });
       if (nuovi.length || aggiornati.size) await u.db.salvaMolti([...nuovi, ...aggiornati.values()].map(({ aggiornato: _a, ...a }) => a));
       await u.db.salva({ ...b, id: b.id || u.db.nuovoId('bolla'), righe: out });
-      if (bozza?.sospesoId) await u.db.elimina(bozza.sospesoId);
+      if (bozza?.sospesoId) {
+        // la fattura resta per Contenitori se ha lattine o fusti non ancora caricati là
+        const rec = await u.db.leggi(bozza.sospesoId);
+        const vuoti = (rec?.doc?.righe || []).filter(vuoto);
+        if (rec && !rec.eliminato && !rec.vuotiVisti && vuoti.length) {
+          const { aggiornato: _a, ...daSalvare } = rec;
+          await u.db.salva({ ...daSalvare, mpFatte: true, doc: { ...rec.doc, righe: vuoti } });
+        } else await u.db.elimina(bozza.sospesoId);
+      }
       u.toast(`Bolla salvata${nuovi.length ? ` · ${nuovi.length} articoli nuovi` : ''}`);
       location.hash = '#/materie-prime';
     }
@@ -643,7 +753,7 @@ export async function vistaInventario() {
     if (!data.v) return u.toast('Manca la data');
     // luppoli, lieviti, sali… in kg contati in grammi (10.000 kg di Citra): si chiede se dividere per 1000
     const sospetti = [...contati].map(([id, q]) => ({ id, q, a: dati.articoli.find(x => x.id === id) }))
-      .filter(x => x.a && ['kg', 'L'].includes(x.a.unita) && !['malto', 'zucchero'].includes(x.a.categoria) && x.q >= 1000);
+      .filter(x => x.a && sogliaGrammi(x.a) && x.q >= sogliaGrammi(x.a));
     if (sospetti.length) {
       const elenco = sospetti.map(x => `${x.a.nome} ${u.numIT(x.q)} ${x.a.unita}`).join(', ');
       if (await u.chiedi(`${elenco}: forse li hai contati in grammi (o ml). Li divido per 1000? Con Annulla restano come li hai scritti.`, 'Sì, dividi per 1000')) {
@@ -685,7 +795,8 @@ export async function vistaInventario() {
 }
 
 // ---------- registro HACCP S6 carico/scarico (da stampare) ----------
-const s6 = { da: null, a: null, categoria: '' };
+const s6 = { da: null, a: null, categoria: '', pagina: 0 };
+const RIGHE_S6 = 18;
 export async function vistaRegistroS6() {
   const { html } = u;
   // date di default ricalcolate a ogni apertura (l'app può restare aperta per giorni); quelle scelte a mano restano
@@ -695,6 +806,10 @@ export async function vistaRegistroS6() {
   if (!s6.aScelto) s6.a = u.addGiorni(lun, 6);
   const dati = await datiMagazzino();
   const righe = registroS6(dati, s6.da, s6.a).filter(r => !s6.categoria || r.categoria === s6.categoria);
+  // fogli da RIGHE_S6 righe, ognuno con intestazione e nomi delle colonne (Romain 2026-10-20); a video uno alla volta
+  const pagine = [];
+  for (let i = 0; i < righe.length; i += RIGHE_S6) pagine.push(righe.slice(i, i + RIGHE_S6));
+  s6.pagina = Math.min(Math.max(0, s6.pagina || 0), Math.max(0, pagine.length - 1));
   u.$app.innerHTML = html`
     <div class="barra">
       <a href="#/haccp" class="btn">← HACCP</a>
@@ -705,27 +820,34 @@ export async function vistaRegistroS6() {
       <span class="spazio"></span>
       <button class="primario" id="stampa">Stampa / Salva PDF</button>
     </div>
-    <div class="s6">
+    ${righe.some(r => r.scollegato) ? html`<p class="totale non-stampa">${righe.filter(r => r.scollegato).length} righe hanno un ingrediente non collegato a un articolo del magazzino: compaiono col nome della scheda cotta e senza lotto. Collegali in Materie prime → "Ingredienti delle cotte non collegati".</p>` : ''}
+    ${pagine.length > 1 ? html`<div class="barra non-stampa s6-pagine">
+      <button id="s6-prec" ${s6.pagina ? '' : 'disabled'} aria-label="Pagina precedente">◀</button>
+      <span>Pagina <b>${s6.pagina + 1}</b> di ${pagine.length} · ${righe.length} righe</span>
+      <button id="s6-succ" ${s6.pagina < pagine.length - 1 ? '' : 'disabled'} aria-label="Pagina successiva">▶</button>
+      <span class="totale">In stampa escono tutte le pagine.</span></div>` : ''}
+    ${(pagine.length ? pagine : [[]]).map((pag, n) => html`<div class="s6 s6-pag ${n === s6.pagina ? '' : 's6-altra'}">
       <div class="s6-testa">
         <img src="${LOGO_KASHMIR}" alt="Kashmir Brewing Company">
         <div><h1>S6 - CARICO - SCARICO /// VECAS SRLS</h1>
-          <div>Periodo: dal ${u.dataIT(s6.da)} al ${u.dataIT(s6.a)}${s6.categoria ? ` · ${CATEGORIE[s6.categoria]}` : ''} · stampato il ${u.dataIT(u.oggiISO())}</div></div>
+          <div>Periodo: dal ${u.dataIT(s6.da)} al ${u.dataIT(s6.a)}${s6.categoria ? ` · ${CATEGORIE[s6.categoria]}` : ''} · stampato il ${u.dataIT(u.oggiISO())}${pagine.length > 1 ? ` · pagina ${n + 1} di ${pagine.length}` : ''}</div></div>
       </div>
       <p class="s6-legenda">Legenda: C = carico - S = scarico - QTA = quantità - Dest = destinatario - Prov = Provenienza</p>
-      ${righe.some(r => r.scollegato) ? html`<p class="totale non-stampa">${righe.filter(r => r.scollegato).length} righe hanno un ingrediente non collegato a un articolo del magazzino: compaiono col nome della scheda cotta e senza lotto. Collegali in Materie prime → "Ingredienti delle cotte non collegati".</p>` : ''}
-      ${righe.length ? html`<table class="tab-s6">
+      ${pag.length ? html`<table class="tab-s6">
         <thead><tr><th>C/S</th><th>Data</th><th>Prodotto</th><th>Lotto</th><th class="n">QTA</th><th>Scadenza</th><th>Dest/Prov</th></tr></thead>
-        <tbody>${righe.map(r => html`<tr class="${r.cs === 'C' ? 'c' : ''}">
+        <tbody>${pag.map(r => html`<tr class="${r.cs === 'C' ? 'c' : ''}">
           <td>${r.cs}</td><td>${u.dataIT(r.data)}</td><td>${r.prodotto}</td>
           <td>${r.lotto || !r.dove ? r.lotto : html`<input class="s6-lotto" data-dove="${JSON.stringify(r.dove)}" placeholder="+ lotto" title="Scrivi il lotto: si salva su ${r.dove.tipo === 'cotta' ? 'la scheda cotta' : r.dove.tipo === 'bolla' ? 'la bolla' : 'il movimento manuale'}">`}</td>
           <td class="n">${fmt(r.qta, r.unita)}</td><td>${r.scadenza ? u.dataIT(r.scadenza) : ''}</td><td>${r.chi}</td>
         </tr>`)}</tbody></table>` : html`<p class="vuoto">Nessun movimento nel periodo.</p>`}
-    </div>`;
+    </div>`)}`;
   const $ = s => document.getElementById(s);
-  $('s6-da').onchange = e => { s6.da = e.target.value; s6.daScelto = !!e.target.value; vistaRegistroS6(); };
-  $('s6-a').onchange = e => { s6.a = e.target.value; s6.aScelto = !!e.target.value; vistaRegistroS6(); };
-  const logo = u.$app.querySelector('.s6-testa img');
-  $('s6-cat').onchange = e => { s6.categoria = e.target.value; vistaRegistroS6(); };
+  $('s6-da').onchange = e => { s6.da = e.target.value; s6.daScelto = !!e.target.value; s6.pagina = 0; vistaRegistroS6(); };
+  $('s6-a').onchange = e => { s6.a = e.target.value; s6.aScelto = !!e.target.value; s6.pagina = 0; vistaRegistroS6(); };
+  if ($('s6-prec')) $('s6-prec').onclick = () => { s6.pagina--; vistaRegistroS6(); };
+  if ($('s6-succ')) $('s6-succ').onclick = () => { s6.pagina++; vistaRegistroS6(); };
+  const loghi = [...u.$app.querySelectorAll('.s6-testa img')];
+  $('s6-cat').onchange = e => { s6.categoria = e.target.value; s6.pagina = 0; vistaRegistroS6(); };
   // lotto mancante scritto qui: va sulla riga di origine (ingrediente della cotta, riga della bolla o del movimento manuale)
   u.$app.querySelectorAll('.s6-lotto').forEach(el => {
     el.onchange = async () => {
@@ -744,7 +866,7 @@ export async function vistaRegistroS6() {
     };
   });
   $('stampa').onclick = async () => {
-    await logo.decode().catch(() => {}); // stampa col logo già caricato
+    await Promise.all(loghi.map(l => l.decode().catch(() => {}))); // stampa coi loghi già caricati
     const titolo = document.title;
     document.title = `S6 carico scarico ${s6.da} ${s6.a}`;
     addEventListener('afterprint', () => { document.title = titolo; }, { once: true });
@@ -858,12 +980,13 @@ export async function vistaScarico(id) {
       for (const r of ignoti) {
         const nome = String(r.nome).trim();
         if (nuovi.some(a => a.nome.toLowerCase() === nome.toLowerCase())) continue;
-        nuovi.push({ tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria: r.categoria || categoriaDaDescrizione(nome) || 'aggiunta', unita: r.unita || 'kg', scortaMin: 0, alias: [], creato: [sc.data, u.oggiISO()].sort()[0] });
+        const categoria = r.categoria || categoriaDaDescrizione(nome) || 'aggiunta';
+        nuovi.push({ tipo: 'articolo', id: u.db.nuovoId('articolo'), nome, categoria, unita: unitaStandard(categoria, r.unita || 'kg'), scortaMin: 0, alias: [], creato: [sc.data, u.oggiISO()].sort()[0] });
       }
       if (nuovi.length) { await u.db.salvaMolti(nuovi); dati.articoli.push(...nuovi); }
       const out = righe.map(r => {
         const art = perNome(r.nome);
-        return { articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: (r.lotto || '').trim(), ...(carico() ? { scadenza: r.scadenza || '' } : {}) };
+        return rigaStandard({ articoloId: art.id, nome: art.nome, qta: Number(r.qta), unita: r.unita || art.unita, lotto: (r.lotto || '').trim(), ...(carico() ? { scadenza: r.scadenza || '' } : {}) }, art.categoria, art.unita);
       });
       await u.db.salva({ ...sc, id: sc.id || u.db.nuovoId('scarico'), righe: out });
       u.toast(carico() ? `Carico salvato${nuovi.length ? ` · ${nuovi.length === 1 ? '1 articolo nuovo' : `${nuovi.length} articoli nuovi`}` : ''}` : 'Scarico salvato');

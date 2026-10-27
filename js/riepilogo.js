@@ -7,10 +7,10 @@
 // Il testo usa l'HTML di Telegram (<b>, <i>, <a>): i valori passano da esc().
 
 import { attivitaGiorno, etichetteDaOrdinare } from './agenda.js';
-import { giacenze } from './magazzino.js';
+import { decimaliUnita, giacenze } from './magazzino.js';
 import { fabbisogno } from './ordine.js';
 import { confezionamenti, giacenzeBirra, rinominati } from './birra.js';
-import { fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
+import { conPulizieAutomatiche, fvDaPulire, scadenzeDaFare, statoFermentatori } from './haccp.js';
 import { coperturaBirre, statoClienti } from './previsioni.js';
 import { prezzoVendita } from './costi.js';
 import { addGiorni, dataIT, diffGiorni, numIT, periodiCotta, gruppoCotta, lottoGruppo } from './dominio.js';
@@ -32,7 +32,8 @@ export function calcoli(dati, oggi) {
   // senza magazzino birra avviato (inventario iniziale) non si sa quanta birra c'è: niente previsioni
   const copertura = dati.impBirra?.inizio ? coperturaBirre({ giac: giacB, cotte, durate }, { oggi }) : [];
   const clienti = statoClienti(dati.movimenti, dati.clienti, dati.prodotti, oggi);
-  const sporchi = fvDaPulire(statoFermentatori(cotte, durate, fv, dati.pulizie, oggi), dati.pulizie, oggi);
+  const pulizie = conPulizieAutomatiche(cotte, durate, fv, dati.pulizie, '', oggi);
+  const sporchi = fvDaPulire(statoFermentatori(cotte, durate, fv, pulizie, oggi), pulizie, oggi);
   const scadHaccp = scadenzeDaFare(dati.scadenze, oggi);
   const etichette = etichetteDaOrdinare(cotte, durate, oggi).filter(x => diffGiorni(oggi, x.fine) <= 21);
   return { giacMp, daOrdinare, giacB, datiBirra, copertura, clienti, sporchi, scadHaccp, etichette };
@@ -54,7 +55,7 @@ export function testoAgenda(dati, oggi, { url = '' } = {}) {
   sez('🧽 FV da pulire', c.sporchi.map(x => `${esc(x.fv.nome)}: ${x.prossimo ? `si riempie ${x.giorni <= 0 ? 'oggi' : `tra ${x.giorni} gg`} con ${esc(x.prossimo.cotte[0].birra)}` : `vuoto dal ${dataIT(x.svuotato)}`}`));
   sez('🗓️ Scadenze HACCP', c.scadHaccp.slice(0, 5).map(x => `${esc(x.s.nome)}: ${x.stato === 'scaduta' ? '<b>scaduta</b>' : x.giorni === 0 ? 'oggi' : `tra ${x.giorni} gg`}`));
   const urgenti = c.daOrdinare.filter(r => r.urgente);
-  sez('🛒 Materie prime da ordinare subito', urgenti.slice(0, 8).map(r => `${esc(r.articolo.nome)}: ${numIT(r.ordina, r.articolo.unita === 'kg' || r.articolo.unita === 'L' ? 1 : 0)} ${esc(r.articolo.unita)}${r.fornitore ? ` (${esc(r.fornitore)})` : ''}`));
+  sez('🛒 Materie prime da ordinare subito', urgenti.slice(0, 8).map(r => `${esc(r.articolo.nome)}: ${numIT(r.ordina, decimaliUnita(r.articolo.unita))} ${esc(r.articolo.unita)}${r.fornitore ? ` (${esc(r.fornitore)})` : ''}`));
   sez('🏷️ Etichette da ordinare', c.etichette.slice(0, 5).map(x => `${esc(x.g[0].birra)} ${esc(lottoDi(x.g))}: da confezionare ${diffGiorni(oggi, x.fine) <= 0 ? 'ora' : `il ${dataIT(x.fine)}`}`));
   sez('📉 Birre da ripianificare', c.copertura.filter(b => b.stato !== 'ok').slice(0, 5).map(b => `${esc(b.birra)}: ${b.esaurita ? 'esaurita' : `finisce verso il ${dataIT(b.esaurimento)}`}, cotta ${b.stato === 'ritardo' ? '<b>in ritardo</b>' : `entro il ${dataIT(b.cottaEntro)}`}`));
   const fermi = c.clienti.filter(x => x.daRichiamare);

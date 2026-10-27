@@ -10,11 +10,11 @@ export const NOMI_TIPO = { invoice: 'Fattura', delivery_note: 'DDT', receipt: 'R
 export async function client() {
   const token = process.env.FIC_TOKEN;
   let azienda = process.env.FIC_COMPANY_ID;
-  const chiama = async (path, params = {}, conAzienda = true, corpo = null) => {
+  const chiama = async (path, params = {}, conAzienda = true, corpo = null, opzioni = null) => {
     const res = await fetch(`${BASE}${conAzienda ? `/c/${encodeURIComponent(azienda)}` : ''}${path}?${new URLSearchParams(params)}`, {
       method: corpo ? 'POST' : 'GET',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
-      ...(corpo ? { body: JSON.stringify({ data: corpo }) } : {}),
+      ...(corpo ? { body: JSON.stringify({ data: corpo, ...(opzioni ? { options: opzioni } : {}) }) } : {}),
     });
     if (!res.ok) {
       let msg = res.statusText;
@@ -107,31 +107,78 @@ export async function prodotti(fic) {
 export async function clienti(fic) {
   const out = [];
   for (let pagina = 1; pagina <= 20; pagina++) {
-    const r = await fic.chiama('/entities/clients', { fieldset: 'basic', sort: 'name', page: pagina, per_page: 100 });
+    const r = await fic.chiama('/entities/clients', { fieldset: 'detailed', sort: 'name', page: pagina, per_page: 100 });
     out.push(...(r.data || []));
     if (pagina >= (r.last_page || 1)) break;
   }
-  return out.map(c => ({ id: c.id, nome: c.name || '', piva: c.vat_number || c.tax_code || '' }));
+  // indirizzo e telefono dall'anagrafica: servono alle consegne degli ordini
+  const t = v => String(v || '').trim();
+  return out.map(c => ({
+    id: c.id, nome: c.name || '', piva: c.vat_number || c.tax_code || '',
+    indirizzo: t(c.address_street), comune: [t(c.address_postal_code), t(c.address_city), t(c.address_province) ? `(${t(c.address_province)})` : ''].filter(Boolean).join(' '),
+    telefono: t(c.phone),
+  }));
 }
 
 // Crea una fattura con le righe del carrello; la si completa e si invia in Fatture in Cloud.
 // { data, cliente: { id?, nome }, lordo (prezzi IVA inclusa), aliquota, note,
-//   righe: [{ codice, nome, descrizione, qta, prezzo }] } → { id, numero, url }
-export async function creaFattura(fic, { data, cliente, righe, lordo = false, aliquota = 22, note = '' }) {
+//   righe: [{ codice, nome, descrizione, qta, prezzo }],
+//   accompagnatoria: { colli, peso, causale, destinazione, trasportatore } | null } → { id, numero, url }
+// Il cliente con id prende tutti i dati dell'anagrafica (P.IVA, indirizzo, SDI); le righe con un codice
+// si collegano al prodotto di Fatture in Cloud con quel codice.
+const CAMPI_ENTITA = ['id', 'code', 'name', 'type', 'first_name', 'last_name', 'contact_person', 'vat_number', 'tax_code', 'address_street', 'address_postal_code', 'address_city', 'address_province', 'address_extra', 'country', 'country_iso', 'email', 'certified_email', 'phone', 'e_invoice', 'ei_code'];
+export async function creaFattura(fic, { data, cliente, righe, lordo = false, aliquota = 22, note = '', accompagnatoria = null }) {
   const iva = (await fic.chiama('/info/vat_types')).data || [];
   const vat = iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled && !v.e_invoice) || iva.find(v => Number(v.value) === Number(aliquota) && !v.is_disabled);
   if (!vat) throw Object.assign(new Error(`Fatture in Cloud: non trovo l'aliquota IVA ${aliquota}%`), { status: 502 });
-  const d = (await fic.chiama('/issued_documents', {}, true, {
+  let entity = { name: cliente.nome }, c = {};
+  if (cliente.id) {
+    c = (await fic.chiama(`/entities/clients/${encodeURIComponent(cliente.id)}`, { fieldset: 'detailed' })).data || {};
+    entity = Object.fromEntries(CAMPI_ENTITA.filter(k => c[k] !== undefined && c[k] !== null && c[k] !== '').map(k => [k, c[k]]));
+    entity.id = Number(cliente.id);
+    entity.name ||= cliente.nome;
+  }
+  // fattura elettronica (Romain 2026-10-24): codice destinatario dall'anagrafica, 0000000 se il cliente ha solo la PEC
+  entity.e_invoice = true;
+  entity.ei_code ||= '0000000';
+  // scadenza e metodo di pagamento predefiniti del cliente, come quando la fattura si fa a mano
+  const giorni = Number(c.default_payment_terms) || 0;
+  const scad = new Date(`${data}T12:00:00Z`);
+  scad.setUTCDate(scad.getUTCDate() + giorni);
+  if (c.default_payment_terms_type === 'end_of_month') scad.setUTCDate(new Date(Date.UTC(scad.getUTCFullYear(), scad.getUTCMonth() + 1, 0)).getUTCDate());
+  const scadenza = scad.toISOString().slice(0, 10);
+  const perCodice = new Map();
+  if (righe.some(r => r.codice)) for (const p of await prodotti(fic).catch(() => [])) { if (p.nome && !perCodice.has(p.nome.trim().toLowerCase())) perCodice.set(p.nome.trim().toLowerCase(), p); if (p.codice) perCodice.set(p.codice.trim().toLowerCase(), p); } // anche per nome: tra i codici salvati ci sono le descrizioni dei prodotti
+  const doc = {
     type: 'invoice',
-    entity: { ...(cliente.id ? { id: Number(cliente.id) } : {}), name: cliente.nome },
+    entity,
     date: data,
     use_gross_prices: !!lordo,
+    e_invoice: true,
+    ei_data: { vat_kind: 'I', payment_method: 'MP05' }, // bonifico
+    ...(c.default_payment_method?.id ? { payment_method: { id: c.default_payment_method.id } } : {}),
     ...(note ? { notes: note } : {}),
+    ...(accompagnatoria ? {
+      accompanying_invoice: true,
+      ...(accompagnatoria.colli ? { dn_ai_packages_number: String(accompagnatoria.colli) } : {}),
+      ...(accompagnatoria.peso ? { dn_ai_weight: String(accompagnatoria.peso) } : {}),
+      dn_ai_causal: accompagnatoria.causale || 'Vendita',
+      ...(accompagnatoria.destinazione ? { dn_ai_destination: accompagnatoria.destinazione } : {}),
+      ...(accompagnatoria.trasportatore ? { dn_ai_transporter: accompagnatoria.trasportatore } : {}),
+    } : {}),
     items_list: righe.map(r => ({
-      ...(r.codice ? { code: r.codice } : {}), name: r.nome, ...(r.descrizione ? { description: r.descrizione } : {}),
+      ...(r.codice && perCodice.get(r.codice.toLowerCase()) ? { product_id: Number(perCodice.get(r.codice.toLowerCase()).id) } : {}),
+      ...(r.codice ? { code: perCodice.get(r.codice.toLowerCase())?.codice || r.codice.slice(0, 30) } : {}),
+      name: perCodice.get(r.codice?.toLowerCase())?.nome || r.nome, ...(r.descrizione ? { description: r.descrizione } : {}),
       qty: r.qta, ...(r.prezzo !== null && r.prezzo !== undefined ? { [lordo ? 'gross_price' : 'net_price']: r.prezzo } : {}),
       vat: { id: vat.id },
     })),
-  })).data;
+  };
+  // un pagamento unico non pagato pari al totale, come fa Fatture in Cloud a mano: senza, i pagamenti predefiniti
+  // del cliente non tornano con il totale (errore 422 "Il totale dei pagamenti non corrisponde al totale da pagare")
+  const tot = (await fic.chiama('/issued_documents/totals', {}, true, doc).catch(() => null))?.data || {};
+  const dovuto = Number(tot.amount_due ?? tot.amount_gross);
+  if (dovuto > 0) doc.payments_list = [{ amount: dovuto, due_date: scadenza, status: 'not_paid' }];
+  const d = (await fic.chiama('/issued_documents', {}, true, doc, { fix_payments: true })).data;
   return { id: String(d.id), numero: `${NOMI_TIPO.invoice} ${d.number ?? ''}${d.numeration || ''}`.trim(), url: d.url || '' };
 }

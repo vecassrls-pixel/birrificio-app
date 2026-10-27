@@ -16,13 +16,16 @@ export const durataDa = (src, durate) => (src?.data ? diffGiorni(src.data, fineC
 
 // Prime date (da "da" in poi) con almeno un FV libero per tutta la durata.
 // Un FV non isobarico va bene se il giorno del travaso c'è un FV isobarico libero fino alla fine.
+// "escludi": giorni in cui non si fa la cotta (ferie). "giorniCotta": cotte in giorni consecutivi (doppia: 2).
 // Ritorna [{ data, opzioni: [{ fv, travaso: { fv, data } | null }] }], le prime "max" date.
-export function proponiDate({ fvs, cotte, durate, durata = DURATA_DEFAULT, da, giorniTravaso = GIORNI_TRAVASO_DEFAULT, giorni = 120, conWeekend = false, max = 5 }) {
+export function proponiDate({ fvs, cotte, durate, durata = DURATA_DEFAULT, da, giorniTravaso = GIORNI_TRAVASO_DEFAULT, giorni = 120, conWeekend = false, max = 5, escludi = new Set(), giorniCotta = 1 }) {
   const out = [];
   const iso = fvs.filter(f => f.isobarico !== false);
   for (let i = 0; i <= giorni && out.length < max; i++) {
     const d = addGiorni(da, i);
-    if (!conWeekend && weekend(d)) continue;
+    // tutti i giorni di cotta (doppia in giorni consecutivi: 2) lavorativi
+    const giorniDi = Array.from({ length: giorniCotta }, (_, k) => addGiorni(d, k));
+    if (giorniDi.some(g => (!conWeekend && weekend(g)) || escludi.has(g))) continue; // weekend, ferie
     const a = addGiorni(d, durata - 1);
     const opzioni = [];
     for (const { fv, occupatoDa } of fvLiberi(fvs, cotte, d, a, durate)) {
