@@ -24,6 +24,8 @@ import * as previsioni from './vista-previsioni.js';
 import * as chiediDati from './vista-chiedi.js';
 import * as automazioni from './vista-automazioni.js';
 import * as cassa from './vista-cassa.js';
+import * as mensili from './vista-mensili.js';
+import * as economia from './economia.js';
 import * as contenitori from './vista-contenitori.js';
 import { contenitoriPerRiga } from './contenitori.js';
 import { ID_BEERFIRM, beerfirmDa } from './beerfirm.js';
@@ -112,6 +114,8 @@ ordiniClienti.init({ $app, html, db, toast, chiedi, copia, dataIT, numIT, oggiIS
 chiediDati.init({ $app, html, raw, toast });
 automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
+mensili.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO });
+economia.init({ html, db, oggiISO });
 contenitori.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO });
 qr.init({ $app, html, db, toast, stato, dataIT, oggiISO });
 async function carica() {
@@ -295,6 +299,11 @@ const routes = [
   [/^#\/chiedi$/, () => chiediDati.vistaChiedi()],
   // la cassa (contanti) non la vede chi è in sola lettura (Romain 2026-10-19)
   [/^#\/cassa$/, () => (lettore ? (location.hash = '#/home') : cassa.vistaCassa())],
+  // Economia (Romain 2026-10-28): cassa, accise, stipendi, F24 con le unghie; #/economia riapre l'ultima usata
+  [/^#\/economia$/, () => (location.hash = lettore ? '#/home' : `#/${economia.ultimaUnghia()}`)],
+  [/^#\/accise$/, () => (lettore ? (location.hash = '#/home') : mensili.vistaMensile('accisa'))],
+  [/^#\/stipendi$/, () => (lettore ? (location.hash = '#/home') : mensili.vistaMensile('stipendio'))],
+  [/^#\/f24$/, () => (lettore ? (location.hash = '#/home') : mensili.vistaMensile('f24'))],
   [/^#\/contenitori$/, () => contenitori.vistaContenitori()],
   [/^#\/contenitore\/(.+)$/, id => contenitori.vistaContenitore(id)],
   [/^#\/movcontenitore\/(.+)$/, id => contenitori.vistaMovimento(id)],
@@ -317,7 +326,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'economia' && /^#\/(cassa|accise|stipendi|f24|cashflow)/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
