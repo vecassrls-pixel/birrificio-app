@@ -9,6 +9,7 @@ import {
   CATEGORIE_CONT, MOTIVI_CARICO, MOTIVI_SCARICO, categoriaDaFormato, contenitoriProposti, formatiDi, formatiUsati,
   caricoDaFattura, chiaveRiga, etichettaDaAggiornare, etichettaPerBirra, regolaCartone, fabbisognoContenitori, nuovaEtichetta, giacenzeContenitori, nomeFormato, nomeMotivoCont, perCottaDi, righeVuoti, usiConfezionamento,
 } from './contenitori.js';
+import { testaMagazzino } from './sezioni.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO }  stato.beerfirm = elenco dei beerfirm
 export function init(strumenti) { u = strumenti; }
@@ -67,8 +68,9 @@ export async function vistaContenitori() {
     .sort((a, b) => b.data.localeCompare(a.data)).slice(0, 15);
 
   u.$app.innerHTML = html`
+    ${testaMagazzino('contenitori')}
     <div class="barra">
-      <h1 style="margin:0">Packaging</h1><span class="spazio"></span>
+      <h2 style="margin:0">Packaging</h2><span class="spazio"></span>
       <a class="btn solo-editori" href="#/movcontenitore/carico">+ Carico</a>
       <a class="btn solo-editori" href="#/movcontenitore/scarico">− Scarico</a>
       <a class="btn solo-editori" href="#/contenitori-inventario">📋 Inventario</a>

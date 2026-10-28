@@ -80,6 +80,11 @@ export const righeDaCopiare = righe => righe.filter(r => !r.escluso && r.prezzo)
 
 export const soldi = n => Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const euro = n => `€ ${soldi(n)}`;
+// "IPA · 6,5% vol" dalle righe arricchite con stile e abv (vedi conCaratteristiche)
+const numIT1 = n => Number(n).toLocaleString('it-IT', { maximumFractionDigits: 1 });
+export const infoBirra = r => [r.stile || '', r.abv > 0 ? `${numIT1(r.abv)}% vol` : ''].filter(Boolean).join(' · ');
+// aggiunge a ogni riga stile e grado alcolico della birra. info: (birra) → { stile, abv }
+export const conCaratteristiche = (righe, info) => righe.map(r => ({ ...r, ...info(r.birra) }));
 const testoIva = l => (l.iva ? `Prezzi IVA ${ALIQUOTA_IVA}% inclusa` : 'Prezzi IVA esclusa');
 
 // Testo da incollare in un messaggio o una mail: una birra per blocco, un formato per riga.
@@ -88,13 +93,110 @@ export function testoListino(l, righe, data) {
   if (l.note?.trim()) out.push(l.note.trim());
   let birra = '';
   for (const r of righeDaCopiare(righe)) {
-    if (r.birra !== birra) { out.push('', r.birra); birra = r.birra; }
+    if (r.birra !== birra) { out.push('', [r.birra, infoBirra(r)].filter(Boolean).join(' · ')); birra = r.birra; }
     out.push(`  ${r.formato}: ${euro(r.prezzo)}`);
   }
   return out.join('\n');
 }
 // Tabella da incollare in Excel o Numbers (colonne separate da tabulazione, numeri all'italiana)
 export function tabellaListino(l, righe) {
-  return [['Birra', 'Formato', `Prezzo € (${l.iva ? 'IVA inclusa' : 'IVA esclusa'})`].join('\t'),
-    ...righeDaCopiare(righe).map(r => [r.birra, r.formato, soldi(r.prezzo)].join('\t'))].join('\n');
+  return [['Birra', 'Stile', 'Grado % vol', 'Formato', `Prezzo € (${l.iva ? 'IVA inclusa' : 'IVA esclusa'})`].join('\t'),
+    ...righeDaCopiare(righe).map(r => [r.birra, r.stile || '', r.abv > 0 ? numIT1(r.abv) : '', r.formato, soldi(r.prezzo)].join('\t'))].join('\n');
+}
+
+// ---------- prezzi dalle fatture ----------
+// Il listino di un cliente è quello scelto per il suo link ordini (cliente.portale.listino).
+export const listinoCliente = scheda => scheda?.portale?.listino || '';
+const cent = n => Math.round(n * 100) / 100;
+
+// Prezzi fatturati per prodotto: righe [{ prodotto, prezzo (al pezzo, IVA esclusa), pezzi, data }]
+// → Map chiave → { prezzo (il più frequente; a parità il più recente), volte, ultimo (data), pezzi }
+export function prezziFatturati(righe) {
+  const per = new Map();
+  for (const r of righe) {
+    if (!r.prodotto || !(r.prezzo > 0)) continue;
+    const p = cent(r.prezzo);
+    const x = per.get(r.prodotto) || { conteggi: new Map(), ultimo: '', pezzi: 0, volte: 0 };
+    const c = x.conteggi.get(p) || { n: 0, data: '' };
+    c.n++; if ((r.data || '') > c.data) c.data = r.data || '';
+    x.conteggi.set(p, c);
+    x.volte++; x.pezzi += Number(r.pezzi) || 0;
+    if ((r.data || '') > x.ultimo) x.ultimo = r.data || '';
+    per.set(r.prodotto, x);
+  }
+  const out = new Map();
+  for (const [chiave, x] of per) {
+    const [prezzo] = [...x.conteggi].sort((a, b) => b[1].n - a[1].n || b[1].data.localeCompare(a[1].data))[0];
+    out.set(chiave, { prezzo, volte: x.volte, ultimo: x.ultimo, pezzi: x.pezzi, diversi: x.conteggi.size });
+  }
+  return out;
+}
+
+const mediana = v => { const s = [...v].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+// Listino di un cliente dai suoi prezzi fatturati: ricarico su Alpha (mediano, per fusti e lattine) e,
+// dove il cliente paga diverso dal ricarico, il prezzo fisso. Al centesimo e IVA esclusa, come in fattura.
+// fatturati: Map da prezziFatturati; alpha: il listino Alpha. → { listino (senza id), senzaAlpha: [chiavi] }
+export function listinoDaFatturati(nome, fatturati, alpha) {
+  const base = alpha.prezzi || {};
+  const conAlpha = [...fatturati].filter(([k]) => prezzoBase(base, k));
+  const senzaAlpha = [...fatturati.keys()].filter(k => !prezzoBase(base, k));
+  const perTipo = new Map();
+  for (const [k, f] of conAlpha) {
+    const tipo = k.split('|')[1];
+    perTipo.set(tipo, [...(perTipo.get(tipo) || []), (f.prezzo / prezzoBase(base, k) - 1) * 100]);
+  }
+  const tondo = n => Math.round(n * 10) / 10;
+  const tutti = [...perTipo.values()].flat();
+  const ricarico = tutti.length ? tondo(mediana(tutti)) : 0;
+  const ricarichi = {};
+  for (const [tipo, v] of perTipo) { const r = tondo(mediana(v)); if (r !== ricarico) ricarichi[tipo] = r; }
+  const l = { ...nuovoListino('', nome), ricarico, ricarichi, arrotonda: 0, prodotti: 'tutti', note: '' };
+  delete l.id;
+  const fissi = {};
+  for (const [k, f] of conAlpha) {
+    const calcolato = prezzoListino(prezzoBase(base, k), l, k.split('|')[1]);
+    if (Math.abs(calcolato - f.prezzo) >= 0.01) fissi[k] = f.prezzo;
+  }
+  // i prodotti di Alpha che il cliente non ha mai comprato restano nel listino, con il ricarico
+  return { listino: { ...l, fissi }, senzaAlpha };
+}
+
+// Righe vendute a un prezzo diverso dal listino del cliente.
+// movimenti: movbirra; schede: Map idCliente → cliente; prezziDi(idListino) → { prezzi: Map, iva } (prezziListino del carrello)
+// → [{ movimento, riga, cliente, listino (id), atteso (IVA esclusa), prezzo, scarto (%) }], i più recenti prima
+export function fuoriListino(movimenti, schede, idCliente, prezziDi, { dal = '', tolleranza = 0.5 } = {}) {
+  const out = [];
+  const cache = new Map();
+  for (const m of movimenti) {
+    if (m.eliminato || m.verso !== 'scarico' || m.motivo !== 'vendita' || !m.cliente || (dal && m.data < dal)) continue;
+    const id = listinoCliente(schede.get(idCliente(m.cliente)));
+    if (!id) continue;
+    if (!cache.has(id)) cache.set(id, prezziDi(id));
+    const { prezzi, iva } = cache.get(id);
+    for (const r of m.righe || []) {
+      const lordo = prezzi.get(r.prodotto);
+      if (!(r.prezzo > 0) || !lordo) continue;
+      const atteso = iva ? cent(lordo / (1 + ALIQUOTA_IVA / 100)) : lordo;
+      const scarto = (r.prezzo / atteso - 1) * 100;
+      if (Math.abs(r.prezzo - atteso) >= 0.01 && Math.abs(scarto) >= tolleranza) out.push({ movimento: m, riga: r, cliente: m.cliente, listino: id, atteso, prezzo: r.prezzo, scarto });
+    }
+  }
+  return out.sort((a, b) => (b.movimento.data || '').localeCompare(a.movimento.data || ''));
+}
+
+// ---------- margine ----------
+// Impostazioni dei listini: margine minimo (%) e costo della confezione per tipo (lattina vuota, tappo, etichetta…)
+export const ID_IMPOSTAZIONI_LISTINI = 'impostazione-listini';
+export const impostazioniListiniDa = rec => ({ margineMin: 30, confezione: {}, ...(rec && !rec.eliminato ? rec : {}), id: ID_IMPOSTAZIONI_LISTINI, tipo: 'impostazione' });
+// Costo di un pezzo: birra (costo al litro dell'ultimo lotto × litri) + confezione. null se manca il costo della birra.
+export function costoPezzo(r, costiLitro, imp) {
+  const c = costiLitro.get(r.birra);
+  if (!c || !(r.litri > 0)) return null;
+  return c.perLitro * r.litri + (Number(imp.confezione?.[r.tipo]) || 0);
+}
+// Margine % sul prezzo (IVA esclusa): (prezzo − costo) / prezzo
+export function margine(prezzo, iva, costo) {
+  if (!(prezzo > 0) || costo === null || costo === undefined) return null;
+  const netto = iva ? prezzo / (1 + ALIQUOTA_IVA / 100) : prezzo;
+  return (netto - costo) / netto * 100;
 }

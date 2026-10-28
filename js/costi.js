@@ -103,3 +103,20 @@ export function contoLotto(c, cotte, dati) {
     margine: ricavo > 0 ? ricavo - costo : null,
   };
 }
+
+// Costo al litro di ogni birra: quello dell'ultimo lotto confezionato con tutti i prezzi delle materie prime.
+// Map nomeBirra → { perLitro, data, lotto } (per il margine nei listini)
+export function costoLitroBirre(cotte, dati, oggi) {
+  const out = new Map();
+  const viste = new Set();
+  const ordinate = cotte.filter(c => !c.eliminato && c.data && c.data <= oggi && (c.confezionato || []).length)
+    .sort((a, b) => b.data.localeCompare(a.data));
+  for (const c of ordinate) {
+    const birra = nomeBirra(c.birra);
+    if (out.has(birra) || viste.has(c.id)) continue;
+    const conto = contoLotto(c, cotte, dati);
+    for (const x of conto.gruppo) viste.add(x.id);
+    if (conto.costo > 0 && !conto.mancanti.length && conto.perLitro > 0 && !conto.litriStimati) out.set(birra, { perLitro: conto.perLitro, data: c.data, lotto: c.lotto || '' });
+  }
+  return out;
+}

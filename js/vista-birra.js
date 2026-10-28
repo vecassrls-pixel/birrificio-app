@@ -12,6 +12,7 @@ import { nomeBirra } from './dominio.js';
 import { impegnatiOrdini } from './portale.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
 import { leggiCarrello, mettiNelCarrello, trascinabile, TIPO_DRAG } from './carrello.js';
+import { testaMagazzino } from './sezioni.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token }
 export function init(strumenti) { u = strumenti; }
@@ -84,8 +85,9 @@ export async function vistaBirra() {
   const nelCarrello = leggiCarrello().righe.length;
 
   u.$app.innerHTML = html`
+    ${testaMagazzino('birra')}
     <div class="barra b-testa">
-      <h1 style="margin:0">Birra</h1>
+      <h2 style="margin:0">Birra</h2>
       <span class="spazio"></span>
       <button id="b-copia-lista" class="st-libero" title="Copia la lista delle birre disponibili da mandare ai clienti">📋 Copia lista</button>
       <a class="btn" href="#/birra-lista?stampa=1" title="Lista delle birre disponibili per i clienti, da stampare o salvare in PDF">🖨 Lista PDF</a>
@@ -850,7 +852,7 @@ export async function vistaImporta(fonte) {
     }
     const nuoviProdotti = [...perProdotto.values()].filter(p => !dati.prodotti.includes(p)).map(({ aggiornato: _a, ...p }) => p);
     const movimenti = scelti.map(d => {
-      const righe = d.righe.filter(r => r.prodotto !== '-' && r.qta > 0).map(r => ({ prodotto: r.prodotto, pezzi: r.qta * r.x, lotto: r.lotto || '' }));
+      const righe = d.righe.filter(r => r.prodotto !== '-' && r.qta > 0).map(r => ({ prodotto: r.prodotto, pezzi: r.qta * r.x, lotto: r.lotto || '', ...(r.prezzo > 0 ? { prezzo: Math.round(r.prezzo / r.x * 10000) / 10000 } : {}) })); // prezzo al pezzo, per i listini
       const s = d.sospeso;
       return {
         tipo: 'movbirra', id: u.db.nuovoId('movbirra'), verso: s?.verso || 'scarico', data: d.data, motivo: s?.motivo || 'vendita', cliente: d.cliente || '',

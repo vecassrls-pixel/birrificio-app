@@ -7,6 +7,7 @@
 //   SUPABASE_URL, SUPABASE_ANON_KEY  per controllare chi chiama
 //
 // Uso dall'app:  /.netlify/functions/fattureincloud?dal=2026-10-01&tipo=invoice   (invoice, delivery_note, receipt, credit_note)
+//                /.netlify/functions/fattureincloud?dal=2026-04-01&tipo=invoice&cliente=Pub%20Rossi  solo quel cliente (fino a 200 documenti)
 //                /.netlify/functions/fattureincloud?dal=2026-10-01&tipo=acquisti  documenti dei fornitori
 //                /.netlify/functions/fattureincloud?elenco=prodotti   anagrafica prodotti (serve il permesso Prodotti: lettura)
 //                  → { prodotti: [{ id, nome, codice }] }
@@ -16,7 +17,7 @@
 //          accompagnatoria: { colli, peso, causale, destinazione, trasportatore } | null }
 //                  crea la fattura (permesso Fatture: lettura e scrittura) → { id, numero, url }
 // Risponde nello stesso formato del proxy Shopify:
-//   { documenti: [{ id, numero, data, cliente, stato, righe: [{ codice, nome, qta }] }], altri }
+//   { documenti: [{ id, numero, data, cliente, stato, righe: [{ codice, nome, qta, prezzo? }] }], altri }  (prezzo netto per unità, sconto tolto)
 
 import { autorizzato, puoScrivere, json, dataValida } from '../lib/accesso.mjs';
 import * as fic from '../lib/fic.mjs';
@@ -70,7 +71,8 @@ export default async req => {
     if (elenco === 'clienti') return json({ clienti: await fic.clienti(c) });
     if (elenco) return json({ prodotti: await fic.prodotti(c) });
     if (tipo === 'acquisti') return json(await fic.acquisti(c, { dal }));
-    return json(await fic.documentiEmessi(c, { tipo, dal }));
+    const cliente = String(url.searchParams.get('cliente') || '').trim().slice(0, 200);
+    return json(await fic.documentiEmessi(c, cliente ? { tipo, dal, cliente, max: 200 } : { tipo, dal }));
   } catch (e) {
     if (elenco === 'clienti' && e.status === 403) return json({ errore: PERMESSO.clienti }, 502);
     if (elenco && e.status === 403) return json({ errore: 'Il token di Fatture in Cloud non può leggere i prodotti: nell\'app "Global Brewing" di Fatture in Cloud aggiungi il permesso Prodotti in lettura e rigenera il token.' }, 502);

@@ -56,9 +56,12 @@ async function elenco(fic, path, params, max, dettaglio) {
 }
 
 // Documenti emessi (fatture, DDT, ricevute, note di credito) nel formato comune ai proxy:
-// { id, numero, data, cliente, telefono, email, righe: [{ codice, nome, qta }] }
-export async function documentiEmessi(fic, { tipo = 'invoice', dal, max = 60 }) {
-  const { scelti, altri } = await elenco(fic, '/issued_documents', { type: tipo, q: `date >= '${dal}'` }, max, '/issued_documents');
+// { id, numero, data, cliente, telefono, email, righe: [{ codice, nome, qta, prezzo? }] }
+// prezzo = netto per unità della riga, sconto della riga tolto, IVA esclusa (se il documento è a prezzi lordi si scorpora)
+// cliente: solo i documenti di quel cliente (nome come in Fatture in Cloud)
+export async function documentiEmessi(fic, { tipo = 'invoice', dal, max = 60, cliente = '' }) {
+  const q = `date >= '${dal}'${cliente ? ` and entity.name = '${cliente.replace(/'/g, "''")}'` : ''}`;
+  const { scelti, altri } = await elenco(fic, '/issued_documents', { type: tipo, q }, max, '/issued_documents');
   return {
     altri,
     documenti: scelti.map(d => ({
@@ -69,7 +72,12 @@ export async function documentiEmessi(fic, { tipo = 'invoice', dal, max = 60 }) 
       telefono: d.entity?.phone || '',
       email: d.entity?.email || '',
       stato: '',
-      righe: (d.items_list || []).filter(r => Number(r.qty) > 0).map(r => ({ codice: r.code || '', nome: r.name || r.description || '', qta: Number(r.qty) })),
+      righe: (d.items_list || []).filter(r => Number(r.qty) > 0).map(r => {
+        const sconto = 1 - (Number(r.discount) || 0) / 100;
+        const netto = Number(r.net_price) > 0 ? Number(r.net_price) : Number(r.gross_price) > 0 ? Number(r.gross_price) / (1 + (Number(r.vat?.value) || 0) / 100) : 0;
+        const prezzo = Math.round(netto * sconto * 10000) / 10000;
+        return { codice: r.code || '', nome: r.name || r.description || '', qta: Number(r.qty), ...(prezzo > 0 ? { prezzo } : {}) };
+      }),
     })),
   };
 }
