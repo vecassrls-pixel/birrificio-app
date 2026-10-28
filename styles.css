@@ -274,11 +274,11 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; gap: 0; justify-content: space-around;
     height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding: 0 4px env(safe-area-inset-bottom);
     background: var(--top-bg); border-top: 1px solid rgb(255 255 255 / .08);
-    justify-content: flex-start; scroll-snap-type: x proximity; /* 11 voci: si scorre di lato */
+    justify-content: flex-start; scroll-snap-type: x proximity; /* 9 voci: si scorre di lato */
   }
   .top nav a { flex: 1 0 60px; scroll-snap-align: start; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 1px; border-radius: 0; font-size: .64rem; font-weight: 500; min-width: 0; }
   .top nav a span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .top nav a[data-tab="materie-prime"] { flex-basis: 76px; } /* "Materie prime" intero */
+  .top nav a[data-tab="magazzino"] { flex-basis: 70px; } /* "Magazzino" intero */
   .top nav a svg { width: 23px; height: 23px; }
   .top nav a.attivo { background: none; color: #fff; }
   .top nav a.attivo svg { stroke: var(--brand-chiaro); }

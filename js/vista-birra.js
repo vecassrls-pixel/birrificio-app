@@ -12,6 +12,7 @@ import { nomeBirra } from './dominio.js';
 import { impegnatiOrdini } from './portale.js';
 import { statoScadenza, GIORNI_IN_SCADENZA } from './magazzino.js';
 import { leggiCarrello, mettiNelCarrello, trascinabile, TIPO_DRAG } from './carrello.js';
+import { testaMagazzino } from './sezioni.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, token }
 export function init(strumenti) { u = strumenti; }
@@ -84,8 +85,9 @@ export async function vistaBirra() {
   const nelCarrello = leggiCarrello().righe.length;
 
   u.$app.innerHTML = html`
+    ${testaMagazzino('birra')}
     <div class="barra b-testa">
-      <h1 style="margin:0">Birra</h1>
+      <h2 style="margin:0">Birra</h2>
       <span class="spazio"></span>
       <button id="b-copia-lista" class="st-libero" title="Copia la lista delle birre disponibili da mandare ai clienti">📋 Copia lista</button>
       <a class="btn" href="#/birra-lista?stampa=1" title="Lista delle birre disponibili per i clienti, da stampare o salvare in PDF">🖨 Lista PDF</a>

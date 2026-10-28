@@ -11,6 +11,7 @@ import {
 import { estraiTesto, leggiDdt, proponiRighe, categoriaDaDescrizione, incrociaBolla } from './bolla-pdf.js';
 import { trovaContenitore } from './contenitori.js';
 import { chiediAi, fotoBase64 } from './ai.js';
+import { testaMagazzino } from './sezioni.js';
 
 let u; // { $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -60,8 +61,9 @@ export async function vistaMagazzino() {
   const acquisti = (await u.db.tutti('importsospeso')).filter(x => x.fonte === 'acquisti' && !x.mpFatte).sort((a, b) => String(b.doc?.data).localeCompare(String(a.doc?.data)));
 
   u.$app.innerHTML = html`
+    ${testaMagazzino('materie-prime')}
     <div class="barra">
-      <div><h1 style="margin:0">Materie prime</h1><div class="kpi">
+      <div><h2 style="margin:0">Materie prime</h2><div class="kpi">
         <div><b>${dati.articoli.length}</b>articoli</div>
         <div><b>${sotto.length}</b>sotto scorta</div>
         <div><b>${scadenze.length}</b>scaduti o in scadenza</div>
