@@ -1246,3 +1246,39 @@ body.ordina { background: var(--bg); }
 @media (pointer: coarse) { .g-maniglia { width: 20px; } }
 .g-days.meta { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .drag-info { position: fixed; z-index: 1000; pointer-events: none; background: var(--text); color: var(--bg); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+/* Ricette (2026-10-28): elenco per birra e scheda ricetta con le versioni */
+.rc-card { display: block; color: var(--text); text-decoration: none; border-top-color: var(--accent); }
+.rc-card:hover { border-color: var(--accent); }
+.rc-card > header { align-items: center; }
+.rc-numeri { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 0 14px 8px; font-size: .8rem; color: var(--muted); }
+.rc-numeri b { font-size: 1.05rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.rc-ingr { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; padding: 10px 14px; border-top: 1px solid var(--border); font-size: .86rem; }
+.rc-ingr dt { color: var(--muted); font-size: .78rem; font-weight: 600; padding-top: 1px; }
+.rc-ingr dd { margin: 0; min-width: 0; }
+.rc-piede { margin: 0; padding: 8px 14px 10px; border-top: 1px solid var(--border); font-size: .78rem; }
+.rc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.rc-tiles small { font-size: .8rem; color: var(--muted); font-weight: 500; }
+.rc-colonne { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0 14px; align-items: start; }
+.rc-sez h2 { margin-top: 0; font-size: 1.05rem; }
+.rc-tab { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.rc-tab td { padding: 7px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.rc-tab td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rc-tab tfoot td { font-weight: 600; border-bottom: none; }
+.rc-uso, .rc-perc { color: var(--muted); font-size: .82rem; }
+.rc-voci { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; }
+.rc-voci div { display: flex; flex-direction: column; }
+.rc-voci span { font-size: .78rem; color: var(--muted); }
+.rc-voci b { font-variant-numeric: tabular-nums; }
+.rc-versioni { display: flex; flex-direction: column; }
+.rc-versione { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: start; padding: 10px 6px; border-top: 1px solid var(--border); color: var(--text); text-decoration: none; border-radius: 8px; }
+.rc-versione:hover { background: var(--surface-2); }
+.rc-versione.attivo { background: var(--accent-tenue); }
+.rc-vnum { width: 40px; height: 32px; border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; font-weight: 700; font-size: .9rem; }
+.rc-versione.attivo .rc-vnum { background: var(--accent); color: #fff; }
+.rc-vtesto { min-width: 0; font-size: .9rem; display: flex; flex-direction: column; gap: 3px; }
+.rc-vtesto small { color: var(--muted); font-size: .78rem; }
+.rc-cambi { display: flex; flex-wrap: wrap; gap: 4px; }
+.rc-cambio { font-size: .76rem; border-radius: 6px; padding: 1px 7px; background: var(--surface-2); }
+.rc-cambio.piu { background: color-mix(in srgb, var(--ok) 14%, var(--surface)); color: color-mix(in srgb, var(--ok) 75%, var(--text)); }
+.rc-cambio.meno { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); color: var(--warn); }
+@media (max-width: 760px) { .rc-colonne { grid-template-columns: 1fr; } .rc-tiles { grid-template-columns: repeat(2, 1fr); } }

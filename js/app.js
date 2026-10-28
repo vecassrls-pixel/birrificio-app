@@ -27,6 +27,7 @@ import * as cassa from './vista-cassa.js';
 import * as mensili from './vista-mensili.js';
 import * as economia from './economia.js';
 import * as contenitori from './vista-contenitori.js';
+import * as ricette from './vista-ricette.js';
 import { contenitoriPerRiga } from './contenitori.js';
 import { ID_BEERFIRM, beerfirmDa } from './beerfirm.js';
 import { ID_FERIE, ferieDa, giorniFerie, TIPI_GIORNO } from './ferie.js';
@@ -118,6 +119,7 @@ mensili.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO });
 economia.init({ html, db, oggiISO });
 contenitori.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO });
 qr.init({ $app, html, db, toast, stato, dataIT, oggiISO });
+ricette.init({ $app, html, raw, stato, dataIT, numIT, oggiISO, diffGiorni, nuovaCotta: pre => dialogNuovaCotta(pre) });
 async function carica() {
   stato.cotte = await db.tutti('cotta');
   if (await correggiRegula()) stato.cotte = await db.tutti('cotta');
@@ -263,6 +265,8 @@ const routes = [
   [/^#\/home$/, () => home.vistaHome()],
   [/^#\/cotte$/, vistaCotte],
   [/^#\/cotta\/(.+)$/, vistaCotta],
+  [/^#\/ricette$/, () => ricette.vistaRicette()],
+  [/^#\/ricetta\/(.+)$/, id => ricette.vistaRicetta(id)],
   [/^#\/planning$/, vistaPlanning],
   [/^#\/cantina$/, () => cantina.vistaCantina().then(f => { if (f) pulizia = f; })],
   [/^#\/materie-prime$/, () => magazzino.vistaMagazzino()],
