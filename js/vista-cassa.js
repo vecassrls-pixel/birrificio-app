@@ -6,6 +6,7 @@ import { CATEGORIE_CASSA, categoriaCassa, cassaDaExcel, importo, registroCassa, 
 import { leggiXlsx } from './xlsx-leggi.js';
 import { creaXlsx } from './xlsx.js';
 import { daChiave, nomeMotivo } from './birra.js';
+import { unghieEconomia } from './economia.js';
 
 let u; // { $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni }
 export function init(strumenti) { u = strumenti; }
@@ -18,6 +19,7 @@ const MOTIVI_INCASSO = ['spaccio', 'eventi'];
 export async function vistaCassa() {
   const { html } = u;
   const [movimenti, conte, movBirra, sospesi] = await Promise.all(['movcassa', 'contacassa', 'movbirra', 'sospesocassa'].map(t => u.db.tutti(t)));
+  const unghie = await unghieEconomia('cassa');
   const sosp = sospesiAperti(sospesi);
   const oggi = u.oggiISO();
   const { saldo, conta } = saldoCassa(movimenti, conte);
@@ -36,8 +38,9 @@ export async function vistaCassa() {
   const nuovo = { data: oggi, verso: 'entrata' };
 
   u.$app.innerHTML = html`
-    <div class="barra"><h1 style="margin:0">Cassa</h1><span class="spazio"></span>
-      <a class="btn" href="#/accise">Accise →</a>
+    <div class="barra"><h1 style="margin:0">Economia</h1></div>
+    ${unghie}
+    <div class="barra"><h2 style="margin:0">Cassa</h2><span class="spazio"></span>
       <button id="cs-excel">Scarica Excel</button>
       <label class="btn solo-editori">Importa dal foglio della cassa<input type="file" id="cs-importa" accept=".xlsx" hidden></label></div>
     <div class="home-kpi cs-kpi">

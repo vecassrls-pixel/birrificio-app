@@ -985,7 +985,16 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .cs-kpi { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .cs-tab tr.cs-conta td { background: var(--surface-2); }
 .cs-tab td small { display: inline; }
-/* accise */
+/* economia: unghie come la pagina Birra, scorrono su telefono; accise / stipendi / F24 */
+.eco-unghie { overflow-x: auto; scrollbar-width: none; }
+.eco-unghie a, .eco-unghie button { min-height: 42px; padding: 8px 18px; border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0; background: none; color: var(--muted); font-weight: 600; font-size: .98rem; margin-bottom: -2px; text-decoration: none; display: inline-flex; align-items: center; white-space: nowrap; flex: none; }
+.eco-unghie a:hover { color: var(--text); }
+.eco-unghie a.attivo { background: var(--surface); color: var(--accent-forte); border-color: var(--border); border-bottom: 2px solid var(--surface); }
+.eco-unghie button:disabled { opacity: .55; cursor: default; }
+.eco-unghie small.eco-scadute { background: color-mix(in srgb, var(--warn) 15%, var(--surface)); color: var(--warn); }
+.mn-scad { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .9rem; color: var(--muted); margin: 0 0 10px; }
+.mn-scad input { width: 70px; } .mn-scad select { width: auto; }
+@media (max-width: 760px) { .eco-unghie a, .eco-unghie button { padding: 8px 12px; font-size: .92rem; } }
 .acc-tab td { vertical-align: middle; }
 .acc-tab td small { display: inline; }
 .acc-tab input[name="importo"] { max-width: 130px; text-align: right; }
@@ -1119,7 +1128,7 @@ body.ordina { background: var(--bg); }
 @media screen { .s6-pag.s6-altra { display: none; } }
 @media print { .s6-pag + .s6-pag { break-before: page; } }
 /* la cassa non si mostra a chi è in sola lettura */
-.lettore .top nav a[data-tab="cassa"], .lettore a[href="#/cassa"] { display: none !important; }
+.lettore .top nav a[data-tab="economia"], .lettore a[href="#/cassa"], .lettore a[href="#/economia"] { display: none !important; }
 
 /* Beerfirm: cotte fatte per conto terzi */
 .bf-chip { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; background: #1c1917; color: #fff; border-radius: 4px; padding: 1px 5px; vertical-align: 1px; line-height: 1.3; }
