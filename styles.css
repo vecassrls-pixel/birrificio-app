@@ -985,6 +985,33 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 .cs-kpi { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .cs-tab tr.cs-conta td { background: var(--surface-2); }
 .cs-tab td small { display: inline; }
+/* accise */
+.acc-tab td { vertical-align: middle; }
+.acc-tab td small { display: inline; }
+.acc-tab input[name="importo"] { max-width: 130px; text-align: right; }
+.acc-tab input[type="date"] { max-width: 170px; }
+.acc-tab tr.acc-futuro td { opacity: .55; }
+.acc-tab tr.acc-scaduta td { background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
+.acc-tab tfoot th { border-top: 1px solid var(--border); padding-top: 8px; }
+@media (max-width: 760px) {
+  .acc-tab thead { display: none; }
+  .acc-tab, .acc-tab tbody, .acc-tab tfoot { display: block; }
+  .acc-tab tr { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .acc-tab td, .acc-tab th { display: block; padding: 0; border: none; text-align: left; }
+  .acc-tab td[data-l="Mese"], .acc-tab td[data-l="Note"] { grid-column: 1 / -1; }
+  .acc-tab td[data-l="Totale €"]::before, .acc-tab td[data-l="Data pagamento"]::before { content: attr(data-l); display: block; font-size: .78rem; color: var(--muted); }
+  .acc-tab input[name="importo"], .acc-tab input[type="date"] { max-width: none; text-align: left; }
+  .acc-tab tfoot tr { border-bottom: none; }
+  .acc-tab tr.acc-vuoto { grid-template-columns: 1fr 140px; align-items: center; padding: 6px 0; }
+  .acc-tab tr.acc-vuoto td[data-l="Mese"] { grid-column: auto; }
+  .acc-tab tr.acc-vuoto td[data-l="Totale €"]::before, .acc-tab tr.acc-vuoto td[data-l="Pagato"], .acc-tab tr.acc-vuoto td[data-l="Data pagamento"], .acc-tab tr.acc-vuoto td[data-l="Note"] { display: none; }
+  .acc-tab td[data-l="Pagato"] { align-self: end; }
+  .acc-kpi .w-kpi:last-child { grid-column: auto; }
+  .acc-tab td.n { text-align: left; }
+  .acc-tab tr.acc-scaduta { background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
+  .acc-tab tr.acc-scaduta td { background: none; }
+  .acc-tab tfoot th[colspan] { grid-column: 1 / -1; }
+}
 /* QR fusti e cartoni */
 .qr-video { max-width: 480px; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: #000; }
 .qr-video video { width: 100%; height: 100%; object-fit: cover; display: block; }

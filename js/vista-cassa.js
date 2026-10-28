@@ -37,6 +37,7 @@ export async function vistaCassa() {
 
   u.$app.innerHTML = html`
     <div class="barra"><h1 style="margin:0">Cassa</h1><span class="spazio"></span>
+      <a class="btn" href="#/accise">Accise →</a>
       <button id="cs-excel">Scarica Excel</button>
       <label class="btn solo-editori">Importa dal foglio della cassa<input type="file" id="cs-importa" accept=".xlsx" hidden></label></div>
     <div class="home-kpi cs-kpi">
