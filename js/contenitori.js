@@ -236,6 +236,8 @@ export function trovaContenitore(riga, contenitori) {
   return null;
 }
 
+const viviDi = contenitori => contenitori.filter(k => !k.eliminato);
+
 // Divide una fattura d'acquisto: righe di vuoti già conosciute (si caricano da sole), righe da confermare, altre (materie prime)
 export function righeVuoti(doc, contenitori) {
   const sicure = [], proposte = [], altre = [];
@@ -244,9 +246,24 @@ export function righeVuoti(doc, contenitori) {
     if (t?.ignora) altre.push(r);
     else if (t?.sicuro) sicure.push({ ...r, contenitoreId: t.contenitore.id, x: t.x });
     else if (t) proposte.push({ ...r, contenitoreId: t.contenitore.id, x: t.x });
+    // segnata "va in Packaging" nella bolla di Materie prime (es. fattura PAB con la riga dei polykeg senza descrizione)
+    else if (r.packaging) proposte.push({ ...r, contenitoreId: (viviDi(contenitori).find(k => k.categoria !== 'etichetta') || {}).id || '', x: 1 });
     else altre.push(r);
   }
   return { sicure, proposte, altre };
+}
+
+// Carico già fatto per gli stessi vuoti (bolla caricata a mano in Packaging, poi arriva la fattura, o il contrario):
+// stesso numero di documento, oppure entro 20 giorni con gli stessi contenitori e pezzi. righe = [{ contenitoreId, qta, x }]
+const normDoc = s => String(s || '').replace(/\s+/g, '').toUpperCase();
+const giorniTra = (a, b) => Math.abs((new Date(`${a}T00:00:00Z`) - new Date(`${b}T00:00:00Z`)) / 864e5);
+export function caricoSimile(doc, righe, movimenti, rifEsterno = '') {
+  const num = normDoc(doc.numero);
+  return movimenti.find(m => !m.eliminato && m.verso === 'carico' && (!rifEsterno || m.rifEsterno !== rifEsterno) && (
+    (num && [m.documento, m.ddt].some(x => normDoc(x) === num))
+    || (m.data && doc.data && giorniTra(m.data, doc.data) <= 20 && righe.length
+      && righe.every(r => (m.righe || []).some(x => x.contenitoreId === r.contenitoreId && Number(x.pezzi) === Math.round(Number(r.qta) * (Number(r.x) || 1)))))
+  )) || null;
 }
 
 // Carico di vuoti da una fattura: rifEsterno uguale a quello dell'import (ficacq:<id>) così non si importa di nuovo

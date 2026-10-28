@@ -219,6 +219,8 @@ export async function vistaMagazzino() {
   });
 }
 
+const NOTA_PACKAGING = 'vuoto: si carica in Packaging';
+
 // Bolla nuova già compilata (fattura d'acquisto importata, foto letta dall'AI): stesso formato di leggiDdt
 // { fornitore, numero, data, righe: [{ codice, descrizione, um, qta, prezzo, lotto, scadenza }], rifEsterno?, sospesoId? }
 let bozzaBolla = null;
@@ -458,7 +460,7 @@ export async function vistaBolla(id) {
   const contenitori = bozza?.sospesoId ? await u.db.tutti('contenitore') : [];
   const vuoto = r => { const t = trovaContenitore(r, contenitori); return !!t && !t.ignora; };
   const b = esistente ? JSON.parse(JSON.stringify(esistente))
-    : bozza ? { tipo: 'bolla', data: bozza.data || u.oggiISO(), fornitore: bozza.fornitore || '', numero: bozza.numero || '', righe: proponiRighe(bozza, dati.articoli).map((r, i) => (vuoto(bozza.righe[i]) ? { ...r, includi: false, nota: 'vuoto: si carica in Contenitori' } : { ...r, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) })), ...(bozza.rifEsterno ? { rifEsterno: bozza.rifEsterno } : {}) }
+    : bozza ? { tipo: 'bolla', data: bozza.data || u.oggiISO(), fornitore: bozza.fornitore || '', numero: bozza.numero || '', righe: proponiRighe(bozza, dati.articoli).map((r, i) => (vuoto(bozza.righe[i]) ? { ...r, _i: i, includi: false, packaging: true, nota: NOTA_PACKAGING } : { ...r, _i: i, includi: r.includi || !!categoriaDaDescrizione(r.descrizione) || dati.articoli.some(a => a.nome === r.nome) })), ...(bozza.rifEsterno ? { rifEsterno: bozza.rifEsterno } : {}) }
     : { tipo: 'bolla', data: u.oggiISO(), fornitore: '', numero: '', righe: [{ nome: '', qta: null, unita: '', lotto: '', scadenza: '' }] };
   const perId = new Map(dati.articoli.map(a => [a.id, a]));
   for (const r of b.righe) if (r.articoloId && !r.nome) r.nome = perId.get(r.articoloId)?.nome || '';
@@ -478,6 +480,8 @@ export async function vistaBolla(id) {
     }
     if (ddt.numero) b.ddt = ddt.numero;
     const { righe, avvisi } = incrociaBolla(b.righe, lette, noto);
+    // la bolla dà la descrizione alle righe della fattura che non l'hanno: i polykeg si riconoscono solo ora
+    for (const r of righe) if (r._i !== undefined && r.packaging === undefined && vuoto(r)) Object.assign(r, { includi: false, packaging: true, nota: NOTA_PACKAGING });
     b.righe = righe;
     const lotti = righe.filter(r => r.includi !== false && r.lotto).length;
     return `${origine}: lotti e scadenze presi dalla bolla (${lotti} righe con lotto)${avvisi ? ` · ${avvisi} da controllare, segnate con ⚠` : ' · quantità uguali alla fattura'}.`;
@@ -566,7 +570,7 @@ export async function vistaBolla(id) {
             const art = dati.articoli.find(a => a.nome.toLowerCase() === String(r.nome || '').trim().toLowerCase());
             return html`<tr class="${r.includi === false ? 'escluso' : ''}">
               ${daPdf() ? html`<td><input type="checkbox" data-r="${i}.includi" ${r.includi === false ? '' : 'checked'} style="width:auto;min-height:auto"></td>` : ''}
-              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px">${r.descrizione ? html`<div class="totale" style="margin:2px 0 0">${r.descrizione}${art || r.includi === false ? '' : ' · articolo nuovo'}</div>` : ''}${r.nota ? html`<div class="totale nota-riga">⚠ ${r.nota}</div>` : ''}</td>
+              <td><input data-r="${i}.nome" list="dl-art" value="${r.nome || ''}" style="min-width:160px">${r.descrizione ? html`<div class="totale" style="margin:2px 0 0">${r.descrizione}${art || r.includi === false ? '' : ' · articolo nuovo'}</div>` : ''}${r.nota ? html`<div class="totale nota-riga">⚠ ${r.nota}</div>` : ''}${daFattura && r._i !== undefined && r.includi === false ? html`<label class="spunta totale" style="margin:2px 0 0" title="Lattine, polykeg, etichette: la riga resta da caricare nella pagina Packaging"><input type="checkbox" data-r="${i}.packaging" ${r.packaging ? 'checked' : ''} style="width:auto;min-height:auto"> 📦 va in Packaging</label>` : ''}</td>
               <td>${art ? html`<span class="totale">${CATEGORIE[art.categoria]}</span>` : html`<select data-r="${i}.categoria">${Object.entries(CATEGORIE).map(([k, v]) => html`<option value="${k}" ${k === (r.categoria || 'malto') ? 'selected' : ''}>${v}</option>`)}</select>`}</td>
               <td><input data-r="${i}.qta" type="number" step="any" inputmode="decimal" value="${r.qta ?? ''}"></td>
               <td><select data-r="${i}.unita">${UNITA.map(x => html`<option ${x === (r.unita || art?.unita || 'kg') ? 'selected' : ''}>${x}</option>`)}</select></td>
@@ -639,9 +643,14 @@ export async function vistaBolla(id) {
       if (nuovi.length || aggiornati.size) await u.db.salvaMolti([...nuovi, ...aggiornati.values()].map(({ aggiornato: _a, ...a }) => a));
       await u.db.salva({ ...b, id: b.id || u.db.nuovoId('bolla'), righe: out });
       if (bozza?.sospesoId) {
-        // la fattura resta per Contenitori se ha lattine o fusti non ancora caricati là
+        // la fattura resta per Packaging con le righe segnate "va in Packaging" (riconosciute o scelte a mano),
+        // con la descrizione e il lotto letti dalla bolla; quantità e prezzo restano quelli della fattura
         const rec = await u.db.leggi(bozza.sospesoId);
-        const vuoti = (rec?.doc?.righe || []).filter(vuoto);
+        const viste = new Set();
+        const vuoti = b.righe.filter(r => r._i !== undefined && r.includi === false && r.packaging && !viste.has(r._i) && viste.add(r._i)).map(r => {
+          const f = rec?.doc?.righe?.[r._i] || bozza.righe[r._i];
+          return { ...f, descrizione: f.descrizione || r.descrizione || '', lotto: r.lotto || '', packaging: true };
+        });
         if (rec && !rec.eliminato && !rec.vuotiVisti && vuoti.length) {
           const { aggiornato: _a, ...daSalvare } = rec;
           await u.db.salva({ ...daSalvare, mpFatte: true, doc: { ...rec.doc, righe: vuoti } });

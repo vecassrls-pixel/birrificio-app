@@ -20,7 +20,7 @@ import { elencoProdotti, impostazioniDa, trovaProdotto, FORMATO_SHOPIFY, ID_IMPO
 import { idCliente } from '../../js/previsioni.js';
 import { ID_PREZZI, prezziDa } from '../../js/costi.js';
 import { ID_IMP, ID_STATO, IMPOSTAZIONI_DEFAULT, impostazioni } from '../../js/automazioni.js';
-import { caricoDaFattura, righeVuoti } from '../../js/contenitori.js';
+import { caricoDaFattura, caricoSimile, righeVuoti } from '../../js/contenitori.js';
 
 export { ID_IMP, ID_STATO, IMPOSTAZIONI_DEFAULT, impostazioni };
 
@@ -144,6 +144,8 @@ export async function importa({ imp } = {}) {
             visti.add(rif);
             // lattine e fusti vuoti già riconosciuti una volta: carico in Contenitori, il resto resta da controllare
             const { sicure, proposte, altre } = righeVuoti(d, contenitori);
+            // stessi vuoti già caricati a mano dalla bolla in Packaging: niente carico doppio, si conferma a mano
+            if (sicure.length && caricoSimile(d, sicure, t.movcontenitore, rif)) proposte.unshift(...sicure.splice(0));
             if (sicure.length) {
               nuovi.push({ ...caricoDaFattura(d, sicure, rif), id: db.nuovoId('movcontenitore'), note: 'importato in automatico' });
               conteggi.vuoti++;

@@ -252,8 +252,10 @@ export function incrociaBolla(fattura, bolla, tieni = () => true) {
     const tot = g.reduce((t, d) => t + (Number(d.qta) || 0), 0);
     const diversa = g.every(d => d.unita === f.unita) && Math.abs(tot - Number(f.qta)) > 1e-6;
     const nota = diversa ? `in bolla ${fmt(tot)} ${f.unita}, in fattura ${fmt(Number(f.qta))}` : '';
-    if (g.length === 1) return [{ ...f, lotto: g[0].lotto || f.lotto || '', scadenza: g[0].scadenza || f.scadenza || '', nota }];
-    return g.map((d, k) => ({ ...f, qta: d.qta, unita: d.unita, lotto: d.lotto || '', scadenza: d.scadenza || '', nota: k ? '' : nota }));
+    // riga della fattura senza descrizione (PAB: solo il codice dei polykeg): si prende quella della bolla
+    const descrizione = f.descrizione || g[0].descrizione || '';
+    if (g.length === 1) return [{ ...f, descrizione, lotto: g[0].lotto || f.lotto || '', scadenza: g[0].scadenza || f.scadenza || '', nota }];
+    return g.map((d, k) => ({ ...f, descrizione, qta: d.qta, unita: d.unita, lotto: d.lotto || '', scadenza: d.scadenza || '', nota: k ? '' : nota }));
   });
   for (const d of sole) righe.push({ ...d, nota: 'solo nella bolla, non in fattura' });
   // la nota delle righe escluse (es. vuoti per Contenitori) non è una differenza tra fattura e bolla
