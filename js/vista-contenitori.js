@@ -7,9 +7,11 @@
 
 import {
   CATEGORIE_CONT, MOTIVI_CARICO, MOTIVI_SCARICO, categoriaDaFormato, contenitoriProposti, formatiDi, formatiUsati,
-  caricoDaFattura, chiaveRiga, etichettaDaAggiornare, etichettaPerBirra, regolaCartone, fabbisognoContenitori, nuovaEtichetta, giacenzeContenitori, nomeFormato, nomeMotivoCont, perCottaDi, righeVuoti, usiConfezionamento,
+  caricoDaFattura, caricoSimile, chiaveRiga, trovaContenitore, etichettaDaAggiornare, etichettaPerBirra, regolaCartone, fabbisognoContenitori, nuovaEtichetta, giacenzeContenitori, nomeFormato, nomeMotivoCont, perCottaDi, righeVuoti, usiConfezionamento,
 } from './contenitori.js';
 import { testaMagazzino } from './sezioni.js';
+import { estraiTesto, leggiDdt } from './bolla-pdf.js';
+import { chiediAi, fotoBase64 } from './ai.js';
 
 let u; // { $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO }  stato.beerfirm = elenco dei beerfirm
 export function init(strumenti) { u = strumenti; }
@@ -26,9 +28,13 @@ async function dati() {
   contenitori.sort((a, b) => Object.keys(CATEGORIE_CONT).indexOf(a.categoria) - Object.keys(CATEGORIE_CONT).indexOf(b.categoria) || a.nome.localeCompare(b.nome, 'it', { numeric: true }));
   // fatture dei fornitori con righe che sembrano vuoti, non ancora guardate qui
   const fatture = sospesi.filter(x => x.fonte === 'acquisti' && !x.vuotiVisti && x.doc)
-    .map(x => ({ x, ...righeVuoti(x.doc, contenitori) })).filter(f => f.proposte.length || f.sicure.length);
+    .map(x => ({ x, ...righeVuoti(x.doc, contenitori) })).filter(f => f.proposte.length || f.sicure.length)
+    // stessi vuoti già caricati (bolla in Packaging): si avvisa prima di caricarli di nuovo
+    .map(f => ({ ...f, simile: caricoSimile(f.x.doc, [...f.sicure, ...f.proposte], movimenti, f.x.rifEsterno) }));
   return { contenitori, movimenti, inventari, fatture, cotte: u.stato.cotte };
 }
+// riga di fattura o bolla senza descrizione (PAB scrive solo il codice dei polykeg)
+const descrRiga = r => r.descrizione || (r.codice ? `codice ${r.codice}` : 'riga senza descrizione');
 const pezziMov = m => (m.righe || []).reduce((t, r) => t + (Number(r.pezzi) || 0), 0);
 // "≈ 2,5 bancali" quando il contenitore ha i pezzi per confezione
 const testoConfezioni = (g) => (g.confezioni !== null ? ` · ≈ ${u.numIT(g.confezioni, g.confezioni < 10 ? 1 : 0)} conf. da ${u.numIT(g.contenitore.pezziConfezione, 0)}` : '');
@@ -71,6 +77,7 @@ export async function vistaContenitori() {
     ${testaMagazzino('contenitori')}
     <div class="barra">
       <h2 style="margin:0">Packaging</h2><span class="spazio"></span>
+      <a class="btn primario solo-editori" href="#/movcontenitore/carico?bolla=1" title="Leggi il PDF o la foto della bolla del fornitore">📄 Carica bolla</a>
       <a class="btn solo-editori" href="#/movcontenitore/carico">+ Carico</a>
       <a class="btn solo-editori" href="#/movcontenitore/scarico">− Scarico</a>
       <a class="btn solo-editori" href="#/contenitori-inventario">📋 Inventario</a>
@@ -102,7 +109,7 @@ export async function vistaContenitori() {
     ${d.fatture.length ? html`<div class="scheda solo-editori" id="cn-fatture"><h2>📥 Fatture dei fornitori con packaging <span class="totale">da Fatture in Cloud</span></h2>
       <p class="totale">Righe di lattine, fusti o etichette trovate nelle fatture importate di notte. Controlla contenitore, pezzi e lotto e carica: la volta dopo le stesse righe dello stesso fornitore entrano da sole.</p>
       <ul class="w-lista">${d.fatture.map(f => html`<li class="acq-riga"><span class="w-testo"><b>${f.x.doc.fornitore || 'Fornitore'}</b> · ${f.x.doc.numero || ''} · ${u.dataIT(f.x.doc.data)}
-        <small>${[...f.sicure, ...f.proposte].map(r => `${u.numIT(r.qta, 0)} ${r.um || ''} ${r.descrizione}`).join(' · ')}</small></span>
+        <small>${[...f.sicure, ...f.proposte].map(r => `${u.numIT(r.qta, 0)} ${r.um || ''} ${descrRiga(r)}`).join(' · ')}</small>${f.simile ? html`<small class="nota-riga">⚠ forse già caricati: ${[f.simile.fornitore, f.simile.documento].filter(Boolean).join(' ')} del ${u.dataIT(f.simile.data)}</small>` : ''}</span>
         <span class="barra" style="margin:0"><button class="piccolo primario" data-fatt="${f.x.id}">Carica</button><button class="piccolo" data-fatt-no="${f.x.id}" title="Non è packaging: la fattura resta in Materie prime">Non è packaging</button></span></li>`)}</ul>
     </div>` : ''}
 
@@ -165,17 +172,18 @@ export async function vistaContenitori() {
 // ---------- carico da una fattura del fornitore ----------
 function dialogFattura(d, f) {
   const { html } = u;
-  const righe = [...f.sicure, ...f.proposte].map(r => ({ ...r, propostoId: r.contenitoreId, lotto: '' }));
+  const righe = [...f.sicure, ...f.proposte].map(r => ({ ...r, propostoId: r.contenitoreId, lotto: r.lotto || '' }));
   const dlg = document.createElement('dialog');
   dlg.innerHTML = html`<form method="dialog">
     <h2 style="margin-top:0">${f.x.doc.fornitore || 'Fornitore'} · ${f.x.doc.numero || ''}</h2>
     <p class="totale">Fattura del ${u.dataIT(f.x.doc.data)}. "Pezzi per unità": quante lattine o fusti sono 1 ${righe.some(r => r.um) ? 'unità della fattura (es. 1 bancale = 8.000 lattine)' : 'quantità della fattura'}. Il lotto è sulla bolla o sull'imballo.</p>
+    ${f.simile ? html`<p class="totale nota-riga">⚠ Sembrano già caricati con ${[f.simile.fornitore, f.simile.documento].filter(Boolean).join(' ') || 'un carico'} del ${u.dataIT(f.simile.data)}: se è lo stesso arrivo scegli "non è packaging" per non contarli due volte.</p>` : ''}
     <div class="scroll-x"><table class="tab-edit">
       <thead><tr><th>Riga della fattura</th><th>Contenitore</th><th style="width:90px">Pezzi per unità</th><th style="width:120px">Lotto</th></tr></thead>
-      <tbody>${righe.map((r, i) => html`<tr><td>${u.numIT(r.qta, 0)} ${r.um || ''} ${r.descrizione}</td>
+      <tbody>${righe.map((r, i) => html`<tr><td>${u.numIT(r.qta, 0)} ${r.um || ''} ${descrRiga(r)}</td>
         <td><select name="k${i}"><option value="">non è packaging</option>${d.contenitori.map(k => html`<option value="${k.id}" ${k.id === r.contenitoreId ? 'selected' : ''}>${k.nome}</option>`)}</select></td>
         <td><input name="x${i}" type="number" min="1" step="1" inputmode="numeric" value="${r.x}"></td>
-        <td><input name="l${i}" value=""></td></tr>`)}</tbody></table></div>
+        <td><input name="l${i}" value="${r.lotto || ''}"></td></tr>`)}</tbody></table></div>
     <div class="barra" style="margin-top:14px"><span class="spazio"></span><button value="no" formnovalidate>Annulla</button><button class="primario" value="ok">Carica</button></div>
   </form>`.s;
   document.body.appendChild(dlg);
@@ -356,7 +364,9 @@ export async function vistaMovimento(id) {
   const esistente = nuovo ? null : d.movimenti.find(x => x.id === idPuro);
   if (!nuovo && !esistente) { u.$app.innerHTML = html`<p class="vuoto">Movimento non trovato. <a href="#/contenitori">Torna a Packaging</a></p>`; return; }
   if (!d.contenitori.length) { u.$app.innerHTML = html`<p class="vuoto">Prima crea i contenitori. <a href="#/contenitori">Vai a Packaging</a></p>`; return; }
-  const pre = new URLSearchParams(query || '').get('c') || '';
+  const parametri = new URLSearchParams(query || '');
+  const pre = parametri.get('c') || '';
+  const daBolla = parametri.has('bolla');
   const m = esistente ? JSON.parse(JSON.stringify(esistente))
     : { tipo: 'movcontenitore', verso: idPuro, data: u.oggiISO(), motivo: idPuro === 'carico' ? 'acquisto' : 'scarto', fornitore: '', documento: '', note: '', righe: [{ contenitoreId: pre || d.contenitori[0].id, pezzi: null, lotto: '' }] };
   const carico = () => m.verso === 'carico';
@@ -364,12 +374,67 @@ export async function vistaMovimento(id) {
   const fornitori = [...new Set(d.movimenti.map(x => x.fornitore).filter(Boolean))].sort();
   const kDi = cid => d.contenitori.find(x => x.id === cid);
 
+  // ---- bolla del fornitore (PDF o foto), come in Materie prime ----
+  // le righe di lattine, polykeg ed etichette (codici già confermati o parole) diventano righe del carico,
+  // le altre (malti, spese…) restano sotto e si aggiungono con "È packaging"
+  let pdfStato = '';
+  let altre = [];
+  const applicaBolla = (ddt, origine) => {
+    if (ddt.data) m.data = ddt.data;
+    if (ddt.numero) m.documento = ddt.numero;
+    if (ddt.fornitore) m.fornitore = ddt.fornitore;
+    const lette = [];
+    altre = [];
+    for (const r of ddt.righe) {
+      const t = trovaContenitore(r, d.contenitori);
+      const doc = { codice: r.codice || '', descrizione: r.descrizione || '', qta: Number(r.qta) || 0, um: r.um || '' };
+      if (t && !t.ignora) lette.push({ contenitoreId: t.contenitore.id, pezzi: Math.round(doc.qta * t.x) || null, lotto: r.lotto || '', doc });
+      else altre.push({ ...doc, lotto: r.lotto || '' });
+    }
+    const vuote = m.righe.every(r => !(Number(r.pezzi) > 0));
+    m.righe = vuote ? lette : [...m.righe, ...lette];
+    if (!m.righe.length) m.righe.push({ contenitoreId: d.contenitori[0].id, pezzi: null, lotto: '' });
+    return lette.length
+      ? `${origine}: ${lette.length === 1 ? '1 riga' : `${lette.length} righe`} di packaging${altre.length ? `, ${altre.length} altre righe sotto (se una è packaging tocca "È packaging")` : ''}. Controlla pezzi e lotti prima di salvare.`
+      : `${origine}: nessuna riga riconosciuta come packaging. Se c'è, tocca "È packaging" nelle righe della bolla qui sotto.`;
+  };
+  async function leggiPdf(file) {
+    pdfStato = 'Leggo il PDF…';
+    disegna();
+    try {
+      const ddt = leggiDdt(await estraiTesto(file));
+      if (!ddt.righe.length) throw new Error('Non ho trovato righe');
+      pdfStato = applicaBolla(ddt, file.name);
+    } catch (ex) {
+      // scansione o formato sconosciuto: ci prova Claude
+      return leggiAi(file, `${ex.message.split(':')[0]}: lo faccio leggere all'AI…`);
+    }
+    disegna();
+  }
+  async function leggiAi(file, attesa = 'Leggo la bolla con l\'AI… (qualche secondo)') {
+    pdfStato = attesa;
+    disegna();
+    try {
+      const { json: ddt } = await chiediAi({ azione: 'bolla', ...(await fotoBase64(file)) });
+      if (!ddt?.righe?.length) throw new Error('Non ho trovato righe nella foto: rifalla più dritta e illuminata, o scrivi le righe a mano.');
+      pdfStato = applicaBolla({ ...ddt, data: /^\d{4}-\d{2}-\d{2}$/.test(ddt.data) ? ddt.data : '' }, 'Letta dall\'AI');
+    } catch (ex) {
+      pdfStato = ex.message;
+    }
+    disegna();
+  }
+
   function disegna() {
     u.$app.innerHTML = html`
       <div class="barra"><a href="#/contenitori" class="btn">← Packaging</a><span class="spazio"></span>
         ${esistente ? html`<button class="pericolo" id="elimina">Elimina</button>` : ''}</div>
       <div class="scheda">
-        <h1 style="margin-top:0">${esistente ? '' : 'Nuovo '}${carico() ? 'carico' : 'scarico'} di vuoti</h1>
+        <h1 style="margin-top:0">${daBolla && nuovo && carico() ? 'Bolla di carico del packaging' : `${esistente ? '' : 'Nuovo '}${carico() ? 'carico' : 'scarico'} di vuoti`}</h1>
+        ${nuovo && carico() ? html`<div class="barra">
+          <label class="btn ${daBolla ? 'primario' : ''}">📄 Leggi il PDF della bolla<input type="file" id="pdf" accept="application/pdf,.pdf" hidden></label>
+          <label class="btn" title="Fotografa la bolla di carta: la legge Claude">📷 Foto della bolla<input type="file" id="foto-bolla" accept="image/*" capture="environment" hidden></label>
+          <span class="totale" id="pdf-stato" style="margin:0">${pdfStato}</span>
+        </div>` : ''}
         <div class="barra" style="margin:0 0 8px">
           <label class="spunta"><input type="radio" name="verso" value="carico" ${carico() ? 'checked' : ''}> + Carico (entra)</label>
           <label class="spunta"><input type="radio" name="verso" value="scarico" ${carico() ? '' : 'checked'}> − Scarico (esce)</label>
@@ -390,7 +455,8 @@ export async function vistaMovimento(id) {
           <tbody>${m.righe.map((r, i) => {
             const k = kDi(r.contenitoreId), perConf = Number(k?.pezziConfezione) || 0;
             return html`<tr>
-              <td><select data-r="${i}.contenitoreId" style="min-width:180px">${d.contenitori.map(x => html`<option value="${x.id}" ${x.id === r.contenitoreId ? 'selected' : ''}>${x.nome}</option>`)}</select></td>
+              <td><select data-r="${i}.contenitoreId" style="min-width:180px">${r.doc ? html`<option value="">non è packaging</option>` : ''}${d.contenitori.map(x => html`<option value="${x.id}" ${x.id === r.contenitoreId ? 'selected' : ''}>${x.nome}</option>`)}</select>
+                ${r.doc ? html`<div class="totale" style="margin:2px 0 0">bolla: ${u.numIT(r.doc.qta, 0)} ${r.doc.um} ${descrRiga(r.doc)}</div>` : ''}</td>
               <td class="n totale">${g.get(r.contenitoreId) ? pz(g.get(r.contenitoreId).giacenza) : ''}</td>
               <td>${perConf ? html`<input data-conf="${i}" type="number" min="0" step="any" inputmode="decimal" title="da ${perConf} pezzi" value="${r.pezzi ? Math.round((r.pezzi / perConf) * 100) / 100 : ''}">` : html`<span class="totale" title="Scrivi i pezzi per bancale/confezione nella scheda del contenitore">—</span>`}</td>
               <td><input data-r="${i}.pezzi" type="number" min="0" step="1" inputmode="numeric" value="${r.pezzi ?? ''}"></td>
@@ -406,11 +472,16 @@ export async function vistaMovimento(id) {
         </table></div>
         <div class="barra" style="margin-top:8px"><button class="piccolo" id="riga">+ Riga</button><span class="spazio"></span>
           <button class="primario" id="salva">Salva ${carico() ? 'carico' : 'scarico'}</button></div>
-      </div>`;
+      </div>
+      ${altre.length ? html`<details class="scheda"><summary><b>Altre righe della bolla</b> <span class="totale">${altre.length} non riconosciute come packaging (malti, spese…)</span></summary>
+        <ul class="w-lista">${altre.map((r, i) => html`<li class="acq-riga"><span class="w-testo">${u.numIT(r.qta, 0)} ${r.um} ${descrRiga(r)}${r.lotto ? html`<small>lotto ${r.lotto}</small>` : ''}</span>
+          <button class="piccolo" data-altra="${i}">È packaging</button></li>`)}</ul></details>` : ''}`;
   }
   disegna();
   u.$app.oninput = u.$app.onchange = e => {
     const t = e.target;
+    if (t.id === 'pdf' && e.type === 'change' && t.files[0]) return leggiPdf(t.files[0]);
+    if (t.id === 'foto-bolla' && e.type === 'change' && t.files[0]) return leggiAi(t.files[0]);
     if (t.name === 'verso' && e.type === 'change') {
       m.verso = t.value;
       m.motivo = Object.keys(carico() ? MOTIVI_CARICO : MOTIVI_SCARICO)[0];
@@ -434,6 +505,15 @@ export async function vistaMovimento(id) {
   u.$app.onclick = async e => {
     const t = e.target;
     if (t.id === 'riga') { m.righe.push({ contenitoreId: d.contenitori[0].id, pezzi: null, lotto: '' }); disegna(); }
+    else if (t.dataset.altra !== undefined) {
+      // riga della bolla non riconosciuta: diventa una riga del carico (contenitore da scegliere)
+      const [r] = altre.splice(Number(t.dataset.altra), 1);
+      const { lotto, ...doc } = r;
+      const primo = d.contenitori.find(k => k.categoria === 'fusto') || d.contenitori[0];
+      if (m.righe.length === 1 && !(Number(m.righe[0].pezzi) > 0)) m.righe = [];
+      m.righe.push({ contenitoreId: primo.id, pezzi: Math.round(doc.qta) || null, lotto, doc });
+      disegna();
+    }
     else if (t.dataset.del !== undefined) { m.righe.splice(Number(t.dataset.del), 1); disegna(); }
     else if (t.id === 'elimina') {
       if (!(await u.chiedi(carico() ? 'Eliminare questo carico? I pezzi escono dalla giacenza.' : 'Eliminare questo scarico? I pezzi tornano in giacenza.', 'Elimina'))) return;
@@ -442,6 +522,26 @@ export async function vistaMovimento(id) {
     } else if (t.id === 'salva') {
       const righe = m.righe.filter(r => r.contenitoreId && Number(r.pezzi) > 0).map(r => ({ contenitoreId: r.contenitoreId, pezzi: Math.round(Number(r.pezzi)), lotto: String(r.lotto || '').trim() }));
       if (!m.data || !righe.length) return u.toast('Servono la data e almeno una riga con i pezzi');
+      if (nuovo && carico()) {
+        const simile = caricoSimile({ numero: m.documento, data: m.data }, righe.map(r => ({ contenitoreId: r.contenitoreId, qta: r.pezzi, x: 1 })), d.movimenti);
+        if (simile && !(await u.chiedi(`Sembra già caricato: ${[simile.fornitore, simile.documento].filter(Boolean).join(' ') || 'carico'} del ${u.dataIT(simile.data)} (anche dalla fattura di Fatture in Cloud). Salvare lo stesso?`, 'Salva lo stesso'))) return;
+      }
+      // righe lette dalla bolla: codice o descrizione ricordati, la prossima bolla o fattura le riconosce da sola
+      const impara = new Map();
+      for (const r of m.righe) {
+        const ch = r.doc && chiaveRiga(r.doc);
+        if (!ch || !r.contenitoreId || !(Number(r.pezzi) > 0) || !(r.doc.qta > 0)) continue;
+        const x = Math.round(Number(r.pezzi) / r.doc.qta);
+        if (x < 1 || Math.abs(x * r.doc.qta - Number(r.pezzi)) > 1e-6) continue; // pezzi non multipli della quantità: niente regola
+        const lista = impara.get(r.contenitoreId) || [];
+        lista.push({ chiave: ch, x });
+        impara.set(r.contenitoreId, lista);
+      }
+      // la stessa chiave ricordata su un altro contenitore (o come "ignora") si toglie da lì
+      const chiavi = new Set([...impara.values()].flat().map(c => c.chiave));
+      const aggiornati = d.contenitori.filter(k => impara.has(k.id) || (k.codici || []).some(c => chiavi.has(c.chiave))).map(({ aggiornato: _a, ...k }) => (
+        { ...k, codici: [...(k.codici || []).filter(c => !chiavi.has(c.chiave)), ...(impara.get(k.id) || [])] }));
+      if (aggiornati.length) await u.db.salvaMolti(aggiornati);
       if (!carico()) {
         const troppo = righe.find(r => r.pezzi > (g.get(r.contenitoreId)?.giacenza || 0));
         if (troppo && !(await u.chiedi(`${kDi(troppo.contenitoreId).nome}: in magazzino risultano ${g.get(troppo.contenitoreId)?.giacenza || 0} pezzi, ne stai scaricando ${troppo.pezzi}. Salvare lo stesso?`, 'Salva'))) return;
