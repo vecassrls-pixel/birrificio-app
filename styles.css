@@ -308,6 +308,7 @@ dialog::backdrop { background: rgb(0 0 0 / .5); }
   input[type="date"][value=""] { color: transparent !important; }
   main { padding: 12mm 13mm !important; max-width: none !important; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
   main:has(.pv-foglio, .lista-clienti) { padding: 0 !important; }
+  #app:has(.li-foglio) > :not(.li-foglio) { display: none !important; }
   .scheda { border: none; padding: 0; margin: 0 0 10px; break-inside: avoid; background: none !important; box-shadow: none !important; }
   .riga-cotta { box-shadow: none; }
   .scroll-x { overflow: visible !important; }
@@ -627,6 +628,7 @@ details.scheda > summary { cursor: pointer; min-height: 32px; display: flex; ali
 
 /* Listini */
 .tab-listino tr.li-gruppo td { padding: 12px 4px 2px; font-weight: 700; border-bottom: 1px solid var(--border); }
+.tab-listino tr.li-gruppo .li-info { font-weight: 400; color: var(--muted); margin-left: 6px; }
 .tab-listino input[type="number"] { width: 110px; }
 .tab-listino tr.escluso td:not(:first-child) { opacity: .45; }
 .tab-listino input.fisso { border-color: var(--accent); font-weight: 600; }

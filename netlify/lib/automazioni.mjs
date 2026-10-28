@@ -120,7 +120,7 @@ export async function importa({ imp } = {}) {
       conteggi.sospesi++;
       return;
     }
-    const birra = righe.filter(r => r.prodotto !== '-' && r.qta > 0).map(r => ({ prodotto: r.prodotto, pezzi: r.qta * r.x, lotto: '' }));
+    const birra = righe.filter(r => r.prodotto !== '-' && r.qta > 0).map(r => ({ prodotto: r.prodotto, pezzi: r.qta * r.x, lotto: '', ...(r.prezzo > 0 ? { prezzo: Math.round(r.prezzo / r.x * 10000) / 10000 } : {}) })); // prezzo al pezzo, per i listini
     nuovi.push({
       tipo: 'movbirra', id: db.nuovoId('movbirra'), verso, data: d.data, motivo, cliente: d.cliente || '', documento: d.numero, note: 'importato in automatico',
       origine: fonte === 'shopify' ? 'shopify' : 'fic', rifEsterno: rif, righe: birra, ...(birra.length ? {} : { ignorato: true }),

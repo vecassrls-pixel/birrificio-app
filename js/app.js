@@ -104,7 +104,7 @@ statistiche.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO });
 cerca.init({ $app, html, db, stato, dataIT });
 ordine.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia });
 costi.init({ $app, html, raw, db, toast, stato, dataIT, numIT, oggiISO });
-listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, copia });
+listini.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni, copia, token: () => (auth.configurato() ? auth.token() : null) });
 preventivi.init({ $app, html, raw, db, toast, chiedi, dataIT, numIT, oggiISO, copia });
 haccp.init({ $app, html, raw, db, toast, chiedi, stato, dataIT, numIT, oggiISO, addGiorni });
 home.init({ $app, html, raw, db, stato, dataIT, numIT, oggiISO, addGiorni, diffGiorni, conGiorniDh: g => conGiorniDh(g) });
