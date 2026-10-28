@@ -850,7 +850,7 @@ export async function vistaImporta(fonte) {
     }
     const nuoviProdotti = [...perProdotto.values()].filter(p => !dati.prodotti.includes(p)).map(({ aggiornato: _a, ...p }) => p);
     const movimenti = scelti.map(d => {
-      const righe = d.righe.filter(r => r.prodotto !== '-' && r.qta > 0).map(r => ({ prodotto: r.prodotto, pezzi: r.qta * r.x, lotto: r.lotto || '' }));
+      const righe = d.righe.filter(r => r.prodotto !== '-' && r.qta > 0).map(r => ({ prodotto: r.prodotto, pezzi: r.qta * r.x, lotto: r.lotto || '', ...(r.prezzo > 0 ? { prezzo: Math.round(r.prezzo / r.x * 10000) / 10000 } : {}) })); // prezzo al pezzo, per i listini
       const s = d.sospeso;
       return {
         tipo: 'movbirra', id: u.db.nuovoId('movbirra'), verso: s?.verso || 'scarico', data: d.data, motivo: s?.motivo || 'vendita', cliente: d.cliente || '',

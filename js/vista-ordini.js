@@ -333,7 +333,7 @@ export async function dialogLink(nome, scheda) {
   let rec = scheda ? { ...scheda } : { id, tipo: 'cliente', nome };
   delete rec.aggiornato;
   const salva = async patch => { rec = { ...rec, portale: { ...rec.portale, ...patch } }; await u.db.salva(rec); };
-  if (!rec.portale?.token) await salva({ token: nuovoToken(), attivo: true, listino: listini[0]?.id || '' });
+  if (!rec.portale?.token) await salva({ token: nuovoToken(), attivo: true, listino: rec.portale?.listino || listini[0]?.id || '' });
   const base = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
   const d = document.createElement('dialog');
   const disegna = () => {
