@@ -26,6 +26,7 @@ import * as automazioni from './vista-automazioni.js';
 import * as cassa from './vista-cassa.js';
 import * as mensili from './vista-mensili.js';
 import * as economia from './economia.js';
+import * as sezioni from './sezioni.js';
 import * as contenitori from './vista-contenitori.js';
 import { contenitoriPerRiga } from './contenitori.js';
 import { ID_BEERFIRM, beerfirmDa } from './beerfirm.js';
@@ -116,6 +117,7 @@ automazioni.init({ html, raw, db, toast, stato, oggiISO });
 cassa.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO, addGiorni });
 mensili.init({ $app, html, db, toast, chiedi, dataIT, numIT, oggiISO });
 economia.init({ html, db, oggiISO });
+sezioni.init({ html });
 contenitori.init({ $app, html, db, toast, chiedi, stato, dataIT, numIT, oggiISO });
 qr.init({ $app, html, db, toast, stato, dataIT, oggiISO });
 async function carica() {
@@ -265,6 +267,8 @@ const routes = [
   [/^#\/cotta\/(.+)$/, vistaCotta],
   [/^#\/planning$/, vistaPlanning],
   [/^#\/cantina$/, () => cantina.vistaCantina().then(f => { if (f) pulizia = f; })],
+  // Magazzino (Romain 2026-10-28): materie prime, birra, packaging con le unghie; #/magazzino riapre l'ultima usata
+  [/^#\/magazzino$/, () => (location.hash = `#/${sezioni.ultimaUnghiaMagazzino()}`)],
   [/^#\/materie-prime$/, () => magazzino.vistaMagazzino()],
   [/^#\/materia\/(.+)$/, id => magazzino.vistaArticolo(id)],
   [/^#\/bolla\/(.+)$/, id => magazzino.vistaBolla(id)],
@@ -326,7 +330,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'materie-prime' && /^#\/(materia|bolla|inventario|scarico|ordine)/.test(h)) || (a.dataset.tab === 'birra' && /^#\/(movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'economia' && /^#\/(cassa|accise|stipendi|f24|cashflow)/.test(h)) || (a.dataset.tab === 'contenitori' && /^#\/(contenitore|movcontenitore)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'magazzino' && /^#\/(materie-prime|materia|bolla|inventario|scarico|ordine|birra|movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro|contenitor|movcontenitore)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'economia' && /^#\/(cassa|accise|stipendi|f24|cashflow)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
