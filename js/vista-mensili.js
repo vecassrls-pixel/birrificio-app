@@ -1,7 +1,7 @@
-// Accise, Stipendi, F24 (#/accise, #/stipendi, #/f24) nella sezione Economia: totale mensile scritto a mano,
+// Accise, Stipendi, F24, Affitti (#/accise, #/stipendi, #/f24, #/affitti) nella sezione Economia: totale mensile scritto a mano,
 // pagato sì/no con la data, scadenza, riepiloghi dell'anno ed Excel. Come la cassa, non le vede chi è in sola lettura.
 
-import { MESI, TIPI_MENSILI, conImporto, idMensile, mediaUltimi12, nomeMese, riepilogoMensile, scadenzaMese } from './mensili.js';
+import { MESI, TIPI_MENSILI, conImporto, fissoDi, idMensile, mediaUltimi12, nomeMese, riepilogoMensile, righeMensili, scadenzaMese } from './mensili.js';
 import { unghieEconomia } from './economia.js';
 import { creaXlsx } from './xlsx.js';
 
@@ -14,8 +14,7 @@ const euro = v => `${(Number(v) || 0).toLocaleString('it-IT', { minimumFractionD
 const tondo = v => Math.round(Number(v) * 100) / 100;
 const meseMin = mese => MESI[Number(mese.slice(5)) - 1].toLowerCase();
 
-async function scadenzaDi(tipo) {
-  const imp = await u.db.leggi(`impostazione-${tipo}`);
+function scadenzaDi(tipo, imp) {
   const s = { ...TIPI_MENSILI[tipo].scadenza, ...(imp && !imp.eliminato ? { giorno: imp.giorno, meseDopo: imp.meseDopo } : {}) };
   return { giorno: Number(s.giorno) || 16, meseDopo: s.meseDopo !== false };
 }
@@ -24,8 +23,10 @@ export async function vistaMensile(tipo) {
   const { html } = u;
   const T = TIPI_MENSILI[tipo];
   const ridisegna = () => vistaMensile(tipo);
-  const [righe, scadenza, unghie] = await Promise.all([u.db.tutti(tipo), scadenzaDi(tipo), unghieEconomia(T.percorso)]);
+  const [salvate, imp, unghie] = await Promise.all([u.db.tutti(tipo), u.db.leggi(`impostazione-${tipo}`), unghieEconomia(T.percorso)]);
   const oggi = u.oggiISO(), annoOggi = oggi.slice(0, 4);
+  const scadenza = scadenzaDi(tipo, imp), fisso = fissoDi(tipo, imp);
+  const righe = righeMensili(tipo, salvate, imp, oggi);
   const aggiunti = (anniAggiunti[tipo] ||= new Set());
   const anni = [...new Set([annoOggi, ...aggiunti, ...righe.map(r => r.mese?.slice(0, 4)).filter(Boolean)])].sort().reverse();
   if (!annoScelto[tipo] || !anni.includes(annoScelto[tipo])) annoScelto[tipo] = annoOggi;
@@ -56,7 +57,11 @@ export async function vistaMensile(tipo) {
         <span class="spazio"></span>
         <button id="mn-anno-nuovo" class="piccolo" title="Aggiungi un anno passato da compilare">+ Anno</button>
       </div>
-      <p class="totale">Scrivi il totale del mese: si salva da solo. Spunta "Pagato" quando l'hai versato (la data si mette a oggi, puoi cambiarla).</p>
+      <p class="totale">${fisso
+        ? `Ogni mese vale ${euro(fisso.importo)} da solo: spunta "Pagato" quando l'hai versato (la data si mette a oggi, puoi cambiarla). Se un mese è diverso scrivi il totale, 0 se non c'è.`
+        : `Scrivi il totale del mese: si salva da solo. Spunta "Pagato" quando l'hai versato (la data si mette a oggi, puoi cambiarla).`}</p>
+      ${fisso ? html`<p class="mn-scad">Importo mensile € <input type="number" name="fx-importo" step="0.01" min="0" inputmode="decimal" value="${fisso.importo}" style="width:90px">
+        dal mese <input type="month" name="fx-dal" value="${fisso.dal}" style="width:auto"></p>` : ''}
       <p class="mn-scad">Scadenza: il giorno <input type="number" name="sc-giorno" min="1" max="31" inputmode="numeric" value="${scadenza.giorno}">
         <select name="sc-mese"><option value="dopo" ${scadenza.meseDopo ? 'selected' : ''}>del mese dopo</option><option value="stesso" ${scadenza.meseDopo ? '' : 'selected'}>dello stesso mese</option></select></p>
       <div class="scroll-x"><table class="tab-mag acc-tab">
@@ -69,7 +74,7 @@ export async function vistaMensile(tipo) {
           const futuro = m > oggi.slice(0, 7);
           return html`<tr data-mese="${m}" class="${scaduta ? 'acc-scaduta' : ''} ${c ? '' : 'acc-vuoto'} ${futuro && !c ? 'acc-futuro' : ''}">
             <td data-l="Mese"><b>${MESI[Number(m.slice(5)) - 1]}</b><small class="totale"> scad. ${u.dataIT(sc)}</small>${scaduta ? html` <span class="badge cop-badge-ritardo">scaduta</span>` : ''}</td>
-            <td data-l="Totale €" class="n"><input type="number" name="importo" step="0.01" min="0" inputmode="decimal" value="${c ? r.importo : ''}" placeholder="—"></td>
+            <td data-l="Totale €" class="n"><input type="number" name="importo" step="0.01" min="0" inputmode="decimal" value="${c && !r.virtuale ? r.importo : ''}" placeholder="${fisso && (c || futuro) ? fisso.importo : '—'}"></td>
             <td data-l="Pagato"><label class="spunta"><input type="checkbox" name="pagato" ${r?.pagato ? 'checked' : ''} ${c ? '' : 'disabled'}> <span>${r?.pagato ? 'Sì' : 'No'}</span></label></td>
             <td data-l="Data pagamento"><input type="date" name="dataPagamento" value="${r?.dataPagamento || ''}" ${c ? '' : 'disabled'}></td>
             <td data-l="Note"><input name="note" value="${r?.note || ''}" placeholder="facoltativo" ${c ? '' : 'disabled'}></td>
@@ -78,6 +83,12 @@ export async function vistaMensile(tipo) {
         <tfoot><tr><th>Totale</th><th class="n">${euro(rie.totale)}</th><th colspan="3" class="totale">media ${euro(rie.media)} al mese${rie.haPrima ? ` · ${Number(anno) - 1}: ${euro(rie.primaTotale)}` : ''}</th></tr></tfoot>
       </table></div>
     </div>`;
+
+  // scadenza, importo fisso e "dal" nello stesso record impostazione
+  const impostazione = () => {
+    const { aggiornato: _a, daSincronizzare: _d, ...x } = imp && !imp.eliminato ? imp : {};
+    return { ...x, id: `impostazione-${tipo}`, tipo: 'impostazione', eliminato: false, giorno: scadenza.giorno, meseDopo: scadenza.meseDopo };
+  };
 
   u.$app.onclick = async e => {
     const t = e.target;
@@ -91,8 +102,15 @@ export async function vistaMensile(tipo) {
     if (campo === 'sc-giorno' || campo === 'sc-mese') {
       const box = e.target.closest('.mn-scad');
       const giorno = Math.min(31, Math.max(1, Math.round(Number(box.querySelector('[name=sc-giorno]').value) || 1)));
-      await u.db.salva({ id: `impostazione-${tipo}`, tipo: 'impostazione', giorno, meseDopo: box.querySelector('[name=sc-mese]').value === 'dopo' });
+      await u.db.salva({ ...impostazione(), giorno, meseDopo: box.querySelector('[name=sc-mese]').value === 'dopo' });
       u.toast(`${T.titolo}: scadenza aggiornata`);
+      return ridisegna();
+    }
+    if (campo === 'fx-importo' || campo === 'fx-dal') {
+      const v = e.target.value;
+      if (campo === 'fx-dal' && !/^\d{4}-\d{2}$/.test(v)) return ridisegna();
+      await u.db.salva({ ...impostazione(), [campo === 'fx-importo' ? 'importo' : 'dal']: campo === 'fx-importo' ? (v === '' ? null : tondo(v)) : v });
+      u.toast(`${T.titolo}: ${campo === 'fx-importo' ? 'importo mensile' : 'mese di partenza'} aggiornato`);
       return ridisegna();
     }
     const tr = e.target.closest('tr[data-mese]');
@@ -118,6 +136,7 @@ export async function vistaMensile(tipo) {
       rec.dataPagamento = e.target.value || null;
       rec.pagato = !!rec.dataPagamento;
     } else if (campo === 'note') rec.note = e.target.value.trim();
+    if (fisso && (rec.importo == null || rec.importo === '')) rec.importo = fisso.importo; // mese fisso salvato la prima volta
     await u.db.salva(rec);
     if (campo === 'pagato' && rec.pagato) u.toast(`${T.titolo} ${nomeMese(mese)}: pagato il ${u.dataIT(rec.dataPagamento)}`);
     ridisegna();

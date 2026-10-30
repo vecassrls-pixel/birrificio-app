@@ -1,7 +1,9 @@
-// Pagamenti mensili scritti a mano (Romain 2026-10-28): Accise, Stipendi, F24. Ogni mese si scrive il totale
+// Pagamenti mensili scritti a mano (Romain 2026-10-28): Accise, Stipendi, F24, Affitti. Ogni mese si scrive il totale
 // da pagare, poi si segna pagato e quando.
-//   accisa | stipendio | f24 { id: '<tipo>-AAAA-MM', tipo, mese: 'AAAA-MM', importo, pagato, dataPagamento, note }
-//   impostazione { id: 'impostazione-<tipo>', tipo: 'impostazione', giorno, meseDopo } scadenza scelta nella pagina
+//   accisa | stipendio | f24 | affitto { id: '<tipo>-AAAA-MM', tipo, mese: 'AAAA-MM', importo, pagato, dataPagamento, note }
+//   impostazione { id: 'impostazione-<tipo>', tipo: 'impostazione', giorno, meseDopo, importo?, dal? } scelte nella pagina
+// L'affitto è fisso (Romain 2026-10-30): dal mese "dal" a quello di oggi i mesi senza record valgono l'importo
+// predefinito (612 €, scadenza il 18 dello stesso mese), così basta spuntare "Pagato".
 // Un record per mese (id fisso, così non si doppia).
 
 export const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
@@ -12,7 +14,31 @@ export const TIPI_MENSILI = {
   accisa: { percorso: 'accise', titolo: 'Accise', voce: 'accise', scadenza: { giorno: 16, meseDopo: true } },
   stipendio: { percorso: 'stipendi', titolo: 'Stipendi', voce: 'stipendi', scadenza: { giorno: 15, meseDopo: true } },
   f24: { percorso: 'f24', titolo: 'F24', voce: 'F24', scadenza: { giorno: 16, meseDopo: false } },
+  affitto: { percorso: 'affitti', titolo: 'Affitti', voce: 'affitto', scadenza: { giorno: 18, meseDopo: false }, fisso: { importo: 612, dal: '2026-10' } },
 };
+
+// Importo fisso e mese di partenza (solo i tipi con "fisso"), con le scelte salvate nella pagina
+export function fissoDi(tipo, imp) {
+  const f = TIPI_MENSILI[tipo]?.fisso;
+  if (!f) return null;
+  const v = imp && !imp.eliminato ? imp : {};
+  return { importo: v.importo != null && v.importo !== '' ? Number(v.importo) : f.importo, dal: /^\d{4}-\d{2}$/.test(v.dal || '') ? v.dal : f.dal };
+}
+
+// Record del tipo più i mesi fissi non ancora salvati (virtuale: true) fino al mese di oggi.
+// Anche il Cashflow le legge da qui per avere gli affitti tra le uscite.
+export function righeMensili(tipo, righe, imp, oggi) {
+  const f = fissoDi(tipo, imp);
+  const vive = righe.filter(r => !r.eliminato);
+  if (!f || !(f.importo > 0)) return vive;
+  const ci = new Set(vive.map(r => r.mese));
+  const fine = oggi.slice(0, 7), extra = [];
+  for (let [a, m] = f.dal.split('-').map(Number); `${a}-${String(m).padStart(2, '0')}` <= fine; m === 12 ? (a++, m = 1) : m++) {
+    const mese = `${a}-${String(m).padStart(2, '0')}`;
+    if (!ci.has(mese)) extra.push({ id: idMensile(tipo, mese), tipo, mese, importo: f.importo, pagato: false, virtuale: true });
+  }
+  return [...vive, ...extra];
+}
 
 export const idMensile = (tipo, mese) => `${tipo}-${mese}`;
 export const nomeMese = mese => `${MESI[Number(mese.slice(5, 7)) - 1]} ${mese.slice(0, 4)}`;

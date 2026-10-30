@@ -1,7 +1,7 @@
-// Economia (Romain 2026-10-28): Cassa, Scontrini, Accise, Stipendi, F24, Eshop (e poi Cashflow) nella stessa sezione,
+// Economia (Romain 2026-10-28): Cassa, Scontrini, Accise, Stipendi, F24, Affitti, Eshop (e poi Cashflow) nella stessa sezione,
 // con le unghie in alto per passare da una pagina all'altra. #/economia riapre l'ultima unghia usata.
 
-import { TIPI_MENSILI, apertiMensili } from './mensili.js';
+import { TIPI_MENSILI, apertiMensili, righeMensili } from './mensili.js';
 
 let u; // { html, db, oggiISO }
 export function init(strumenti) { u = strumenti; }
@@ -28,7 +28,7 @@ export async function unghieEconomia(attiva) {
   const scadute = {};
   for (const x of UNGHIE.filter(y => y.tipo)) {
     const imp = await u.db.leggi(`impostazione-${x.tipo}`);
-    scadute[x.percorso] = apertiMensili(await u.db.tutti(x.tipo), oggi, { ...TIPI_MENSILI[x.tipo].scadenza, ...(imp && !imp.eliminato ? imp : {}) }).scadute;
+    scadute[x.percorso] = apertiMensili(righeMensili(x.tipo, await u.db.tutti(x.tipo), imp, oggi), oggi, { ...TIPI_MENSILI[x.tipo].scadenza, ...(imp && !imp.eliminato ? imp : {}) }).scadute;
   }
   return html`<div class="b-marchi eco-unghie" role="tablist" aria-label="Economia">${UNGHIE.map(x => (x.presto
     ? html`<button type="button" role="tab" disabled title="In arrivo">${x.titolo} <small>presto</small></button>`

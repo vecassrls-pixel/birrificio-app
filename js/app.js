@@ -317,6 +317,7 @@ const routes = [
   [/^#\/accise$/, () => (lettore ? (location.hash = '#/home') : mensili.vistaMensile('accisa'))],
   [/^#\/stipendi$/, () => (lettore ? (location.hash = '#/home') : mensili.vistaMensile('stipendio'))],
   [/^#\/f24$/, () => (lettore ? (location.hash = '#/home') : mensili.vistaMensile('f24'))],
+  [/^#\/affitti$/, () => (lettore ? (location.hash = '#/home') : mensili.vistaMensile('affitto'))],
   [/^#\/eshop$/, () => (lettore ? (location.hash = '#/home') : eshop.vistaEshop())],
   [/^#\/contenitori$/, () => contenitori.vistaContenitori()],
   [/^#\/contenitore\/(.+)$/, id => contenitori.vistaContenitore(id)],
@@ -340,7 +341,7 @@ async function render() {
   $app.ondragstart = $app.ondragend = $app.ondragover = $app.ondragleave = $app.ondrop = null; // carrello della birra
   document.body.classList.toggle('cerca-attiva', h.startsWith('#/cerca'));
   $app.classList.toggle('largo', h.startsWith('#/planning')); // il planning usa tutta la larghezza
-  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'magazzino' && /^#\/(materie-prime|materia|bolla|inventario|scarico|ordine|birra|movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro|contenitor|movcontenitore)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'economia' && /^#\/(cassa|scontrini|accise|stipendi|f24|eshop|cashflow)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
+  document.querySelectorAll('.top nav a').forEach(a => a.classList.toggle('attivo', h.startsWith('#/' + a.dataset.tab) || (a.dataset.tab === 'cotte' && h.startsWith('#/cotta/')) || (a.dataset.tab === 'magazzino' && /^#\/(materie-prime|materia|bolla|inventario|scarico|ordine|birra|movbirra|listini|preventiv|copertura|clienti|scansiona|qr|ordini-clienti|giro|contenitor|movcontenitore)/.test(h)) || (a.dataset.tab === 'statistiche' && /^#\/costi/.test(h)) || (a.dataset.tab === 'economia' && /^#\/(cassa|scontrini|accise|stipendi|f24|affitti|eshop|cashflow)/.test(h)) || (a.dataset.tab === 'haccp' && /^#\/(registro-s6|rintracciabilita|controllo-arrivi|scadenzario|pulizie|temperature-celle|trebbie|infestanti)/.test(h))));
   // menu più largo dello schermo (telefono): la voce attiva al centro
   const $voce = document.querySelector('.top nav a.attivo'), $nav = $voce?.parentElement;
   if ($nav && $nav.scrollWidth > $nav.clientWidth) $nav.scrollLeft += $voce.getBoundingClientRect().left - $nav.getBoundingClientRect().left - ($nav.clientWidth - $voce.offsetWidth) / 2;
