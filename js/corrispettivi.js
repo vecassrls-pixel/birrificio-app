@@ -120,7 +120,16 @@ const COLONNE = {
   imponibile: /imponibile/i,
   imposta: /imposta/i,
   ammontare: /ammontare/i,
+  // colonne in più del file preparato da Claude con il dettaglio di ogni invio
+  contanti: /contanti/i,
+  elettronico: /elettronic|\bpos\b/i,
+  documenti: /documenti|scontrini/i,
+  annulli: /annull/i,
+  aliquote: /aliquot/i,
 };
+// "10:54,55:5,45 22:24,59:5,41" → [{ aliquota, imponibile, imposta }]
+const aliquoteDa = v => String(v ?? '').split(/[\s|]+/).filter(Boolean).map(x => x.split(':'))
+  .filter(x => x.length === 3).map(([a, i, t]) => ({ aliquota: numeroIT(a), imponibile: numeroIT(i), imposta: numeroIT(t) }));
 
 // Tabella "Corrispettivi relativi a Registratori telematici" (Esporta la tabella, CSV o Excel,
 // o copiata dalla pagina): righe = array di array, con la riga d'intestazione da qualche parte in cima.
@@ -142,6 +151,10 @@ export function daTabellaPortale(righe) {
       rilevato, data: giornoChiusura(rilevato),
       trasmesso: col.trasmesso >= 0 ? dataOraIT(r[col.trasmesso]) : '',
       imponibile, imposta,
+      ...(col.contanti >= 0 && col.elettronico >= 0 ? { contanti: tondo(numeroIT(r[col.contanti])), elettronico: tondo(numeroIT(r[col.elettronico])) } : {}),
+      ...(col.documenti >= 0 && r[col.documenti] !== '' && r[col.documenti] != null ? { documenti: numeroIT(r[col.documenti]) } : {}),
+      ...(col.annulli >= 0 ? { annulli: tondo(numeroIT(r[col.annulli])) } : {}),
+      ...(col.aliquote >= 0 && aliquoteDa(r[col.aliquote]).length ? { aliquote: aliquoteDa(r[col.aliquote]) } : {}),
     });
   }
   return out;
