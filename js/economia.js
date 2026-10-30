@@ -1,4 +1,4 @@
-// Economia (Romain 2026-10-28): Cassa, Accise, Stipendi, F24 (e poi Cashflow) nella stessa sezione,
+// Economia (Romain 2026-10-28): Cassa, Scontrini, Accise, Stipendi, F24 (e poi Cashflow) nella stessa sezione,
 // con le unghie in alto per passare da una pagina all'altra. #/economia riapre l'ultima unghia usata.
 
 import { TIPI_MENSILI, apertiMensili } from './mensili.js';
@@ -9,6 +9,7 @@ export function init(strumenti) { u = strumenti; }
 const CHIAVE = 'gb-economia-unghia';
 export const UNGHIE = [
   { percorso: 'cassa', titolo: 'Cassa' },
+  { percorso: 'scontrini', titolo: 'Scontrini' }, // corrispettivi dal portale dell'Agenzia delle Entrate (Romain 2026-10-30)
   ...Object.entries(TIPI_MENSILI).map(([tipo, t]) => ({ percorso: t.percorso, titolo: t.titolo, tipo })),
   { percorso: 'cashflow', titolo: 'Cashflow', presto: true }, // arriva con la sua PR
 ];

@@ -4,4 +4,4 @@
 -- Da eseguire una volta in Supabase → SQL Editor, dopo migrazione_ruoli.sql.
 drop policy if exists "autorizzati leggono" on records;
 create policy "autorizzati leggono" on records for select to authenticated
-  using (autorizzato() and (tipo not in ('movcassa', 'contacassa', 'sospesocassa', 'cashflow', 'accisa', 'stipendio', 'f24') or puo_scrivere()));
+  using (autorizzato() and (tipo not in ('movcassa', 'contacassa', 'sospesocassa', 'cashflow', 'accisa', 'stipendio', 'f24', 'corrispettivo') or puo_scrivere()));
