@@ -94,10 +94,10 @@ export async function acquisti(fic, { dal, max = 40 }) {
 }
 
 // Scadenze dei pagamenti per il cashflow (pagina #/cashflow): le rate (payments_list) delle fatture emesse,
-// delle note di credito e dei documenti dei fornitori dal giorno `dal`. Si tengono le rate non pagate e quelle
+// delle note di credito (nostre e dei fornitori) e dei documenti dei fornitori dal giorno `dal`. Si tengono le rate non pagate e quelle
 // pagate dal giorno `pagateDal` (per le ultime settimane).
 // → { voci: [{ id, verso: 'entrata'|'uscita', tipo, numero, data, controparte, importo, scadenza, pagata }], senzaRate, altri }
-//   importo in euro, positivo; le note di credito sono entrate negative (riducono quanto ci devono).
+//   importo in euro, positivo; le note di credito sono negative: le nostre riducono quanto ci devono, quelle dei fornitori quanto dobbiamo.
 const PAGINE_SCADENZE = 15;
 async function documentiConRate(fic, path, params) {
   const docs = [];
@@ -119,10 +119,12 @@ async function documentiConRate(fic, path, params) {
 }
 export async function scadenze(fic, { dal, pagateDal }) {
   const q = { q: `date >= '${dal}'` };
-  const [fatture, note, acquisti] = await Promise.all([
+  const [fatture, note, acquisti, noteFornitori] = await Promise.all([
     documentiConRate(fic, '/issued_documents', { ...q, type: 'invoice' }),
     documentiConRate(fic, '/issued_documents', { ...q, type: 'credit_note' }),
     documentiConRate(fic, '/received_documents', { ...q, type: 'expense' }),
+    // note di credito dei fornitori (Romain 2026-10-30): riducono quanto dobbiamo pagare
+    documentiConRate(fic, '/received_documents', { ...q, type: 'passive_credit_note' }).catch(() => ({ docs: [], altri: false })),
   ]);
   const voci = [];
   let senzaRate = 0;
@@ -144,7 +146,8 @@ export async function scadenze(fic, { dal, pagateDal }) {
   for (const d of fatture.docs) aggiungi(d, 'entrata', 'fattura', 1, `Fattura ${d.number ?? ''}${d.numeration || ''}`.trim());
   for (const d of note.docs) aggiungi(d, 'entrata', 'nota', -1, `Nota di credito ${d.number ?? ''}${d.numeration || ''}`.trim());
   for (const d of acquisti.docs) aggiungi(d, 'uscita', 'acquisto', 1, d.invoice_number ? `Fattura ${d.invoice_number}` : (d.description || 'Spesa'));
-  return { voci, senzaRate, altri: fatture.altri || note.altri || acquisti.altri };
+  for (const d of noteFornitori.docs) aggiungi(d, 'uscita', 'notaFornitore', -1, d.invoice_number ? `Nota di credito ${d.invoice_number}` : 'Nota di credito');
+  return { voci, senzaRate, altri: fatture.altri || note.altri || acquisti.altri || noteFornitori.altri };
 }
 
 export async function prodotti(fic) {

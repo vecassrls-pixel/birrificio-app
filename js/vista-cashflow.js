@@ -16,7 +16,7 @@ const META = 'cashflow-fic';
 const VECCHIA_ORE = 6; // oltre, all'apertura si rilegge da sola
 const euro = v => `${(Number(v) || 0).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €`;
 const euro2 = v => `${(Number(v) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-const NOME_TIPO = { fattura: 'Fattura', nota: 'Nota di credito', acquisto: 'Acquisto', fissa: 'Fissa', mp: 'Materie prime' };
+const NOME_TIPO = { fattura: 'Fattura', nota: 'Nota di credito', notaFornitore: 'Nota di credito fornitore', acquisto: 'Acquisto', fissa: 'Fissa', mp: 'Materie prime' };
 let lettura = null; // promessa della lettura in corso
 let ultimoTentativo = 0; // la lettura automatica non si ripete a ogni ridisegno della pagina
 
@@ -104,7 +104,7 @@ export async function vistaCashflow({ appenaLetto = false } = {}) {
           <tr class="cf-dett" data-dett="${i}" hidden><td colspan="5">${s.voci.length ? html`<ul class="w-lista">${s.voci.map(v => rigaVoce(v))}</ul>` : html`<span class="totale">Nessuna voce</span>`}</td></tr>`)}</tbody>
       </table></div>
       <p class="totale">Entrate: rate non pagate delle fatture emesse${imp.scadutiInEntrata ? ' (le scadute nella prima settimana)' : ' (le scadute non si contano: sono qui sotto)'}, meno le note di credito.
-        Uscite: rate non pagate degli acquisti (le scadute nella prima settimana), voci fisse, materie prime da ordinare per le cotte pianificate a ${imp.giorniMp} giorni con IVA ${imp.ivaMp}%.
+        Uscite: rate non pagate degli acquisti (le scadute nella prima settimana) meno le note di credito dei fornitori, voci fisse, materie prime da ordinare per le cotte pianificate a ${imp.giorniMp} giorni con IVA ${imp.ivaMp}%.
         Importi IVA compresa, come in Fatture in Cloud.${mp.senzaPrezzo.length ? ` Senza prezzo da bolla, non contate: ${mp.senzaPrezzo.join(', ')}.` : ''}
         ${fic?.senzaRate ? ` ${fic.senzaRate} documenti senza scadenze in Fatture in Cloud non sono contati.` : ''}${fic?.altri ? ' Documenti troppi: letti solo i più recenti.' : ''}</p>
     </div>
