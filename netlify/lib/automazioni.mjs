@@ -9,6 +9,7 @@
 //   'stato-automazioni'         ultimo invio e ultimo import, scritto solo dal server
 //   tipo 'importsospeso'        documenti importati con righe da collegare a mano (Birra / Materie prime)
 //   tipo 'cliente'              telefono ed email dei clienti presi dalle fatture
+//   tipo 'venditaeshop'         ordini Shopify con gli importi (unghia Eshop in Economia, js/eshop.js)
 
 import * as db from './db.mjs';
 import * as telegram from './telegram.mjs';
@@ -21,6 +22,7 @@ import { idCliente } from '../../js/previsioni.js';
 import { ID_PREZZI, prezziDa } from '../../js/costi.js';
 import { ID_IMP, ID_STATO, IMPOSTAZIONI_DEFAULT, impostazioni } from '../../js/automazioni.js';
 import { caricoDaFattura, caricoSimile, righeVuoti } from '../../js/contenitori.js';
+import { venditaDaOrdine, uguale } from '../../js/eshop.js';
 
 export { ID_IMP, ID_STATO, IMPOSTAZIONI_DEFAULT, impostazioni };
 
@@ -162,7 +164,13 @@ export async function importa({ imp } = {}) {
   if (imp.importa.shopify && shopify.configurato()) {
     try {
       dal.shopify = addGiorni(oggi, -30);
-      for (const d of (await shopify.ordini(dal.shopify)).documenti) if (d.spedito) registra('shopify', d);
+      const eshop = new Map((await db.tipi(['venditaeshop'])).venditaeshop.map(v => [v.id, v]));
+      for (const d of (await shopify.ordini(dal.shopify)).documenti) {
+        if (d.spedito) registra('shopify', d);
+        // tutti gli ordini, anche non spediti o senza birra, con gli importi aggiornati (rimborsi)
+        const v = venditaDaOrdine(d);
+        if (!uguale(eshop.get(v.id), v)) nuovi.push(v);
+      }
     } catch (e) { conteggi.errori.push(e.message); }
   }
   await db.salva(nuovi);
