@@ -8,7 +8,8 @@
 //   SUPABASE_URL, SUPABASE_ANON_KEY  per controllare chi chiama
 //
 // Uso dall'app:  /.netlify/functions/shopify?dal=2026-10-01
-// Risponde: { documenti: [{ id, numero, data, cliente, stato, spedito, righe: [{ codice, nome, qta }] }], altri }
+// Risponde: { documenti: [{ id, numero, data, cliente, stato, spedito, righe: [{ codice, nome, qta, importo }], ordinato, totale, … }], altri }
+// (campi completi in netlify/lib/shopify.mjs)
 // data = giorno della prima spedizione, altrimenti dell'ordine.
 
 import { autorizzato, json, dataValida } from '../lib/accesso.mjs';

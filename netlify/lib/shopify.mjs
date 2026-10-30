@@ -23,19 +23,29 @@ const QUERY = `query ($q: String!, $dopo: String) {
   orders(first: 50, after: $dopo, query: $q, sortKey: PROCESSED_AT) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name processedAt cancelledAt displayFinancialStatus displayFulfillmentStatus
+      id name processedAt cancelledAt displayFinancialStatus displayFulfillmentStatus sourceName
+      currentTotalPriceSet { shopMoney { amount currencyCode } }
+      totalPriceSet { shopMoney { amount } }
+      totalShippingPriceSet { shopMoney { amount } }
+      currentTotalDiscountsSet { shopMoney { amount } }
+      totalRefundedSet { shopMoney { amount } }
       fulfillments(first: 5) { createdAt }
-      lineItems(first: 100) { nodes { sku name variantTitle quantity currentQuantity } }
+      lineItems(first: 100) { nodes { sku name variantTitle quantity currentQuantity discountedTotalSet { shopMoney { amount } } } }
     }
   }
 }`;
 
+const PAGAMENTI = { PAID: 'pagato', PENDING: 'in attesa', AUTHORIZED: 'autorizzato', PARTIALLY_PAID: 'pagato in parte', PARTIALLY_REFUNDED: 'rimborsato in parte', REFUNDED: 'rimborsato', VOIDED: 'annullato', EXPIRED: 'scaduto' };
+const euro = s => Number(s?.shopMoney?.amount) || 0;
 const STATI = { FULFILLED: 'spedito', PARTIALLY_FULFILLED: 'spedito in parte', UNFULFILLED: 'da spedire', IN_PROGRESS: 'in preparazione', ON_HOLD: 'in attesa', SCHEDULED: 'programmato' };
 
 export const negozio = () => (process.env.SHOPIFY_SHOP || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 export const configurato = () => !!negozio() && !!(process.env.SHOPIFY_TOKEN || (process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET));
 
-// { documenti: [{ id, numero, data, cliente, stato, spedito, righe: [{ codice, nome, qta }] }], altri }
+// { documenti: [{ id, numero, data, cliente, stato, spedito, righe: [{ codice, nome, qta, importo }],
+//   ordinato, pagamento, canale, valuta, totale, lordo, spedizione, sconti, rimborsato }], altri }
+// Gli importi (IVA compresa, valuta del negozio) servono all'unghia Eshop in Economia (js/eshop.js);
+// la riga ha importo e non prezzo, così gli scarichi in Birra non finiscono nei listini dei clienti.
 export async function ordini(dal) {
   const host = negozio().includes('.') ? negozio() : `${negozio()}.myshopify.com`;
   const versione = process.env.SHOPIFY_API_VERSION || '2026-07';
@@ -68,7 +78,13 @@ export async function ordini(dal) {
         cliente: '',
         stato: STATI[o.displayFulfillmentStatus] || String(o.displayFulfillmentStatus || '').toLowerCase(),
         spedito: !!spedizione,
-        righe: o.lineItems.nodes.map(r => ({ codice: r.sku || '', nome: [r.name].filter(Boolean).join(''), qta: Number(r.currentQuantity ?? r.quantity) || 0 })).filter(r => r.qta > 0),
+        righe: o.lineItems.nodes.map(r => ({ codice: r.sku || '', nome: [r.name].filter(Boolean).join(''), qta: Number(r.currentQuantity ?? r.quantity) || 0, importo: euro(r.discountedTotalSet) })).filter(r => r.qta > 0),
+        ordinato: o.processedAt.slice(0, 10),
+        pagamento: PAGAMENTI[o.displayFinancialStatus] || String(o.displayFinancialStatus || '').toLowerCase(),
+        canale: o.sourceName || '',
+        valuta: o.currentTotalPriceSet?.shopMoney?.currencyCode || 'EUR',
+        totale: euro(o.currentTotalPriceSet), lordo: euro(o.totalPriceSet), spedizione: euro(o.totalShippingPriceSet),
+        sconti: euro(o.currentTotalDiscountsSet), rimborsato: euro(o.totalRefundedSet),
       };
     }),
   };
