@@ -1,4 +1,4 @@
-// Economia (Romain 2026-10-28): Cassa, Accise, Stipendi, F24 (e poi Cashflow) nella stessa sezione,
+// Economia (Romain 2026-10-28): Cassa, Accise, Stipendi, F24, Eshop (e poi Cashflow) nella stessa sezione,
 // con le unghie in alto per passare da una pagina all'altra. #/economia riapre l'ultima unghia usata.
 
 import { TIPI_MENSILI, apertiMensili } from './mensili.js';
@@ -10,6 +10,7 @@ const CHIAVE = 'gb-economia-unghia';
 export const UNGHIE = [
   { percorso: 'cassa', titolo: 'Cassa' },
   ...Object.entries(TIPI_MENSILI).map(([tipo, t]) => ({ percorso: t.percorso, titolo: t.titolo, tipo })),
+  { percorso: 'eshop', titolo: 'Eshop' }, // vendite online di Shopify (Romain 2026-10-30)
   { percorso: 'cashflow', titolo: 'Cashflow', presto: true }, // arriva con la sua PR
 ];
 export const percorsiEconomia = UNGHIE.filter(x => !x.presto).map(x => x.percorso);
