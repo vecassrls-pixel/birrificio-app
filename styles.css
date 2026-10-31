@@ -203,11 +203,13 @@ label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { cursor: 
 .g-row:last-child { border-bottom: none; }
 .g-row.testa { height: 42px; position: sticky; top: 0; background: var(--surface); z-index: 3; }
 .g-label {
-  position: sticky; left: 0; z-index: 2; width: 74px; min-width: 74px; background: var(--surface);
-  border-right: 1px solid var(--border); padding: 4px 10px; font-weight: 700; font-size: .88rem;
-  display: flex; flex-direction: column; justify-content: center;
+  position: sticky; left: 0; z-index: 2; width: 100px; min-width: 100px; background: var(--surface);
+  border-right: 1px solid var(--border); padding: 3px 8px; font-weight: 700; font-size: .88rem;
+  display: flex; flex-direction: column; justify-content: center; line-height: 1.2;
 }
 .g-label small { font-weight: 400; color: var(--muted); font-size: .7rem; }
+.g-birra { font-weight: 600; font-size: .72rem; color: var(--accent); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-birra.libero { font-weight: 400; color: var(--muted); font-style: italic; }
 .g-days { position: relative; flex: none; }
 .g-day { position: absolute; top: 0; bottom: 0; border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent); font-size: .68rem; color: var(--muted); text-align: center; }
 .g-day.lun { border-left-color: color-mix(in srgb, var(--muted) 55%, transparent); }

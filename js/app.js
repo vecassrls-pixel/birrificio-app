@@ -1701,8 +1701,10 @@ function vistaPlanning() {
     }
     barrePerFv.set(p.fv, lista);
   }
+  // da tutte le cotte, non solo quelle della vista: resta giusto anche guardando un altro anno
+  const periodiOggi = stato.cotte.filter(c => c.data && c.data <= oggi).flatMap(c => periodiCotta(c, stato.durate, stato.fv)).filter(p => p.da <= oggi && p.a >= oggi);
   const occupazione = nomiFv.map(n => {
-    const attuale = periodi.find(p => p.fv === n && p.da <= oggi && p.a >= oggi);
+    const attuale = periodiOggi.find(p => p.fv === n);
     return { n, attuale, cap: stato.fv.find(f => f.nome === n)?.capacita };
   });
 
@@ -1740,10 +1742,14 @@ function vistaPlanning() {
     ${senzaFv.length ? html`<div class="scheda"><h2>Travasi senza FV di arrivo</h2>
       ${senzaFv.map(p => html`<div><a href="#/cotta/${encodeURIComponent(p.cotta.id)}">${p.cotta.birra} ${p.cotta.lotto}</a>: da ${p.cotta.fv} il ${dataIT(p.da)}, fino al ${dataIT(p.a)}</div>`)}
     </div>` : ''}
-    <div class="gantt-wrap"><div class="gantt" style="width:${larghezza + 74}px">
+    <div class="gantt-wrap"><div class="gantt" style="width:${larghezza + 100}px">
       <div class="g-row testa"><div class="g-label">FV</div><div class="g-days" style="width:${larghezza}px">${testa}</div></div>
       ${nomiFv.map(n => html`<div class="g-row">
-        <div class="g-label">${n}<small>${(() => { const f = stato.fv.find(x => x.nome === n); return f && f.capacita ? `${numIT(f.capacita, 0)} L` : ''; })()}</small></div>
+        <div class="g-label"><span>${n}<small>${(() => { const f = stato.fv.find(x => x.nome === n); return f && f.capacita ? ` ${numIT(f.capacita, 0)} L` : ''; })()}</small></span>
+          ${(() => { // birra che occupa il FV oggi, sotto il nome (Romain 2026-10-31)
+            const o = occupazione.find(x => x.n === n)?.attuale;
+            return o ? html`<a class="g-birra" href="#/cotta/${encodeURIComponent(o.cotta.id)}" title="Oggi in ${n}: ${o.cotta.birra}${o.cotta.lotto ? ` lotto ${o.cotta.lotto}` : ''}">${o.cotta.birra}</a>` : html`<span class="g-birra libero">libero</span>`;
+          })()}</div>
         <div class="g-days" data-fv="${n}" style="width:${larghezza}px">${sfondo}
           ${(barrePerFv.get(n) || []).map(b => {
             const c0 = b.cotte[0];
