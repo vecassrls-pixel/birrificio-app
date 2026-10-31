@@ -42,7 +42,7 @@ import * as qr from './vista-qr.js';
 import * as carrello from './vista-carrello.js';
 import * as ordiniClienti from './vista-ordini.js';
 import { conGiorniDh } from './agenda.js';
-import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
+import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa, durataMedia } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi, unitaStandard, rigaStandard, cottaInUnitaStandard, uniformaUnita, decimaliUnita } from './magazzino.js';
@@ -490,7 +490,11 @@ function dialogNuovaCotta(pre = {}) {
     f.passo.disabled = f.quante.value === '1';
     // beerfirm: quello della cotta copiata, finché non lo cambi a mano
     if (!f.beerfirm.dataset.toccato && pre.beerfirm === undefined) f.beerfirm.value = (stato.beerfirm || []).some(b => b.nome === src0?.beerfirm) ? src0.beerfirm : '';
-    const durata = Number(f.durata.value) || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
+    // giorni in FV: media delle ultime 2 cotte finite della stessa birra, singole o doppie come questa (Romain 2026-10-31);
+    // se in "Copia da" scegli una cotta precedente vale la sua durata
+    const cottaScelta = f.copiaDa.value && f.copiaDa.value !== 'no' && !f.copiaDa.value.startsWith('bf:');
+    const media = cottaScelta ? null : durataMedia({ birra, quante: Number(f.quante.value) || 1, cotte: stato.cotte, durate: stato.durate, oggi: oggiISO() });
+    const durata = Number(f.durata.value) || media?.giorni || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
     if (!f.durata.value || f.durata.dataset.auto) { f.durata.value = durata; f.durata.dataset.auto = '1'; }
     const da = f.data.value || oggiISO();
     const a = addGiorni(da, durata - 1 + extraDoppia());
@@ -510,7 +514,9 @@ function dialogNuovaCotta(pre = {}) {
     if (r) r.checked = true;
     if (!f.dh.dataset.toccato) f.dh.checked = !(src0 && src0.dh === false);
     controllaMp();
-    dlg.querySelector('#origine').textContent = src0 ? `Copia da ${src0.birra}, lotto ${src0.lotto} del ${dataIT(src0.data)}: ${durata} giorni in FV` : f.copiaDa.value === 'no' ? 'Ricetta vuota, profilo standard.' : (birra ? 'Nessuna cotta precedente con ricetta per questa birra: ricetta vuota.' : '');
+    const testoMedia = media && f.durata.dataset.auto && Number(f.durata.value) === media.giorni
+      ? ` Giorni in FV: media ${media.lotti.length === 1 ? "dell'ultima cotta" : `delle ultime ${media.lotti.length} cotte`} ${['singole', 'doppie', 'triple'][(Number(f.quante.value) || 1) - 1]} (${media.lotti.map(l => `${l.lotto} ${l.giorni} gg`).join(', ')}).` : '';
+    dlg.querySelector('#origine').textContent = (src0 ? `Copia da ${src0.birra}, lotto ${src0.lotto} del ${dataIT(src0.data)}: ${durata} giorni in FV.` : f.copiaDa.value === 'no' ? 'Ricetta vuota, profilo standard.' : (birra ? 'Nessuna cotta precedente con ricetta per questa birra: ricetta vuota.' : '')) + testoMedia;
   };
   // pianificatore: prime date libere e materie prime che mancherebbero (js/pianificatore.js)
   let travasoScelto = null, datiMag = null, timerMp;
@@ -569,7 +575,7 @@ function dialogNuovaCotta(pre = {}) {
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); proponiPrimo(); });
   f.birra.addEventListener('change', () => { proponiRicettaBf(); f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
-  f.quante.addEventListener('change', () => { f.quante.dataset.toccato = '1'; f.passo.disabled = f.quante.value === '1'; aggiornaFv(); proponiPrimo(); });
+  f.quante.addEventListener('change', () => { f.quante.dataset.toccato = '1'; f.passo.disabled = f.quante.value === '1'; if (f.durata.dataset.auto) f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.passo.addEventListener('change', () => { f.passo.dataset.toccato = '1'; aggiornaFv(); proponiPrimo(); });
   f.data.addEventListener('change', aggiornaFv);
   // numero e anno proposti dalla data: una cotta futura prende il suo posto in ordine di data
