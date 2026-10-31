@@ -42,7 +42,7 @@ import * as qr from './vista-qr.js';
 import * as carrello from './vista-carrello.js';
 import * as ordiniClienti from './vista-ordini.js';
 import { conGiorniDh } from './agenda.js';
-import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa } from './pianificatore.js';
+import { proponiDate, materiePrimeMancanti, giorniTravasoDa, durataDa, durataMedia } from './pianificatore.js';
 import { graficoFermentazione, attivaGrafico } from './grafico-ferm.js';
 import { litriATacca, taccaFinale, ALTEZZA_MAX } from './serbatoio.js';
 import { CATEGORIE, categoriaDa, trovaArticolo, unitaDa, nomiDaMagazzino, acidoInGrammi, unitaStandard, rigaStandard, cottaInUnitaStandard, uniformaUnita, decimaliUnita } from './magazzino.js';
@@ -490,7 +490,11 @@ function dialogNuovaCotta(pre = {}) {
     f.passo.disabled = f.quante.value === '1';
     // beerfirm: quello della cotta copiata, finché non lo cambi a mano
     if (!f.beerfirm.dataset.toccato && pre.beerfirm === undefined) f.beerfirm.value = (stato.beerfirm || []).some(b => b.nome === src0?.beerfirm) ? src0.beerfirm : '';
-    const durata = Number(f.durata.value) || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
+    // giorni in FV: media delle ultime 2 cotte finite della stessa birra, singole o doppie come questa (Romain 2026-10-31);
+    // se in "Copia da" scegli una cotta precedente vale la sua durata
+    const cottaScelta = f.copiaDa.value && f.copiaDa.value !== 'no' && !f.copiaDa.value.startsWith('bf:');
+    const media = cottaScelta ? null : durataMedia({ birra, quante: Number(f.quante.value) || 1, cotte: stato.cotte, durate: stato.durate, oggi: oggiISO() });
+    const durata = Number(f.durata.value) || media?.giorni || (src0?.data ? diffGiorni(src0.data, fineCotta(src0, stato.durate)) + 1 : 0) || DURATA_DEFAULT;
     if (!f.durata.value || f.durata.dataset.auto) { f.durata.value = durata; f.durata.dataset.auto = '1'; }
     const da = f.data.value || oggiISO();
     const a = addGiorni(da, durata - 1 + extraDoppia());
@@ -510,7 +514,9 @@ function dialogNuovaCotta(pre = {}) {
     if (r) r.checked = true;
     if (!f.dh.dataset.toccato) f.dh.checked = !(src0 && src0.dh === false);
     controllaMp();
-    dlg.querySelector('#origine').textContent = src0 ? `Copia da ${src0.birra}, lotto ${src0.lotto} del ${dataIT(src0.data)}: ${durata} giorni in FV` : f.copiaDa.value === 'no' ? 'Ricetta vuota, profilo standard.' : (birra ? 'Nessuna cotta precedente con ricetta per questa birra: ricetta vuota.' : '');
+    const testoMedia = media && f.durata.dataset.auto && Number(f.durata.value) === media.giorni
+      ? ` Giorni in FV: media ${media.lotti.length === 1 ? "dell'ultima cotta" : `delle ultime ${media.lotti.length} cotte`} ${['singole', 'doppie', 'triple'][(Number(f.quante.value) || 1) - 1]} (${media.lotti.map(l => `${l.lotto} ${l.giorni} gg`).join(', ')}).` : '';
+    dlg.querySelector('#origine').textContent = (src0 ? `Copia da ${src0.birra}, lotto ${src0.lotto} del ${dataIT(src0.data)}: ${durata} giorni in FV.` : f.copiaDa.value === 'no' ? 'Ricetta vuota, profilo standard.' : (birra ? 'Nessuna cotta precedente con ricetta per questa birra: ricetta vuota.' : '')) + testoMedia;
   };
   // pianificatore: prime date libere e materie prime che mancherebbero (js/pianificatore.js)
   let travasoScelto = null, datiMag = null, timerMp;
@@ -569,7 +575,7 @@ function dialogNuovaCotta(pre = {}) {
   f.durata.addEventListener('input', () => { delete f.durata.dataset.auto; aggiornaFv(); proponiPrimo(); });
   f.birra.addEventListener('change', () => { proponiRicettaBf(); f.durata.dataset.auto = '1'; f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.dh.addEventListener('change', () => { f.dh.dataset.toccato = '1'; });
-  f.quante.addEventListener('change', () => { f.quante.dataset.toccato = '1'; f.passo.disabled = f.quante.value === '1'; aggiornaFv(); proponiPrimo(); });
+  f.quante.addEventListener('change', () => { f.quante.dataset.toccato = '1'; f.passo.disabled = f.quante.value === '1'; if (f.durata.dataset.auto) f.durata.value = ''; aggiornaFv(); proponiPrimo(); });
   f.passo.addEventListener('change', () => { f.passo.dataset.toccato = '1'; aggiornaFv(); proponiPrimo(); });
   f.data.addEventListener('change', aggiornaFv);
   // numero e anno proposti dalla data: una cotta futura prende il suo posto in ordine di data
@@ -1701,8 +1707,10 @@ function vistaPlanning() {
     }
     barrePerFv.set(p.fv, lista);
   }
+  // da tutte le cotte, non solo quelle della vista: resta giusto anche guardando un altro anno
+  const periodiOggi = stato.cotte.filter(c => c.data && c.data <= oggi).flatMap(c => periodiCotta(c, stato.durate, stato.fv)).filter(p => p.da <= oggi && p.a >= oggi);
   const occupazione = nomiFv.map(n => {
-    const attuale = periodi.find(p => p.fv === n && p.da <= oggi && p.a >= oggi);
+    const attuale = periodiOggi.find(p => p.fv === n);
     return { n, attuale, cap: stato.fv.find(f => f.nome === n)?.capacita };
   });
 
@@ -1740,10 +1748,14 @@ function vistaPlanning() {
     ${senzaFv.length ? html`<div class="scheda"><h2>Travasi senza FV di arrivo</h2>
       ${senzaFv.map(p => html`<div><a href="#/cotta/${encodeURIComponent(p.cotta.id)}">${p.cotta.birra} ${p.cotta.lotto}</a>: da ${p.cotta.fv} il ${dataIT(p.da)}, fino al ${dataIT(p.a)}</div>`)}
     </div>` : ''}
-    <div class="gantt-wrap"><div class="gantt" style="width:${larghezza + 74}px">
+    <div class="gantt-wrap"><div class="gantt" style="width:${larghezza + 100}px">
       <div class="g-row testa"><div class="g-label">FV</div><div class="g-days" style="width:${larghezza}px">${testa}</div></div>
       ${nomiFv.map(n => html`<div class="g-row">
-        <div class="g-label">${n}<small>${(() => { const f = stato.fv.find(x => x.nome === n); return f && f.capacita ? `${numIT(f.capacita, 0)} L` : ''; })()}</small></div>
+        <div class="g-label"><span>${n}<small>${(() => { const f = stato.fv.find(x => x.nome === n); return f && f.capacita ? ` ${numIT(f.capacita, 0)} L` : ''; })()}</small></span>
+          ${(() => { // birra che occupa il FV oggi, sotto il nome (Romain 2026-10-31)
+            const o = occupazione.find(x => x.n === n)?.attuale;
+            return o ? html`<a class="g-birra" href="#/cotta/${encodeURIComponent(o.cotta.id)}" title="Oggi in ${n}: ${o.cotta.birra}${o.cotta.lotto ? ` lotto ${o.cotta.lotto}` : ''}">${o.cotta.birra}</a>` : html`<span class="g-birra libero">libero</span>`;
+          })()}</div>
         <div class="g-days" data-fv="${n}" style="width:${larghezza}px">${sfondo}
           ${(barrePerFv.get(n) || []).map(b => {
             const c0 = b.cotte[0];

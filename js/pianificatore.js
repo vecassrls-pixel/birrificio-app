@@ -1,7 +1,7 @@
 // Pianificatore: proposte di data e fermentatore per una cotta nuova, e materie prime che mancherebbero.
 // Senza DOM (lo usa il dialog "Pianifica cotta" e la pagina Copertura birra).
 
-import { DURATA_DEFAULT, addGiorni, diffGiorni, fineCotta, fvLiberi, travasoCotta } from './dominio.js';
+import { DURATA_DEFAULT, addGiorni, diffGiorni, fineCotta, fvLiberi, travasoCotta, gruppoCotta, nomeBirra } from './dominio.js';
 import { giacenze, scarichiCotte } from './magazzino.js';
 
 export const GIORNI_TRAVASO_DEFAULT = 14; // 10 fermentazione + 4 DH, poi travaso dai FV non isobarici
@@ -13,6 +13,31 @@ export function giorniTravasoDa(src, fvs) {
   return t?.data ? diffGiorni(src.data, t.data) : GIORNI_TRAVASO_DEFAULT;
 }
 export const durataDa = (src, durate) => (src?.data ? diffGiorni(src.data, fineCotta(src, durate)) + 1 : DURATA_DEFAULT);
+
+// Giorni in FV proposti per una cotta nuova (Romain 2026-10-31): media delle ultime 2 cotte finite della stessa birra,
+// solo singole per una singola e solo doppie (o triple) per una doppia, perché le durate sono diverse.
+// Una doppia conta come un lotto: giorni dall'ultima cotta del gruppo alla fine in FV (i giorni in più
+// delle cotte in giorni consecutivi il dialog li aggiunge a parte). Ritorna { giorni, lotti: [{ lotto, giorni }] } o null.
+export function durataMedia({ birra, quante = 1, cotte, durate, oggi, quanti = 2 }) {
+  const k = nomeBirra(birra);
+  if (!k) return null;
+  const visti = new Set(), lotti = [];
+  const stesse = cotte.filter(c => !c.eliminato && c.data && c.data <= oggi && nomeBirra(c.birra) === k)
+    .sort((a, b) => b.data.localeCompare(a.data));
+  for (const c of stesse) {
+    if (lotti.length >= quanti) break;
+    if (visti.has(c.id)) continue;
+    const g = gruppoCotta(c, cotte);
+    g.forEach(x => visti.add(x.id));
+    if (g.length !== quante) continue;
+    const fine = g.reduce((m, x) => { const f = fineCotta(x, durate); return f > m ? f : m; }, '');
+    if (fine >= oggi) continue; // ancora in FV: la durata non è quella vera
+    const giorni = diffGiorni(g[g.length - 1].data, fine) + 1;
+    if (giorni < 3 || giorni > 120) continue;
+    lotti.push({ lotto: g.length > 1 ? g.map(x => x.numero).join('/') : g[0].lotto || '', giorni });
+  }
+  return lotti.length ? { giorni: Math.round(lotti.reduce((t, l) => t + l.giorni, 0) / lotti.length), lotti } : null;
+}
 
 // Prime date (da "da" in poi) con almeno un FV libero per tutta la durata.
 // Un FV non isobarico va bene se il giorno del travaso c'è un FV isobarico libero fino alla fine.
